@@ -170,7 +170,7 @@ function addon:CreateMainFrame()
     -- Example content
     local content = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     content:SetPoint("CENTER", frame, "CENTER", 0, 20)
-    content:SetText("Hello, World of Warcraft!")
+    content:SetText("Hello World (of Warcraft)")
 
     -- DPS Window Toggle Button
     local dpsBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
