@@ -53,70 +53,84 @@ function DPSWindow:Create()
         }
     end)
 
-    -- Background similar to the example image
+    -- Background (black semi-transparent like HPS window)
     local bg = frame:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(frame)
-    bg:SetColorTexture(0, 0, 0, 0.8)
+    bg:SetColorTexture(0, 0, 0, 0.7)
 
-    -- Border
-    local border = frame:CreateTexture(nil, "BORDER")
-    border:SetAllPoints(frame)
-    border:SetColorTexture(0.4, 0.4, 0.4, 0.9)
-    border:SetPoint("TOPLEFT", frame, "TOPLEFT", -1, 1)
-    border:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 1, -1)
+    -- Top section background (slightly more opaque black)
+    local topBg = frame:CreateTexture(nil, "BORDER")
+    topBg:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    topBg:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    topBg:SetHeight(45)
+    topBg:SetColorTexture(0, 0, 0, 0.8)
 
-    -- Player name and rank
-    local playerText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    playerText:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
-    playerText:SetText("1. " .. UnitName("player"))
-    playerText:SetTextColor(1, 1, 1, 1)
-    playerText:SetJustifyH("LEFT")
-    frame.playerText = playerText
-
-    -- DPS value
-    local dpsText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dpsText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+    -- Large DPS number
+    local dpsText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    dpsText:SetPoint("LEFT", frame, "LEFT", 8, 8)
     dpsText:SetText("0")
-    dpsText:SetTextColor(1, 1, 0, 1) -- Yellow like in the example
-    dpsText:SetJustifyH("RIGHT")
+    dpsText:SetTextColor(1, 1, 1, 1)
+    dpsText:SetJustifyH("LEFT")
     frame.dpsText = dpsText
 
-    -- Total damage
+    -- DPS label (red, top right)
+    local dpsLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    dpsLabel:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -8)
+    dpsLabel:SetText("DPS")
+    dpsLabel:SetTextColor(1, 0.2, 0.2, 1) -- Red for DPS
+    dpsLabel:SetJustifyH("RIGHT")
+
+    -- Max DPS (bottom left, top line)
+    local maxText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    maxText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 8, 20)
+    maxText:SetText("0 max")
+    maxText:SetTextColor(0.8, 0.8, 0.8, 1)
+    maxText:SetJustifyH("LEFT")
+    frame.maxText = maxText
+
+    -- Total damage (below max)
     local totalText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    totalText:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -25)
-    totalText:SetText("Total: 0")
+    totalText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 8, 8)
+    totalText:SetText("0 total")
     totalText:SetTextColor(0.8, 0.8, 0.8, 1)
     totalText:SetJustifyH("LEFT")
     frame.totalText = totalText
 
-    -- Combat time
-    local timeText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    timeText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -25)
-    timeText:SetText("0s")
-    timeText:SetTextColor(0.8, 0.8, 0.8, 1)
-    timeText:SetJustifyH("RIGHT")
-    frame.timeText = timeText
+    -- Refresh icon (bottom right) - using a texture icon
+    local refreshBtn = CreateFrame("Button", nil, frame)
+    refreshBtn:SetSize(20, 20)
+    refreshBtn:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -3, 3)
 
-    -- Title
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    title:SetPoint("BOTTOM", frame, "BOTTOM", 0, 5)
-    title:SetText("My DPS")
-    title:SetTextColor(0.9, 0.9, 0.9, 1)
+    -- Create the icon texture
+    local refreshIcon = refreshBtn:CreateTexture(nil, "ARTWORK")
+    refreshIcon:SetAllPoints(refreshBtn)
 
-    -- Close button
-    local closeBtn = CreateFrame("Button", nil, frame)
-    closeBtn:SetSize(12, 12)
-    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
+    -- Use your custom texture (place refresh-icon.tga in your MyUI addon folder)
+    refreshIcon:SetTexture("Interface\\AddOns\\MyUI\\refresh-icon")
 
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    closeBtnText:SetAllPoints(closeBtn)
-    closeBtnText:SetText("×")
-    closeBtnText:SetTextColor(1, 0.2, 0.2, 1)
-    closeBtnText:SetJustifyH("CENTER")
+    -- Fallback to WoW's built-in icon if custom texture fails to load
+    if not refreshIcon:GetTexture() then
+        refreshIcon:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+    end
 
-    closeBtn:SetScript("OnClick", function() DPSWindow:Hide() end)
-    closeBtn:SetScript("OnEnter", function() closeBtnText:SetTextColor(1, 0.5, 0.5, 1) end)
-    closeBtn:SetScript("OnLeave", function() closeBtnText:SetTextColor(1, 0.2, 0.2, 1) end)
+    refreshIcon:SetAlpha(0.25)
+
+    -- Make refresh icon clickable to reset stats
+    refreshBtn:SetScript("OnClick", function()
+        if addon.CombatTracker then
+            -- Reset DPS display stats
+            if not addon.CombatTracker:IsInCombat() then
+                addon.CombatTracker:ResetDisplayStats()
+                print("DPS stats reset")
+            end
+        end
+    end)
+    refreshBtn:SetScript("OnEnter", function()
+        refreshIcon:SetAlpha(1.0) -- Full opacity on hover
+    end)
+    refreshBtn:SetScript("OnLeave", function()
+        refreshIcon:SetAlpha(0.25) -- Back to semi-transparent
+    end)
 
     frame:Hide()
     self.frame = frame
@@ -131,35 +145,29 @@ function DPSWindow:UpdateDisplay()
     if not self.frame then return end
 
     local dps = addon.CombatTracker:GetDPS()
+    local maxDPS = addon.CombatTracker:GetMaxDPS()
     local totalDamage = addon.CombatTracker:GetTotalDamage()
-    local combatTime = addon.CombatTracker:GetCombatTime()
     local inCombat = addon.CombatTracker:IsInCombat()
 
-    -- Show 0 DPS when not in combat
-    if not inCombat then
+    -- Only show 0 DPS when not in combat AND no previous data exists
+    if not inCombat and maxDPS == 0 then
         dps = 0
     end
 
-    -- Update DPS text
+    -- Update main DPS number (large)
     self.frame.dpsText:SetText(addon.CombatTracker:FormatNumber(dps))
 
-    -- Update total damage
-    self.frame.totalText:SetText("Total: " .. addon.CombatTracker:FormatNumber(totalDamage))
+    -- Update max DPS (keep previous values until reset)
+    self.frame.maxText:SetText(addon.CombatTracker:FormatNumber(maxDPS) .. " max")
 
-    -- Update combat time
-    if inCombat then
-        self.frame.timeText:SetText(string.format("%.1fs", combatTime))
-    else
-        self.frame.timeText:SetText("0s")
-    end
+    -- Update total damage (keep previous values until reset)
+    self.frame.totalText:SetText(addon.CombatTracker:FormatNumber(totalDamage) .. " total")
 
     -- Change color based on combat state
     if inCombat then
-        self.frame.dpsText:SetTextColor(1, 1, 0, 1)          -- Yellow when in combat
-        self.frame.playerText:SetTextColor(1, 1, 1, 1)       -- White
+        self.frame.dpsText:SetTextColor(1, 1, 1, 1)       -- White when in combat
     else
-        self.frame.dpsText:SetTextColor(0.7, 0.7, 0.7, 1)    -- Gray when out of combat
-        self.frame.playerText:SetTextColor(0.7, 0.7, 0.7, 1) -- Gray
+        self.frame.dpsText:SetTextColor(0.8, 0.8, 0.8, 1) -- Light gray when out of combat (but keep numbers visible)
     end
 end
 
@@ -169,7 +177,10 @@ function DPSWindow:Show()
         self:Create()
     end
     self.frame:Show()
-    addon.db.showDPSWindow = true
+    -- Update saved visibility state immediately
+    if addon.db then
+        addon.db.showDPSWindow = true
+    end
 end
 
 -- Hide the DPS window
@@ -177,7 +188,10 @@ function DPSWindow:Hide()
     if self.frame then
         self.frame:Hide()
     end
-    addon.db.showDPSWindow = false
+    -- Update saved visibility state immediately
+    if addon.db then
+        addon.db.showDPSWindow = false
+    end
 end
 
 -- Toggle the DPS window

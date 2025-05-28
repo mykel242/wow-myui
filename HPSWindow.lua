@@ -113,7 +113,7 @@ function HPSWindow:Create()
         refreshIcon:SetTexture("Interface\\Buttons\\UI-RefreshButton")
     end
 
-    refreshIcon:SetAlpha(0.7)
+    refreshIcon:SetAlpha(0.25)
 
     -- Alternative icons you can try:
     -- refreshIcon:SetTexture("Interface\\Icons\\Spell_ChargePositive") -- Swirly arrow
@@ -134,7 +134,7 @@ function HPSWindow:Create()
         refreshIcon:SetAlpha(1.0) -- Full opacity on hover
     end)
     refreshBtn:SetScript("OnLeave", function()
-        refreshIcon:SetAlpha(0.7) -- Back to semi-transparent
+        refreshIcon:SetAlpha(0.25) -- Back to semi-transparent
     end)
 
     frame:Hide()
@@ -182,7 +182,10 @@ function HPSWindow:Show()
         self:Create()
     end
     self.frame:Show()
-    addon.db.showHPSWindow = true
+    -- Update saved visibility state immediately
+    if addon.db then
+        addon.db.showHPSWindow = true
+    end
 end
 
 -- Hide the HPS window
@@ -190,7 +193,10 @@ function HPSWindow:Hide()
     if self.frame then
         self.frame:Hide()
     end
-    addon.db.showHPSWindow = false
+    -- Update saved visibility state immediately
+    if addon.db then
+        addon.db.showHPSWindow = false
+    end
 end
 
 -- Toggle the HPS window

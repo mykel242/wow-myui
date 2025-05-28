@@ -79,6 +79,22 @@ end
 function addon:OnEnable()
     if self.db.enabled then
         self:CreateMainFrame()
+
+        -- Restore DPS window visibility
+        if self.db.showDPSWindow and self.DPSWindow then
+            self.DPSWindow:Show()
+        end
+
+        -- Restore HPS window visibility
+        if self.db.showHPSWindow and self.HPSWindow then
+            self.HPSWindow:Show()
+        end
+
+        -- Restore SubWindow visibility
+        if self.db.showSubWindow and self.SubWindow then
+            self.SubWindow:Show()
+        end
+
         print(addonName .. " is now active!")
     end
 end
@@ -94,6 +110,19 @@ function addon:OnDisable()
             xOffset = xOfs,
             yOffset = yOfs
         }
+    end
+
+    -- Save visibility states for all windows
+    if self.DPSWindow and self.DPSWindow.frame then
+        self.db.showDPSWindow = self.DPSWindow.frame:IsShown()
+    end
+
+    if self.HPSWindow and self.HPSWindow.frame then
+        self.db.showHPSWindow = self.HPSWindow.frame:IsShown()
+    end
+
+    if self.SubWindow and self.SubWindow.frame then
+        self.db.showSubWindow = self.SubWindow.frame:IsShown()
     end
 end
 

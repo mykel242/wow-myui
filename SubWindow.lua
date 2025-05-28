@@ -24,7 +24,7 @@ function SubWindow:Create()
 
     -- Create a basic frame with no template for custom styling
     local frame = CreateFrame("Frame", addonName .. "SubWindow", UIParent)
-    frame:SetSize(80, 160)
+    frame:SetSize(160, 80)
 
     -- Restore saved position or use default
     if addon.db.subWindowPosition then
@@ -124,7 +124,10 @@ function SubWindow:Show()
         self:Create()
     end
     self.frame:Show()
-    addon.db.showSubWindow = true
+    -- Update saved visibility state immediately
+    if addon.db then
+        addon.db.showSubWindow = true
+    end
 end
 
 -- Hide the sub window
@@ -132,7 +135,10 @@ function SubWindow:Hide()
     if self.frame then
         self.frame:Hide()
     end
-    addon.db.showSubWindow = false
+    -- Update saved visibility state immediately
+    if addon.db then
+        addon.db.showSubWindow = false
+    end
 end
 
 -- Toggle the sub window
