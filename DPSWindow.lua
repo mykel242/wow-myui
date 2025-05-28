@@ -163,11 +163,13 @@ function DPSWindow:UpdateDisplay()
     -- Update total damage (keep previous values until reset)
     self.frame.totalText:SetText(addon.CombatTracker:FormatNumber(totalDamage) .. " total")
 
-    -- Change color based on combat state
+    -- Change color and alpha based on combat state
     if inCombat then
         self.frame.dpsText:SetTextColor(1, 1, 1, 1)       -- White when in combat
+        self.frame.dpsText:SetAlpha(1.0)                  -- Full opacity
     else
-        self.frame.dpsText:SetTextColor(0.8, 0.8, 0.8, 1) -- Light gray when out of combat (but keep numbers visible)
+        self.frame.dpsText:SetTextColor(0.8, 0.8, 0.8, 1) -- Light gray when out of combat
+        self.frame.dpsText:SetAlpha(0.25)                 -- Fade to match refresh buttons
     end
 end
 

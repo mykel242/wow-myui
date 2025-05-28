@@ -115,11 +115,6 @@ function HPSWindow:Create()
 
     refreshIcon:SetAlpha(0.25)
 
-    -- Alternative icons you can try:
-    -- refreshIcon:SetTexture("Interface\\Icons\\Spell_ChargePositive") -- Swirly arrow
-    -- refreshIcon:SetTexture("Interface\\Icons\\Ability_Uproot") -- Circular arrows
-    -- refreshIcon:SetTexture("Interface\\Buttons\\UI-RotationRight-Button-Up") -- Right rotation
-
     -- Make refresh icon clickable to reset stats
     refreshBtn:SetScript("OnClick", function()
         if addon.CombatTracker then
@@ -168,11 +163,13 @@ function HPSWindow:UpdateDisplay()
     -- Update total healing (keep previous values until reset)
     self.frame.totalText:SetText(addon.CombatTracker:FormatNumber(totalHealing) .. " total")
 
-    -- Change color based on combat state
+    -- Change color and alpha based on combat state
     if inCombat then
         self.frame.hpsText:SetTextColor(1, 1, 1, 1)       -- White when in combat
+        self.frame.hpsText:SetAlpha(1.0)                  -- Full opacity
     else
-        self.frame.hpsText:SetTextColor(0.8, 0.8, 0.8, 1) -- Light gray when out of combat (but keep numbers visible)
+        self.frame.hpsText:SetTextColor(0.8, 0.8, 0.8, 1) -- Light gray when out of combat
+        self.frame.hpsText:SetAlpha(0.25)                 -- Fade to match refresh buttons
     end
 end
 
