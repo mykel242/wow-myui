@@ -11,6 +11,8 @@ local CombatTracker = addon.CombatTracker
 local combatData = {
     damage = 0,
     healing = 0,
+    overheal = 0,
+    absorb = 0,
     startTime = nil,
     endTime = nil,
     inCombat = false,
@@ -20,8 +22,12 @@ local combatData = {
     -- Final values captured at combat end
     finalDamage = 0,
     finalHealing = 0,
+    finalOverheal = 0,
+    finalAbsorb = 0,
     finalMaxDPS = 0,
-    finalMaxHPS = 0
+    finalMaxHPS = 0,
+    finalDPS = 0,
+    finalHPS = 0
 }
 
 -- Initialize combat tracker
@@ -47,8 +53,21 @@ function CombatTracker:OnEvent(event, ...)
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- Capture final values IMMEDIATELY when combat ends, before any other processing
         if combatData.inCombat then
+            -- Calculate final DPS/HPS rates while still in combat
+            local elapsed = GetTime() - combatData.startTime
+            if elapsed > 0 then
+                combatData.finalDPS = combatData.damage / elapsed
+                combatData.finalHPS = combatData.healing / elapsed
+            else
+                combatData.finalDPS = 0
+                combatData.finalHPS = 0
+            end
+
+            -- Capture other final values
             combatData.finalDamage = combatData.damage
             combatData.finalHealing = combatData.healing
+            combatData.finalOverheal = combatData.overheal
+            combatData.finalAbsorb = combatData.absorb
             combatData.finalMaxDPS = combatData.maxDPS
             combatData.finalMaxHPS = combatData.maxHPS
         end
@@ -68,12 +87,18 @@ function CombatTracker:StartCombat()
     combatData.endTime = nil
     combatData.damage = 0
     combatData.healing = 0
+    combatData.overheal = 0
+    combatData.absorb = 0
     combatData.maxDPS = 0
     combatData.maxHPS = 0
     combatData.finalDamage = 0
     combatData.finalHealing = 0
+    combatData.finalOverheal = 0
+    combatData.finalAbsorb = 0
     combatData.finalMaxDPS = 0
     combatData.finalMaxHPS = 0
+    combatData.finalDPS = 0
+    combatData.finalHPS = 0
     combatData.lastUpdate = GetTime()
     print("Combat started!")
 end
@@ -112,6 +137,8 @@ function CombatTracker:EndCombat()
     print(string.format("Total Damage: %s", self:FormatNumber(totalDamage)))
     print(string.format("Max HPS: %s", self:FormatNumber(maxHPS)))
     print(string.format("Total Healing: %s", self:FormatNumber(totalHealing)))
+    print(string.format("Total Overheal: %s", self:FormatNumber(combatData.finalOverheal)))
+    print(string.format("Total Absorbs: %s", self:FormatNumber(combatData.finalAbsorb)))
     print("--------------------")
 
     -- Keep displaying the final numbers until manual reset or new combat
@@ -148,11 +175,36 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
             combatData.damage = combatData.damage + amount
         end
 
-        -- Healing events
+        -- Healing events (now split between effective healing and overhealing)
     elseif subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_HEAL" then
-        local amount = select(4, ...)
+        -- For healing events: spellId, spellName, spellSchool, amount, overhealing, absorbed, critical
+        local spellId, spellName, spellSchool, amount, overhealing, absorbed, critical = select(1, ...)
+
         if amount and amount > 0 then
+            -- Add all healing (including overhealing) to total for HPS calculation
             combatData.healing = combatData.healing + amount
+        end
+
+        if overhealing and overhealing > 0 then
+            -- Track overhealing separately
+            combatData.overheal = combatData.overheal + overhealing
+            -- Removed debug spam since it's working
+        end
+
+        -- Absorb shield events
+    elseif subevent == "SPELL_ABSORBED" then
+        print("*** ABSORB EVENT DETECTED ***")
+        local args = { ... }
+        for i = 1, math.min(10, #args) do
+            print(string.format("  arg[%d] = %s (%s)", i, tostring(args[i]), type(args[i])))
+        end
+
+        -- Try to find absorb amount - it's usually in position 8
+        local absorbAmount = select(8, ...)
+        if absorbAmount and absorbAmount > 0 then
+            combatData.absorb = combatData.absorb + absorbAmount
+            combatData.healing = combatData.healing + absorbAmount
+            print(string.format("*** ABSORB: %d (total: %d) ***", absorbAmount, combatData.absorb))
         end
     end
 end
@@ -201,6 +253,22 @@ function CombatTracker:GetTotalHealing()
     return combatData.healing
 end
 
+-- Get total overheal (use final value if combat ended)
+function CombatTracker:GetTotalOverheal()
+    if not combatData.inCombat and combatData.finalOverheal > 0 then
+        return combatData.finalOverheal
+    end
+    return combatData.overheal
+end
+
+-- Get total absorb shields (use final value if combat ended)
+function CombatTracker:GetTotalAbsorb()
+    if not combatData.inCombat and combatData.finalAbsorb > 0 then
+        return combatData.finalAbsorb
+    end
+    return combatData.absorb
+end
+
 -- Get combat duration
 function CombatTracker:GetCombatTime()
     if not combatData.startTime then
@@ -230,12 +298,18 @@ function CombatTracker:ResetDisplayStats()
     if not combatData.inCombat then
         combatData.damage = 0
         combatData.healing = 0
+        combatData.overheal = 0
+        combatData.absorb = 0
         combatData.maxDPS = 0
         combatData.maxHPS = 0
         combatData.finalDamage = 0
         combatData.finalHealing = 0
+        combatData.finalOverheal = 0
+        combatData.finalAbsorb = 0
         combatData.finalMaxDPS = 0
         combatData.finalMaxHPS = 0
+        combatData.finalDPS = 0
+        combatData.finalHPS = 0
         combatData.startTime = nil
         combatData.endTime = nil
     end
