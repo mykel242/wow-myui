@@ -1,0 +1,281 @@
+-- MyUI.lua
+-- Basic World of Warcraft UI Addon
+
+-- Create addon namespace
+local addonName, addon = ...
+
+-- Initialize addon
+addon.frame = CreateFrame("Frame")
+
+-- Addon variables
+addon.db = {}
+addon.defaults = {
+    enabled = true,
+    showMinimap = true,
+    scale = 1.0,
+    framePosition = nil,
+    subWindowPosition = nil,
+    showSubWindow = false,
+    dpsWindowPosition = nil,
+    showDPSWindow = false,
+    hpsWindowPosition = nil,
+    showHPSWindow = false
+}
+
+-- Event handler function
+local function OnEvent(self, event, ...)
+    if event == "ADDON_LOADED" then
+        local loadedAddon = ...
+        if loadedAddon == addonName then
+            addon:OnInitialize()
+        end
+    elseif event == "PLAYER_LOGIN" then
+        addon:OnEnable()
+    elseif event == "PLAYER_LOGOUT" then
+        addon:OnDisable()
+    end
+end
+
+-- Register events
+addon.frame:RegisterEvent("ADDON_LOADED")
+addon.frame:RegisterEvent("PLAYER_LOGIN")
+addon.frame:RegisterEvent("PLAYER_LOGOUT")
+addon.frame:SetScript("OnEvent", OnEvent)
+
+-- Initialize function
+function addon:OnInitialize()
+    -- Load saved variables or set defaults
+    if MyUIDB == nil then
+        MyUIDB = {}
+    end
+
+    -- Merge defaults with saved settings
+    for key, value in pairs(self.defaults) do
+        if MyUIDB[key] == nil then
+            MyUIDB[key] = value
+        end
+    end
+
+    self.db = MyUIDB
+
+    -- Initialize all modules
+    if self.CombatTracker then
+        self.CombatTracker:Initialize()
+    end
+    if self.SubWindow then
+        self.SubWindow:Initialize()
+    end
+    if self.DPSWindow then
+        self.DPSWindow:Initialize()
+    end
+    if self.HPSWindow then
+        self.HPSWindow:Initialize()
+    end
+
+    print(addonName .. " loaded successfully!")
+end
+
+-- Enable function
+function addon:OnEnable()
+    if self.db.enabled then
+        self:CreateMainFrame()
+        print(addonName .. " is now active!")
+    end
+end
+
+-- Disable function
+function addon:OnDisable()
+    -- Save frame position before logout
+    if self.mainFrame and self.mainFrame:IsShown() then
+        local point, relativeTo, relativePoint, xOfs, yOfs = self.mainFrame:GetPoint()
+        self.db.framePosition = {
+            point = point,
+            relativePoint = relativePoint,
+            xOffset = xOfs,
+            yOffset = yOfs
+        }
+    end
+end
+
+-- Create main addon frame
+function addon:CreateMainFrame()
+    if self.mainFrame then return end
+
+    local frame = CreateFrame("Frame", addonName .. "MainFrame", UIParent, "BasicFrameTemplateWithInset")
+    frame:SetSize(300, 200)
+
+    -- Restore saved position or use default
+    if self.db.framePosition then
+        frame:SetPoint(
+            self.db.framePosition.point or "CENTER",
+            UIParent,
+            self.db.framePosition.relativePoint or "CENTER",
+            self.db.framePosition.xOffset or 0,
+            self.db.framePosition.yOffset or 0
+        )
+    else
+        frame:SetPoint("CENTER")
+    end
+
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        -- Save position immediately when dragging stops
+        local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint()
+        addon.db.framePosition = {
+            point = point,
+            relativePoint = relativePoint,
+            xOffset = xOfs,
+            yOffset = yOfs
+        }
+    end)
+
+    -- Frame title
+    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    frame.title:SetPoint("LEFT", frame.TitleBg, "LEFT", 5, 0)
+    frame.title:SetText("My UI")
+
+    -- Example content
+    local content = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    content:SetPoint("CENTER", frame, "CENTER", 0, 20)
+    content:SetText("Hello, World of Warcraft!")
+
+    -- DPS Window Toggle Button
+    local dpsBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
+    dpsBtn:SetSize(80, 25)
+    dpsBtn:SetPoint("LEFT", frame, "LEFT", 20, -20)
+    dpsBtn:SetText("DPS Meter")
+    dpsBtn:SetScript("OnClick", function()
+        if addon.DPSWindow then
+            addon.DPSWindow:Toggle()
+        end
+    end)
+
+    -- HPS Window Toggle Button
+    local hpsBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
+    hpsBtn:SetSize(80, 25)
+    hpsBtn:SetPoint("RIGHT", frame, "RIGHT", -20, -20)
+    hpsBtn:SetText("HPS Meter")
+    hpsBtn:SetScript("OnClick", function()
+        if addon.HPSWindow then
+            addon.HPSWindow:Toggle()
+        end
+    end)
+
+    -- Sub Window Toggle Button (moved down)
+    local subWindowBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
+    subWindowBtn:SetSize(120, 25)
+    subWindowBtn:SetPoint("CENTER", frame, "CENTER", 0, -50)
+    subWindowBtn:SetText("Toggle Sub Window")
+    subWindowBtn:SetScript("OnClick", function()
+        if addon.SubWindow then
+            addon.SubWindow:Toggle()
+        end
+    end)
+
+    -- Close button functionality
+    frame.CloseButton:SetScript("OnClick", function()
+        frame:Hide()
+    end)
+
+    self.mainFrame = frame
+
+    -- Apply saved scale
+    frame:SetScale(self.db.scale)
+end
+
+-- Slash command handler
+SLASH_MYUI1 = "/myui"
+SLASH_MYUI2 = "/mui"
+
+function SlashCmdList.MYUI(msg, editBox)
+    local command = string.lower(msg)
+
+    if command == "show" then
+        if addon.mainFrame then
+            addon.mainFrame:Show()
+        else
+            addon:CreateMainFrame()
+        end
+    elseif command == "hide" then
+        if addon.mainFrame then
+            addon.mainFrame:Hide()
+        end
+    elseif command == "toggle" then
+        if addon.mainFrame then
+            if addon.mainFrame:IsShown() then
+                addon.mainFrame:Hide()
+            else
+                addon.mainFrame:Show()
+            end
+        else
+            addon:CreateMainFrame()
+        end
+    elseif command == "sub" or command == "subwindow" then
+        if addon.SubWindow then
+            addon.SubWindow:Toggle()
+        end
+    elseif command == "dps" then
+        if addon.DPSWindow then
+            addon.DPSWindow:Toggle()
+        end
+    elseif command == "hps" then
+        if addon.HPSWindow then
+            addon.HPSWindow:Toggle()
+        end
+    elseif command == "config" then
+        print("Configuration options:")
+        print("/myui show - Show the main frame")
+        print("/myui hide - Hide the main frame")
+        print("/myui toggle - Toggle frame visibility")
+        print("/myui sub - Toggle sub window")
+        print("/myui dps - Toggle DPS meter")
+        print("/myui hps - Toggle HPS meter")
+    else
+        print("Usage: /myui [show|hide|toggle|sub|dps|hps|config]")
+    end
+end
+
+-- Minimap button (optional)
+function addon:CreateMinimapButton()
+    if not self.db.showMinimap then return end
+
+    local button = CreateFrame("Button", addonName .. "MinimapButton", Minimap)
+    button:SetSize(32, 32)
+    button:SetFrameStrata("MEDIUM")
+    button:SetFrameLevel(8)
+    button:SetPoint("TOPLEFT", Minimap, "TOPLEFT", 0, 0)
+
+    -- Button texture
+    local texture = button:CreateTexture(nil, "BACKGROUND")
+    texture:SetSize(20, 20)
+    texture:SetPoint("CENTER")
+    texture:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
+
+    -- Button functionality
+    button:SetScript("OnClick", function(self, button)
+        if button == "LeftButton" then
+            SlashCmdList.MYUI("toggle")
+        elseif button == "RightButton" then
+            SlashCmdList.MYUI("config")
+        end
+    end)
+
+    -- Tooltip
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(addonName)
+        GameTooltip:AddLine("Left-click to toggle", 1, 1, 1)
+        GameTooltip:AddLine("Right-click for options", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+
+    button:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
+    end)
+
+    self.minimapButton = button
+end

@@ -1,0 +1,13 @@
+## Interface: 110002
+## Title: My UI
+## Notes: A custom World of Warcraft UI addon with DPS/HPS tracking
+## Author: YourName
+## Version: 1.0.0
+## SavedVariables: MyUIDB
+## DefaultState: enabled
+
+CombatTracker.lua
+MyUI.lua
+SubWindow.lua
+DPSWindow.lua
+HPSWindow.lua
