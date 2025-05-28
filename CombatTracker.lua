@@ -12,8 +12,16 @@ local combatData = {
     damage = 0,
     healing = 0,
     startTime = nil,
+    endTime = nil,
     inCombat = false,
-    lastUpdate = 0
+    lastUpdate = 0,
+    maxDPS = 0,
+    maxHPS = 0,
+    -- Final values captured at combat end
+    finalDamage = 0,
+    finalHealing = 0,
+    finalMaxDPS = 0,
+    finalMaxHPS = 0
 }
 
 -- Initialize combat tracker
@@ -37,9 +45,19 @@ function CombatTracker:OnEvent(event, ...)
     if event == "PLAYER_REGEN_DISABLED" then
         self:StartCombat()
     elseif event == "PLAYER_REGEN_ENABLED" then
+        -- Capture final values IMMEDIATELY when combat ends, before any other processing
+        if combatData.inCombat then
+            combatData.finalDamage = combatData.damage
+            combatData.finalHealing = combatData.healing
+            combatData.finalMaxDPS = combatData.maxDPS
+            combatData.finalMaxHPS = combatData.maxHPS
+        end
         self:EndCombat()
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        self:ParseCombatLog(CombatLogGetCurrentEventInfo())
+        -- Only process combat events if we're still in combat
+        if combatData.inCombat then
+            self:ParseCombatLog(CombatLogGetCurrentEventInfo())
+        end
     end
 end
 
@@ -47,22 +65,57 @@ end
 function CombatTracker:StartCombat()
     combatData.inCombat = true
     combatData.startTime = GetTime()
+    combatData.endTime = nil
     combatData.damage = 0
     combatData.healing = 0
+    combatData.maxDPS = 0
+    combatData.maxHPS = 0
+    combatData.finalDamage = 0
+    combatData.finalHealing = 0
+    combatData.finalMaxDPS = 0
+    combatData.finalMaxHPS = 0
     combatData.lastUpdate = GetTime()
+    print("Combat started!")
 end
 
 -- End combat tracking
 function CombatTracker:EndCombat()
+    if not combatData.inCombat then return end
+
+    combatData.endTime = GetTime()
+
+    -- Calculate final values BEFORE setting inCombat to false
+    local finalDPS = self:GetDPS()
+    local finalHPS = self:GetHPS()
+    local totalDamage = combatData.damage
+    local totalHealing = combatData.healing
+    local maxDPS = combatData.maxDPS
+    local maxHPS = combatData.maxHPS
+
+    -- Format timestamps
+    local startTime = date("%H:%M:%S", combatData.startTime)
+    local endTime = date("%H:%M:%S", combatData.endTime)
+    local elapsed = combatData.endTime - combatData.startTime
+    local elapsedMin = math.floor(elapsed / 60)
+    local elapsedSec = elapsed % 60
+
     combatData.inCombat = false
-    -- Keep displaying the final numbers for a few seconds
-    C_Timer.After(5, function()
-        if not combatData.inCombat then
-            combatData.damage = 0
-            combatData.healing = 0
-            combatData.startTime = nil
-        end
-    end)
+
+    -- Print detailed combat summary
+    print("Combat Ended")
+    print("--------------------")
+    print(string.format("Start: %s", startTime))
+    print(string.format("End:   %s", endTime))
+    print(string.format("Elapsed: %02d:%02d", elapsedMin, elapsedSec))
+    print("--------------------")
+    print(string.format("Max DPS: %s", self:FormatNumber(maxDPS)))
+    print(string.format("Total Damage: %s", self:FormatNumber(totalDamage)))
+    print(string.format("Max HPS: %s", self:FormatNumber(maxHPS)))
+    print(string.format("Total Healing: %s", self:FormatNumber(totalHealing)))
+    print("--------------------")
+
+    -- Keep displaying the final numbers until manual reset or new combat
+    -- Removed automatic reset timer - numbers persist until refresh clicked or new combat starts
 end
 
 -- Parse combat log events
@@ -132,13 +185,19 @@ function CombatTracker:GetHPS()
     return combatData.healing / elapsed
 end
 
--- Get total damage
+-- Get total damage (use final value if combat ended)
 function CombatTracker:GetTotalDamage()
+    if not combatData.inCombat and combatData.finalDamage > 0 then
+        return combatData.finalDamage
+    end
     return combatData.damage
 end
 
--- Get total healing
+-- Get total healing (use final value if combat ended)
 function CombatTracker:GetTotalHealing()
+    if not combatData.inCombat and combatData.finalHealing > 0 then
+        return combatData.finalHealing
+    end
     return combatData.healing
 end
 
@@ -150,6 +209,38 @@ function CombatTracker:GetCombatTime()
     return GetTime() - combatData.startTime
 end
 
+-- Get max DPS recorded (use final value if combat ended)
+function CombatTracker:GetMaxDPS()
+    if not combatData.inCombat and combatData.finalMaxDPS > 0 then
+        return combatData.finalMaxDPS
+    end
+    return combatData.maxDPS
+end
+
+-- Get max HPS recorded (use final value if combat ended)
+function CombatTracker:GetMaxHPS()
+    if not combatData.inCombat and combatData.finalMaxHPS > 0 then
+        return combatData.finalMaxHPS
+    end
+    return combatData.maxHPS
+end
+
+-- Reset display stats (for refresh button)
+function CombatTracker:ResetDisplayStats()
+    if not combatData.inCombat then
+        combatData.damage = 0
+        combatData.healing = 0
+        combatData.maxDPS = 0
+        combatData.maxHPS = 0
+        combatData.finalDamage = 0
+        combatData.finalHealing = 0
+        combatData.finalMaxDPS = 0
+        combatData.finalMaxHPS = 0
+        combatData.startTime = nil
+        combatData.endTime = nil
+    end
+end
+
 -- Check if in combat
 function CombatTracker:IsInCombat()
     return combatData.inCombat
@@ -157,6 +248,20 @@ end
 
 -- Update all displays
 function CombatTracker:UpdateDisplays()
+    -- Track max DPS and HPS during combat
+    if combatData.inCombat then
+        local currentDPS = self:GetDPS()
+        local currentHPS = self:GetHPS()
+
+        if currentDPS > combatData.maxDPS then
+            combatData.maxDPS = currentDPS
+        end
+
+        if currentHPS > combatData.maxHPS then
+            combatData.maxHPS = currentHPS
+        end
+    end
+
     -- Update DPS window
     if addon.DPSWindow and addon.DPSWindow.frame and addon.DPSWindow.frame:IsShown() then
         addon.DPSWindow:UpdateDisplay()

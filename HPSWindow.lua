@@ -53,70 +53,89 @@ function HPSWindow:Create()
         }
     end)
 
-    -- Background similar to the example image
+    -- Background (black semi-transparent like the example)
     local bg = frame:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(frame)
-    bg:SetColorTexture(0, 0, 0, 0.8)
+    bg:SetColorTexture(0, 0, 0, 0.7)
 
-    -- Border
-    local border = frame:CreateTexture(nil, "BORDER")
-    border:SetAllPoints(frame)
-    border:SetColorTexture(0.4, 0.4, 0.4, 0.9)
-    border:SetPoint("TOPLEFT", frame, "TOPLEFT", -1, 1)
-    border:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 1, -1)
+    -- Top section background (slightly more opaque black)
+    local topBg = frame:CreateTexture(nil, "BORDER")
+    topBg:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    topBg:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    topBg:SetHeight(45)
+    topBg:SetColorTexture(0, 0, 0, 0.8)
 
-    -- Player name and rank
-    local playerText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    playerText:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
-    playerText:SetText("1. " .. UnitName("player"))
-    playerText:SetTextColor(1, 1, 1, 1)
-    playerText:SetJustifyH("LEFT")
-    frame.playerText = playerText
-
-    -- HPS value
-    local hpsText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hpsText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+    -- Large HPS number
+    local hpsText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    hpsText:SetPoint("LEFT", frame, "LEFT", 8, 8)
     hpsText:SetText("0")
-    hpsText:SetTextColor(0, 1, 0, 1) -- Green for healing
-    hpsText:SetJustifyH("RIGHT")
+    hpsText:SetTextColor(1, 1, 1, 1)
+    hpsText:SetJustifyH("LEFT")
     frame.hpsText = hpsText
 
-    -- Total healing
+    -- HPS label (green, top right)
+    local hpsLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hpsLabel:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -8)
+    hpsLabel:SetText("HPS")
+    hpsLabel:SetTextColor(0, 1, 0.5, 1) -- Teal green like example
+    hpsLabel:SetJustifyH("RIGHT")
+
+    -- Max HPS (bottom left)
+    local maxText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    maxText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 8, 20)
+    maxText:SetText("0 max")
+    maxText:SetTextColor(0.8, 0.8, 0.8, 1)
+    maxText:SetJustifyH("LEFT")
+    frame.maxText = maxText
+
+    -- Total healing (below max)
     local totalText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    totalText:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -25)
-    totalText:SetText("Total: 0")
+    totalText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 8, 8)
+    totalText:SetText("0 total")
     totalText:SetTextColor(0.8, 0.8, 0.8, 1)
     totalText:SetJustifyH("LEFT")
     frame.totalText = totalText
 
-    -- Combat time
-    local timeText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    timeText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -25)
-    timeText:SetText("0s")
-    timeText:SetTextColor(0.8, 0.8, 0.8, 1)
-    timeText:SetJustifyH("RIGHT")
-    frame.timeText = timeText
+    -- Refresh icon (bottom right) - using a texture icon
+    local refreshBtn = CreateFrame("Button", nil, frame)
+    refreshBtn:SetSize(20, 20)
+    refreshBtn:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -3, 3)
 
-    -- Title
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    title:SetPoint("BOTTOM", frame, "BOTTOM", 0, 5)
-    title:SetText("My HPS")
-    title:SetTextColor(0.9, 0.9, 0.9, 1)
+    -- Create the icon texture
+    local refreshIcon = refreshBtn:CreateTexture(nil, "ARTWORK")
+    refreshIcon:SetAllPoints(refreshBtn)
 
-    -- Close button
-    local closeBtn = CreateFrame("Button", nil, frame)
-    closeBtn:SetSize(12, 12)
-    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
+    -- Use your custom texture (place refresh-icon.tga in your MyUI addon folder)
+    refreshIcon:SetTexture("Interface\\AddOns\\MyUI\\refresh-icon")
 
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    closeBtnText:SetAllPoints(closeBtn)
-    closeBtnText:SetText("×")
-    closeBtnText:SetTextColor(1, 0.2, 0.2, 1)
-    closeBtnText:SetJustifyH("CENTER")
+    -- Fallback to WoW's built-in icon if custom texture fails to load
+    if not refreshIcon:GetTexture() then
+        refreshIcon:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+    end
 
-    closeBtn:SetScript("OnClick", function() HPSWindow:Hide() end)
-    closeBtn:SetScript("OnEnter", function() closeBtnText:SetTextColor(1, 0.5, 0.5, 1) end)
-    closeBtn:SetScript("OnLeave", function() closeBtnText:SetTextColor(1, 0.2, 0.2, 1) end)
+    refreshIcon:SetAlpha(0.7)
+
+    -- Alternative icons you can try:
+    -- refreshIcon:SetTexture("Interface\\Icons\\Spell_ChargePositive") -- Swirly arrow
+    -- refreshIcon:SetTexture("Interface\\Icons\\Ability_Uproot") -- Circular arrows
+    -- refreshIcon:SetTexture("Interface\\Buttons\\UI-RotationRight-Button-Up") -- Right rotation
+
+    -- Make refresh icon clickable to reset stats
+    refreshBtn:SetScript("OnClick", function()
+        if addon.CombatTracker then
+            -- Reset HPS display stats
+            if not addon.CombatTracker:IsInCombat() then
+                addon.CombatTracker:ResetDisplayStats()
+                print("HPS stats reset")
+            end
+        end
+    end)
+    refreshBtn:SetScript("OnEnter", function()
+        refreshIcon:SetAlpha(1.0) -- Full opacity on hover
+    end)
+    refreshBtn:SetScript("OnLeave", function()
+        refreshIcon:SetAlpha(0.7) -- Back to semi-transparent
+    end)
 
     frame:Hide()
     self.frame = frame
@@ -131,26 +150,29 @@ function HPSWindow:UpdateDisplay()
     if not self.frame then return end
 
     local hps = addon.CombatTracker:GetHPS()
+    local maxHPS = addon.CombatTracker:GetMaxHPS()
     local totalHealing = addon.CombatTracker:GetTotalHealing()
-    local combatTime = addon.CombatTracker:GetCombatTime()
     local inCombat = addon.CombatTracker:IsInCombat()
 
-    -- Update HPS text
+    -- Only show 0 HPS when not in combat AND no previous data exists
+    if not inCombat and maxHPS == 0 then
+        hps = 0
+    end
+
+    -- Update main HPS number (large)
     self.frame.hpsText:SetText(addon.CombatTracker:FormatNumber(hps))
 
-    -- Update total healing
-    self.frame.totalText:SetText("Total: " .. addon.CombatTracker:FormatNumber(totalHealing))
+    -- Update max HPS (keep previous values until reset)
+    self.frame.maxText:SetText(addon.CombatTracker:FormatNumber(maxHPS) .. " max")
 
-    -- Update combat time
-    self.frame.timeText:SetText(string.format("%.1fs", combatTime))
+    -- Update total healing (keep previous values until reset)
+    self.frame.totalText:SetText(addon.CombatTracker:FormatNumber(totalHealing) .. " total")
 
     -- Change color based on combat state
     if inCombat then
-        self.frame.hpsText:SetTextColor(0, 1, 0, 1)          -- Green when in combat
-        self.frame.playerText:SetTextColor(1, 1, 1, 1)       -- White
+        self.frame.hpsText:SetTextColor(1, 1, 1, 1)       -- White when in combat
     else
-        self.frame.hpsText:SetTextColor(0.7, 0.7, 0.7, 1)    -- Gray when out of combat
-        self.frame.playerText:SetTextColor(0.7, 0.7, 0.7, 1) -- Gray
+        self.frame.hpsText:SetTextColor(0.8, 0.8, 0.8, 1) -- Light gray when out of combat (but keep numbers visible)
     end
 end
 

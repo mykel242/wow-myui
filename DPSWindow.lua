@@ -135,6 +135,11 @@ function DPSWindow:UpdateDisplay()
     local combatTime = addon.CombatTracker:GetCombatTime()
     local inCombat = addon.CombatTracker:IsInCombat()
 
+    -- Show 0 DPS when not in combat
+    if not inCombat then
+        dps = 0
+    end
+
     -- Update DPS text
     self.frame.dpsText:SetText(addon.CombatTracker:FormatNumber(dps))
 
@@ -142,7 +147,11 @@ function DPSWindow:UpdateDisplay()
     self.frame.totalText:SetText("Total: " .. addon.CombatTracker:FormatNumber(totalDamage))
 
     -- Update combat time
-    self.frame.timeText:SetText(string.format("%.1fs", combatTime))
+    if inCombat then
+        self.frame.timeText:SetText(string.format("%.1fs", combatTime))
+    else
+        self.frame.timeText:SetText("0s")
+    end
 
     -- Change color based on combat state
     if inCombat then
