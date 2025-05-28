@@ -55,12 +55,17 @@ function CombatTracker:OnEvent(event, ...)
         if combatData.inCombat then
             -- Calculate final DPS/HPS rates while still in combat
             local elapsed = GetTime() - combatData.startTime
+            print(string.format("Combat ending: elapsed=%.1f, damage=%d, healing=%d", elapsed, combatData.damage,
+                combatData.healing))
+
             if elapsed > 0 then
                 combatData.finalDPS = combatData.damage / elapsed
                 combatData.finalHPS = combatData.healing / elapsed
+                print(string.format("Calculated finalDPS=%.1f, finalHPS=%.1f", combatData.finalDPS, combatData.finalHPS))
             else
                 combatData.finalDPS = 0
                 combatData.finalHPS = 0
+                print("Elapsed time was 0, setting final values to 0")
             end
 
             -- Capture other final values
@@ -211,6 +216,12 @@ end
 
 -- Calculate DPS
 function CombatTracker:GetDPS()
+    -- Return final DPS if combat has ended and we have a final value
+    if not combatData.inCombat and combatData.finalDPS > 0 then
+        return combatData.finalDPS
+    end
+
+    -- Otherwise calculate current DPS if in combat
     if not combatData.inCombat or not combatData.startTime then
         return 0
     end
@@ -225,6 +236,12 @@ end
 
 -- Calculate HPS
 function CombatTracker:GetHPS()
+    -- Return final HPS if combat has ended and we have a final value
+    if not combatData.inCombat and combatData.finalHPS > 0 then
+        return combatData.finalHPS
+    end
+
+    -- Otherwise calculate current HPS if in combat
     if not combatData.inCombat or not combatData.startTime then
         return 0
     end
