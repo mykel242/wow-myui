@@ -29,12 +29,12 @@ function BaseMeterWindow:Initialize()
     end
 end
 
--- Create the meter window - COMPLETE FUNCTION REPLACEMENT (TIGHTER LAYOUT)
+-- Create the meter window - COMPLETE FUNCTION REPLACEMENT (OPTIMIZED FONT SETTING)
 function BaseMeterWindow:Create()
     if self.frame then return end
 
     local frame = CreateFrame("Frame", addonName .. self.config.frameName, UIParent)
-    frame:SetSize(210, 80) -- REDUCED from 240 to 210
+    frame:SetSize(210, 80)
 
     -- Restore saved position or use default
     if addon.db[self.config.positionKey] then
@@ -137,13 +137,13 @@ function BaseMeterWindow:Create()
     label:SetTextColor(self.config.labelColor.r, self.config.labelColor.g, self.config.labelColor.b, 1)
     label:SetJustifyH("RIGHT")
 
-    -- TIGHTER SECONDARY STATS LAYOUT
+    -- TIGHTER SECONDARY STATS LAYOUT - SIZED FOR 888.88M
 
     -- Row 1: Left side (max value and label)
     local maxValue = frame:CreateFontString(nil, "OVERLAY")
     SetCustomFont(maxValue, 11)
     maxValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 20)
-    maxValue:SetSize(55, 0) -- Keep 55 for 888.88M
+    maxValue:SetSize(55, 0)
     maxValue:SetText("0")
     maxValue:SetTextColor(0.8, 0.8, 0.8, 1)
     maxValue:SetJustifyH("RIGHT")
@@ -159,7 +159,7 @@ function BaseMeterWindow:Create()
     local totalValue = frame:CreateFontString(nil, "OVERLAY")
     SetCustomFont(totalValue, 11)
     totalValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 8)
-    totalValue:SetSize(55, 0) -- Keep 55 for 888.88M
+    totalValue:SetSize(55, 0)
     totalValue:SetText("0")
     totalValue:SetTextColor(0.8, 0.8, 0.8, 1)
     totalValue:SetJustifyH("RIGHT")
@@ -171,12 +171,12 @@ function BaseMeterWindow:Create()
     totalLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     totalLabel:SetJustifyH("LEFT")
 
-    -- Row 1: Right side (absorb value and label) - CLOSER TO LEFT COLUMN
+    -- Row 1: Right side (absorb value and label) - PROPERLY ALIGNED
     if self.config.showAbsorb == true then
         local absorbValue = frame:CreateFontString(nil, "OVERLAY")
         SetCustomFont(absorbValue, 11)
-        absorbValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 110, 20) -- MOVED CLOSER (was 130)
-        absorbValue:SetSize(55, 0)                                       -- Keep 55 for 888.88M
+        absorbValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 110, 20)
+        absorbValue:SetSize(55, 0)
         absorbValue:SetText("0")
         absorbValue:SetTextColor(0.8, 0.8, 0.8, 1)
         absorbValue:SetJustifyH("RIGHT")
@@ -190,12 +190,12 @@ function BaseMeterWindow:Create()
         absorbLabel:SetJustifyH("LEFT")
     end
 
-    -- Row 2: Right side (overheal value and label) - CLOSER TO LEFT COLUMN
+    -- Row 2: Right side (overheal value and label) - PROPERLY ALIGNED
     if self.config.showOverheal == true then
         local overhealValue = frame:CreateFontString(nil, "OVERLAY")
         SetCustomFont(overhealValue, 11)
-        overhealValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 110, 8) -- MOVED CLOSER (was 130)
-        overhealValue:SetSize(45, 0)                                      -- Adequate for percentages
+        overhealValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 110, 8)
+        overhealValue:SetSize(45, 0)
         overhealValue:SetText("0%")
         overhealValue:SetTextColor(0.8, 0.8, 0.8, 1)
         overhealValue:SetJustifyH("RIGHT")

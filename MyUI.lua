@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "bugfix-absorbs-f51a66b"
-addon.BUILD_DATE = "2025-05-30-18:49"
+addon.VERSION = "bugfix-absorbs-ccbdf90"
+addon.BUILD_DATE = "2025-05-30-18:54"
 
 -- Debug flag
 addon.DEBUG = true
