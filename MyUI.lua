@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "bugfix-absorbs-4b2d3f5"
-addon.BUILD_DATE = "2025-05-30-15:57"
+addon.VERSION = "bugfix-absorbs-2292170"
+addon.BUILD_DATE = "2025-05-30-18:01"
 
 -- Debug flag
 addon.DEBUG = true
@@ -460,6 +460,42 @@ function SlashCmdList.MYUIABSORBCLEAR(msg, editBox)
         end
         print("Absorb event counter reset")
     end
+end
+
+-- Debug display values command (one-time check, no spam)
+SLASH_MYUIDISPLAYCHECK1 = "/muidisplay"
+function SlashCmdList.MYUIDISPLAYCHECK(msg, editBox)
+    if not addon.CombatTracker then
+        print("CombatTracker not loaded!")
+        return
+    end
+
+    print("=== Display Values Check ===")
+    print("In Combat: " .. tostring(addon.CombatTracker:IsInCombat()))
+
+    local absorbValue = addon.CombatTracker:GetTotalAbsorb()
+    local overhealValue = addon.CombatTracker:GetTotalOverheal()
+    local totalHealing = addon.CombatTracker:GetTotalHealing()
+
+    print("Raw Values:")
+    print("  Absorb: " .. absorbValue)
+    print("  Overheal: " .. overhealValue)
+    print("  Total Healing: " .. totalHealing)
+
+    print("Formatted Values:")
+    print("  Absorb: " .. addon.CombatTracker:FormatNumber(absorbValue))
+    print("  Overheal: " .. addon.CombatTracker:FormatNumber(overhealValue))
+    print("  Total Healing: " .. addon.CombatTracker:FormatNumber(totalHealing))
+
+    -- Overheal calculation
+    local totalHealingWithOverheal = totalHealing + overhealValue
+    local overhealPercent = 0
+    if overhealValue > 0 and totalHealingWithOverheal > 0 then
+        overhealPercent = math.floor((overhealValue / totalHealingWithOverheal) * 100)
+    end
+    print("  Overheal %: " .. overhealPercent .. "%")
+
+    print("============================")
 end
 
 -- Minimap button (optional)
