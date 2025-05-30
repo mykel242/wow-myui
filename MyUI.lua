@@ -14,11 +14,11 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-cleanup-1-1bee5b8"
-addon.BUILD_DATE = "2025-05-30-19:16"
+addon.VERSION = "main-045f133"
+addon.BUILD_DATE = "2025-05-30-19:29"
 
--- Debug flag
-addon.DEBUG = true
+-- Debug flag (will be loaded from saved variables)
+addon.DEBUG = false
 
 -- Addon variables
 addon.db = {}
@@ -30,7 +30,8 @@ addon.defaults = {
     dpsWindowPosition = nil,
     showDPSWindow = false,
     hpsWindowPosition = nil,
-    showHPSWindow = false
+    showHPSWindow = false,
+    debugMode = false
 }
 
 -- Debug print function
@@ -108,6 +109,9 @@ function addon:OnInitialize()
     end
 
     self.db = MyUIDB
+
+    -- Load debug state from saved variables
+    self.DEBUG = self.db.debugMode
 
     -- Initialize all modules
     if self.CombatTracker then
@@ -254,6 +258,7 @@ function addon:CreateMainFrame()
     debugBtn:SetText("Toggle Debug")
     debugBtn:SetScript("OnClick", function()
         addon.DEBUG = not addon.DEBUG
+        addon.db.debugMode = addon.DEBUG
         print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
         addon:UpdateStatusDisplay()
     end)
@@ -338,6 +343,7 @@ function SlashCmdList.MYUI(msg, editBox)
         end
     elseif command == "debug" then
         addon.DEBUG = not addon.DEBUG
+        addon.db.debugMode = addon.DEBUG
         print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
         addon:UpdateStatusDisplay()
     elseif command == "cstart" then
