@@ -4,8 +4,21 @@
 -- Create addon namespace
 local addonName, addon = ...
 
+-- Force reload flag for development
+if not addon.devMode then
+    addon.devMode = true
+    print("Development mode enabled - caching disabled")
+end
+
 -- Initialize addon
 addon.frame = CreateFrame("Frame")
+
+-- Development version tracking
+addon.VERSION = "1.0.1"               -- Increment this with each change
+addon.BUILD_DATE = "2025-05-30-16:00" -- Update timestamp
+
+-- Debug flag
+addon.DEBUG = true
 
 -- Addon variables
 addon.db = {}
@@ -22,17 +35,54 @@ addon.defaults = {
     showHPSWindow = false
 }
 
+-- Debug print function
+function addon:DebugPrint(...)
+    if self.DEBUG then
+        print("[" .. addonName .. " DEBUG]", ...)
+    end
+end
+
+-- Function to dump table contents (useful for debugging)
+function addon:DumpTable(tbl, indent)
+    indent = indent or 0
+    local spacing = string.rep("  ", indent)
+
+    if not tbl then
+        print(spacing .. "nil")
+        return
+    end
+
+    for k, v in pairs(tbl) do
+        if type(v) == "table" then
+            print(spacing .. tostring(k) .. " = {")
+            self:DumpTable(v, indent + 1)
+            print(spacing .. "}")
+        else
+            print(spacing .. tostring(k) .. " = " .. tostring(v))
+        end
+    end
+end
+
+-- Safe function wrapper for development
+local function SafeCall(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        print("Error in " .. addonName .. ": " .. tostring(result))
+    end
+    return success, result
+end
+
 -- Event handler function
 local function OnEvent(self, event, ...)
     if event == "ADDON_LOADED" then
         local loadedAddon = ...
         if loadedAddon == addonName then
-            addon:OnInitialize()
+            SafeCall(addon.OnInitialize, addon)
         end
     elseif event == "PLAYER_LOGIN" then
-        addon:OnEnable()
+        SafeCall(addon.OnEnable, addon)
     elseif event == "PLAYER_LOGOUT" then
-        addon:OnDisable()
+        SafeCall(addon.OnDisable, addon)
     end
 end
 
@@ -44,6 +94,9 @@ addon.frame:SetScript("OnEvent", OnEvent)
 
 -- Initialize function
 function addon:OnInitialize()
+    -- Print version info to confirm new code loaded
+    print(string.format("%s v%s (Build: %s) loaded!", addonName, addon.VERSION, addon.BUILD_DATE))
+
     -- Load saved variables or set defaults
     if MyUIDB == nil then
         MyUIDB = {}
@@ -165,7 +218,7 @@ function addon:CreateMainFrame()
     -- Frame title
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     frame.title:SetPoint("LEFT", frame.TitleBg, "LEFT", 5, 0)
-    frame.title:SetText("My UI")
+    frame.title:SetText("My UI v" .. addon.VERSION) -- Show version in title
 
     -- Example content
     local content = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -216,7 +269,7 @@ function addon:CreateMainFrame()
     frame:SetScale(self.db.scale)
 end
 
--- Slash command handler
+-- Main slash command handler
 SLASH_MYUI1 = "/myui"
 SLASH_MYUI2 = "/mui"
 
@@ -263,8 +316,86 @@ function SlashCmdList.MYUI(msg, editBox)
         print("/myui sub - Toggle sub window")
         print("/myui dps - Toggle DPS meter")
         print("/myui hps - Toggle HPS meter")
+        print("/myui reload - Reload UI")
+        print("/myui reset - Reset all data")
+        print("/myui debug - Toggle debug mode")
+        print("/myui status - Show addon status")
     else
-        print("Usage: /myui [show|hide|toggle|sub|dps|hps|config]")
+        print("Usage: /myui [show | hide | toggle | sub | dps | hps | reload | reset | debug | status | config]")
+    end
+end
+
+-- Reload command
+SLASH_MYUIRELOAD1 = "/muireload"
+SLASH_MYUIRELOAD2 = "/muir"
+
+function SlashCmdList.MYUIRELOAD(msg, editBox)
+    print("Reloading " .. addonName .. "...")
+    ReloadUI()
+end
+
+-- Reset all saved data
+SLASH_MYUIRESET1 = "/muireset"
+function SlashCmdList.MYUIRESET(msg, editBox)
+    MyUIDB = {}
+    addon.db = {}
+    print(addonName .. " data reset. Use /reload to reinitialize.")
+end
+
+-- Toggle debug mode
+SLASH_MYUIDEBUG1 = "/muidebug"
+function SlashCmdList.MYUIDEBUG(msg, editBox)
+    addon.DEBUG = not addon.DEBUG
+    print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
+end
+
+-- Force combat start/end (for testing)
+SLASH_MYUICOMBAT1 = "/muicombat"
+function SlashCmdList.MYUICOMBAT(msg, editBox)
+    if not addon.CombatTracker then
+        print("CombatTracker not loaded!")
+        return
+    end
+
+    if msg == "start" then
+        addon.CombatTracker:StartCombat()
+        print("Forced combat start")
+    elseif msg == "end" then
+        addon.CombatTracker:EndCombat()
+        print("Forced combat end")
+    else
+        print("Usage: /muicombat start|end")
+    end
+end
+
+-- Quick window position reset
+SLASH_MYUIPOS1 = "/muipos"
+function SlashCmdList.MYUIPOS(msg, editBox)
+    -- Reset window positions to defaults
+    addon.db.dpsWindowPosition = nil
+    addon.db.hpsWindowPosition = nil
+    addon.db.framePosition = nil
+    addon.db.subWindowPosition = nil
+    print("Window positions reset. Use /reload to apply.")
+end
+
+-- Quick status check command
+SLASH_MYUISTATUS1 = "/muistatus"
+function SlashCmdList.MYUISTATUS(msg, editBox)
+    print("=== " .. addonName .. " Status ===")
+    print("Version: " .. addon.VERSION)
+    print("Build: " .. addon.BUILD_DATE)
+    print("Debug Mode: " .. (addon.DEBUG and "ON" or "OFF"))
+    print("Combat Tracker: " .. (addon.CombatTracker and "Loaded" or "Missing"))
+    print("DPS Window: " .. (addon.DPSWindow and "Loaded" or "Missing"))
+    print("HPS Window: " .. (addon.HPSWindow and "Loaded" or "Missing"))
+    print("Sub Window: " .. (addon.SubWindow and "Loaded" or "Missing"))
+    if addon.CombatTracker then
+        print("In Combat: " .. tostring(addon.CombatTracker:IsInCombat()))
+    end
+    print("Main Frame: " .. (addon.mainFrame and "Created" or "Not Created"))
+    if addon.mainFrame then
+        print("Main Frame Visible: " .. tostring(addon.mainFrame:IsShown()))
     end
 end
 
