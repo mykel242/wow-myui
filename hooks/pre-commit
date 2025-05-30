@@ -10,8 +10,11 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "000000")
 TIMESTAMP=$(date '+%Y-%m-%d-%H:%M')
 
+# Clean branch name - replace forward slashes with dashes to avoid sed issues
+CLEAN_BRANCH=$(echo "$BRANCH" | sed 's/\//-/g')
+
 # Create version string
-VERSION="${BRANCH}-${HASH}"
+VERSION="${CLEAN_BRANCH}-${HASH}"
 
 echo "Updating version to: ${VERSION} (${TIMESTAMP})"
 
@@ -24,15 +27,15 @@ fi
 # Create backup
 cp MyUI.lua MyUI.lua.bak
 
-# Update MyUI.lua using sed
+# Update MyUI.lua using a different delimiter (| instead of /) to avoid conflicts
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS version of sed
-    sed -i '' "s/^addon\.VERSION = .*/addon.VERSION = \"${VERSION}\"/" MyUI.lua
-    sed -i '' "s/^addon\.BUILD_DATE = .*/addon.BUILD_DATE = \"${TIMESTAMP}\"/" MyUI.lua
+    sed -i '' "s|^addon\.VERSION = .*|addon.VERSION = \"${VERSION}\"|" MyUI.lua
+    sed -i '' "s|^addon\.BUILD_DATE = .*|addon.BUILD_DATE = \"${TIMESTAMP}\"|" MyUI.lua
 else
     # Linux version of sed
-    sed -i "s/^addon\.VERSION = .*/addon.VERSION = \"${VERSION}\"/" MyUI.lua
-    sed -i "s/^addon\.BUILD_DATE = .*/addon.BUILD_DATE = \"${TIMESTAMP}\"/" MyUI.lua
+    sed -i "s|^addon\.VERSION = .*|addon.VERSION = \"${VERSION}\"|" MyUI.lua
+    sed -i "s|^addon\.BUILD_DATE = .*|addon.BUILD_DATE = \"${TIMESTAMP}\"|" MyUI.lua
 fi
 
 # Check if changes were made
