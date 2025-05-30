@@ -9,6 +9,5 @@
 CombatTracker.lua
 BaseMeterWindow.lua
 MyUI.lua
-SubWindow.lua
 DPSWindow.lua
 HPSWindow.lua

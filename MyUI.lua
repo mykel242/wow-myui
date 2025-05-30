@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-a6a2aa3"
-addon.BUILD_DATE = "2025-05-30-19:01"
+addon.VERSION = "feature-cleanup-1-1bee5b8"
+addon.BUILD_DATE = "2025-05-30-19:16"
 
 -- Debug flag
 addon.DEBUG = true
@@ -27,8 +27,6 @@ addon.defaults = {
     showMinimap = true,
     scale = 1.0,
     framePosition = nil,
-    subWindowPosition = nil,
-    showSubWindow = false,
     dpsWindowPosition = nil,
     showDPSWindow = false,
     hpsWindowPosition = nil,
@@ -115,9 +113,6 @@ function addon:OnInitialize()
     if self.CombatTracker then
         self.CombatTracker:Initialize()
     end
-    if self.SubWindow then
-        self.SubWindow:Initialize()
-    end
     if self.DPSWindow then
         self.DPSWindow:Initialize()
     end
@@ -141,11 +136,6 @@ function addon:OnEnable()
         -- Restore HPS window visibility
         if self.db.showHPSWindow and self.HPSWindow then
             self.HPSWindow:Show()
-        end
-
-        -- Restore SubWindow visibility
-        if self.db.showSubWindow and self.SubWindow then
-            self.SubWindow:Show()
         end
 
         print(addonName .. " is now active!")
@@ -173,10 +163,19 @@ function addon:OnDisable()
     if self.HPSWindow and self.HPSWindow.frame then
         self.db.showHPSWindow = self.HPSWindow.frame:IsShown()
     end
+end
 
-    if self.SubWindow and self.SubWindow.frame then
-        self.db.showSubWindow = self.SubWindow.frame:IsShown()
+-- Update status display
+function addon:UpdateStatusDisplay()
+    if not self.mainFrame or not self.mainFrame.statusText then
+        return
     end
+
+    local debugStatus = self.DEBUG and "|cff00ff00ON|r" or "|cffff0000OFF|r"
+    local combatStatus = (self.CombatTracker and self.CombatTracker:IsInCombat()) and "|cffff0000IN COMBAT|r" or
+    "|cff888888Out of Combat|r"
+
+    self.mainFrame.statusText:SetText("Debug: " .. debugStatus .. "\nCombat: " .. combatStatus)
 end
 
 -- Create main addon frame
@@ -184,7 +183,7 @@ function addon:CreateMainFrame()
     if self.mainFrame then return end
 
     local frame = CreateFrame("Frame", addonName .. "MainFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(300, 200)
+    frame:SetSize(300, 250)
 
     -- Restore saved position or use default
     if self.db.framePosition then
@@ -218,18 +217,19 @@ function addon:CreateMainFrame()
     -- Frame title
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     frame.title:SetPoint("LEFT", frame.TitleBg, "LEFT", 5, 0)
-    frame.title:SetText("My UI v" .. addon.VERSION) -- Show version in title
+    frame.title:SetText("My UI v" .. addon.VERSION)
 
-    -- Example content
-    local content = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    content:SetPoint("CENTER", frame, "CENTER", 0, 20)
-    content:SetText("Hello World (of Warcraft)")
+    -- Status display
+    local statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    statusText:SetPoint("TOP", frame, "TOP", 0, -40)
+    statusText:SetJustifyH("CENTER")
+    frame.statusText = statusText
 
     -- DPS Window Toggle Button
     local dpsBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    dpsBtn:SetSize(80, 25)
-    dpsBtn:SetPoint("LEFT", frame, "LEFT", 20, -20)
-    dpsBtn:SetText("DPS Meter")
+    dpsBtn:SetSize(100, 30)
+    dpsBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -80)
+    dpsBtn:SetText("Toggle DPS")
     dpsBtn:SetScript("OnClick", function()
         if addon.DPSWindow then
             addon.DPSWindow:Toggle()
@@ -238,23 +238,49 @@ function addon:CreateMainFrame()
 
     -- HPS Window Toggle Button
     local hpsBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    hpsBtn:SetSize(80, 25)
-    hpsBtn:SetPoint("RIGHT", frame, "RIGHT", -20, -20)
-    hpsBtn:SetText("HPS Meter")
+    hpsBtn:SetSize(100, 30)
+    hpsBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -20, -80)
+    hpsBtn:SetText("Toggle HPS")
     hpsBtn:SetScript("OnClick", function()
         if addon.HPSWindow then
             addon.HPSWindow:Toggle()
         end
     end)
 
-    -- Sub Window Toggle Button (moved down)
-    local subWindowBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    subWindowBtn:SetSize(120, 25)
-    subWindowBtn:SetPoint("CENTER", frame, "CENTER", 0, -50)
-    subWindowBtn:SetText("Toggle Sub Window")
-    subWindowBtn:SetScript("OnClick", function()
-        if addon.SubWindow then
-            addon.SubWindow:Toggle()
+    -- Debug Toggle Button
+    local debugBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
+    debugBtn:SetSize(100, 30)
+    debugBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -120)
+    debugBtn:SetText("Toggle Debug")
+    debugBtn:SetScript("OnClick", function()
+        addon.DEBUG = not addon.DEBUG
+        print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
+        addon:UpdateStatusDisplay()
+    end)
+
+    -- Start Combat Button
+    local startCombatBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
+    startCombatBtn:SetSize(100, 30)
+    startCombatBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -20, -120)
+    startCombatBtn:SetText("Start Combat")
+    startCombatBtn:SetScript("OnClick", function()
+        if addon.CombatTracker then
+            addon.CombatTracker:StartCombat()
+            print("Forced combat start")
+            addon:UpdateStatusDisplay()
+        end
+    end)
+
+    -- End Combat Button
+    local endCombatBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
+    endCombatBtn:SetSize(100, 30)
+    endCombatBtn:SetPoint("TOP", frame, "TOP", 0, -160)
+    endCombatBtn:SetText("End Combat")
+    endCombatBtn:SetScript("OnClick", function()
+        if addon.CombatTracker then
+            addon.CombatTracker:EndCombat()
+            print("Forced combat end")
+            addon:UpdateStatusDisplay()
         end
     end)
 
@@ -267,16 +293,22 @@ function addon:CreateMainFrame()
 
     -- Apply saved scale
     frame:SetScale(self.db.scale)
+
+    -- Initial status update
+    self:UpdateStatusDisplay()
+
+    -- Update status periodically
+    C_Timer.NewTicker(1.0, function()
+        addon:UpdateStatusDisplay()
+    end)
 end
 
 -- Main slash command handler
 SLASH_MYUI1 = "/myui"
-SLASH_MYUI2 = "/mui"
-
 function SlashCmdList.MYUI(msg, editBox)
     local command = string.lower(msg)
 
-    if command == "show" then
+    if command == "show" or command == "" then
         if addon.mainFrame then
             addon.mainFrame:Show()
         else
@@ -296,10 +328,6 @@ function SlashCmdList.MYUI(msg, editBox)
         else
             addon:CreateMainFrame()
         end
-    elseif command == "sub" or command == "subwindow" then
-        if addon.SubWindow then
-            addon.SubWindow:Toggle()
-        end
     elseif command == "dps" then
         if addon.DPSWindow then
             addon.DPSWindow:Toggle()
@@ -308,194 +336,29 @@ function SlashCmdList.MYUI(msg, editBox)
         if addon.HPSWindow then
             addon.HPSWindow:Toggle()
         end
-    elseif command == "config" then
-        print("Configuration options:")
-        print("/myui show - Show the main frame")
-        print("/myui hide - Hide the main frame")
-        print("/myui toggle - Toggle frame visibility")
-        print("/myui sub - Toggle sub window")
-        print("/myui dps - Toggle DPS meter")
-        print("/myui hps - Toggle HPS meter")
-        print("/myui reload - Reload UI")
-        print("/myui reset - Reset all data")
-        print("/myui debug - Toggle debug mode")
-        print("/myui status - Show addon status")
-    else
-        print("Usage: /myui [show | hide | toggle | sub | dps | hps | reload | reset | debug | status | config]")
-    end
-end
-
--- Reload command
-SLASH_MYUIRELOAD1 = "/muireload"
-SLASH_MYUIRELOAD2 = "/muir"
-
-function SlashCmdList.MYUIRELOAD(msg, editBox)
-    print("Reloading " .. addonName .. "...")
-    ReloadUI()
-end
-
--- Reset all saved data
-SLASH_MYUIRESET1 = "/muireset"
-function SlashCmdList.MYUIRESET(msg, editBox)
-    MyUIDB = {}
-    addon.db = {}
-    print(addonName .. " data reset. Use /reload to reinitialize.")
-end
-
--- Toggle debug mode
-SLASH_MYUIDEBUG1 = "/muidebug"
-function SlashCmdList.MYUIDEBUG(msg, editBox)
-    addon.DEBUG = not addon.DEBUG
-    print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
-end
-
--- Force combat start/end (for testing)
-SLASH_MYUICOMBAT1 = "/muicombat"
-function SlashCmdList.MYUICOMBAT(msg, editBox)
-    if not addon.CombatTracker then
-        print("CombatTracker not loaded!")
-        return
-    end
-
-    if msg == "start" then
+    elseif command == "debug" then
+        addon.DEBUG = not addon.DEBUG
+        print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
+        addon:UpdateStatusDisplay()
+    elseif command == "cstart" then
+        if not addon.CombatTracker then
+            print("CombatTracker not loaded!")
+            return
+        end
         addon.CombatTracker:StartCombat()
         print("Forced combat start")
-    elseif msg == "end" then
+        addon:UpdateStatusDisplay()
+    elseif command == "cend" then
+        if not addon.CombatTracker then
+            print("CombatTracker not loaded!")
+            return
+        end
         addon.CombatTracker:EndCombat()
         print("Forced combat end")
+        addon:UpdateStatusDisplay()
     else
-        print("Usage: /muicombat start|end")
+        print("Usage: /myui [show | hide | toggle | dps | hps | debug | cstart | cend]")
     end
-end
-
--- Quick window position reset
-SLASH_MYUIPOS1 = "/muipos"
-function SlashCmdList.MYUIPOS(msg, editBox)
-    -- Reset window positions to defaults
-    addon.db.dpsWindowPosition = nil
-    addon.db.hpsWindowPosition = nil
-    addon.db.framePosition = nil
-    addon.db.subWindowPosition = nil
-    print("Window positions reset. Use /reload to apply.")
-end
-
--- Quick status check command
-SLASH_MYUISTATUS1 = "/muistatus"
-function SlashCmdList.MYUISTATUS(msg, editBox)
-    print("=== " .. addonName .. " Status ===")
-    print("Version: " .. addon.VERSION)
-    print("Build: " .. addon.BUILD_DATE)
-    print("Debug Mode: " .. (addon.DEBUG and "ON" or "OFF"))
-    print("Combat Tracker: " .. (addon.CombatTracker and "Loaded" or "Missing"))
-    print("DPS Window: " .. (addon.DPSWindow and "Loaded" or "Missing"))
-    print("HPS Window: " .. (addon.HPSWindow and "Loaded" or "Missing"))
-    print("Sub Window: " .. (addon.SubWindow and "Loaded" or "Missing"))
-    if addon.CombatTracker then
-        print("In Combat: " .. tostring(addon.CombatTracker:IsInCombat()))
-
-        -- Show combat debug info
-        local debugInfo = addon.CombatTracker:GetDebugInfo()
-        if debugInfo then
-            print("Current DPS: " .. addon.CombatTracker:FormatNumber(debugInfo.dps))
-            print("Current HPS: " .. addon.CombatTracker:FormatNumber(debugInfo.hps))
-            print("Total Damage: " .. addon.CombatTracker:FormatNumber(debugInfo.damage))
-            print("Total Healing: " .. addon.CombatTracker:FormatNumber(debugInfo.healing))
-            print("Total Absorb: " .. addon.CombatTracker:FormatNumber(debugInfo.absorb))
-            if debugInfo.counters then
-                print("Event Counters:")
-                print("  Total: " .. debugInfo.counters.totalEvents)
-                print("  Damage: " .. debugInfo.counters.damageEvents)
-                print("  Healing: " .. debugInfo.counters.healingEvents)
-                print("  Absorb: " .. debugInfo.counters.absorbEvents)
-            end
-        end
-    end
-    print("Main Frame: " .. (addon.mainFrame and "Created" or "Not Created"))
-    if addon.mainFrame then
-        print("Main Frame Visible: " .. tostring(addon.mainFrame:IsShown()))
-    end
-end
-
--- Combat debug command
-SLASH_MYUICOMBATDEBUG1 = "/muicombatdebug"
-function SlashCmdList.MYUICOMBATDEBUG(msg, editBox)
-    if not addon.CombatTracker then
-        print("CombatTracker not loaded!")
-        return
-    end
-
-    local debugInfo = addon.CombatTracker:GetDebugInfo()
-    print("=== Combat Debug Info ===")
-    addon:DumpTable(debugInfo)
-end
-
--- Absorb testing command
-SLASH_MYUIABSORBTEST1 = "/muiabsorb"
-function SlashCmdList.MYUIABSORBTEST(msg, editBox)
-    print("=== Testing Absorb Detection ===")
-    print("1. Cast an absorb spell (Power Word: Shield, etc.)")
-    print("2. Watch chat for absorb events")
-    print("3. Use /muistatus to see absorb counter")
-    print("4. Enable debug mode with /muidebug if not already on")
-    print("================================")
-
-    -- Also show current absorb status
-    if addon.CombatTracker then
-        local debugInfo = addon.CombatTracker:GetDebugInfo()
-        if debugInfo then
-            print("Current absorb total: " .. addon.CombatTracker:FormatNumber(debugInfo.absorb))
-            print("Absorb events detected: " .. (debugInfo.counters.absorbEvents or 0))
-        end
-    end
-end
-
--- Clear absorb debug logs
-SLASH_MYUIABSORBCLEAR1 = "/muiabsorbclear"
-function SlashCmdList.MYUIABSORBCLEAR(msg, editBox)
-    if addon.CombatTracker then
-        -- Reset just the absorb counter for testing
-        local debugInfo = addon.CombatTracker:GetDebugInfo()
-        if debugInfo and debugInfo.counters then
-            debugInfo.counters.absorbEvents = 0
-        end
-        print("Absorb event counter reset")
-    end
-end
-
--- Debug display values command (one-time check, no spam)
-SLASH_MYUIDISPLAYCHECK1 = "/muidisplay"
-function SlashCmdList.MYUIDISPLAYCHECK(msg, editBox)
-    if not addon.CombatTracker then
-        print("CombatTracker not loaded!")
-        return
-    end
-
-    print("=== Display Values Check ===")
-    print("In Combat: " .. tostring(addon.CombatTracker:IsInCombat()))
-
-    local absorbValue = addon.CombatTracker:GetTotalAbsorb()
-    local overhealValue = addon.CombatTracker:GetTotalOverheal()
-    local totalHealing = addon.CombatTracker:GetTotalHealing()
-
-    print("Raw Values:")
-    print("  Absorb: " .. absorbValue)
-    print("  Overheal: " .. overhealValue)
-    print("  Total Healing: " .. totalHealing)
-
-    print("Formatted Values:")
-    print("  Absorb: " .. addon.CombatTracker:FormatNumber(absorbValue))
-    print("  Overheal: " .. addon.CombatTracker:FormatNumber(overhealValue))
-    print("  Total Healing: " .. addon.CombatTracker:FormatNumber(totalHealing))
-
-    -- Overheal calculation
-    local totalHealingWithOverheal = totalHealing + overhealValue
-    local overhealPercent = 0
-    if overhealValue > 0 and totalHealingWithOverheal > 0 then
-        overhealPercent = math.floor((overhealValue / totalHealingWithOverheal) * 100)
-    end
-    print("  Overheal %: " .. overhealPercent .. "%")
-
-    print("============================")
 end
 
 -- Minimap button (optional)
@@ -518,8 +381,6 @@ function addon:CreateMinimapButton()
     button:SetScript("OnClick", function(self, button)
         if button == "LeftButton" then
             SlashCmdList.MYUI("toggle")
-        elseif button == "RightButton" then
-            SlashCmdList.MYUI("config")
         end
     end)
 
@@ -528,7 +389,6 @@ function addon:CreateMinimapButton()
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText(addonName)
         GameTooltip:AddLine("Left-click to toggle", 1, 1, 1)
-        GameTooltip:AddLine("Right-click for options", 1, 1, 1)
         GameTooltip:Show()
     end)
 
