@@ -85,8 +85,13 @@ function BaseMeterWindow:Create()
     topBg:SetHeight(32)
     topBg:SetColorTexture(0, 0, 0, 0.8)
 
-    -- Font loading with SCP-SB
+    -- Font loading with fallback (OPTIMIZED - ONLY SET ONCE)
     local function SetCustomFont(fontString, size)
+        -- Don't set font if it's already been set for this fontstring
+        if fontString._fontSet then
+            return
+        end
+
         local fontPaths = {
             "Interface/AddOns/MyUI/SCP-SB.ttf",
             "Interface\\AddOns\\MyUI\\SCP-SB.ttf",
@@ -111,6 +116,9 @@ function BaseMeterWindow:Create()
                 print("Using fallback font - SCP-SB.ttf not found")
             end
         end
+
+        -- Mark this fontstring as having its font set
+        fontString._fontSet = true
     end
 
     -- Main number with custom font
