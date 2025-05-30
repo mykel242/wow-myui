@@ -15,7 +15,7 @@ addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
 addon.VERSION = "1.0.1"               -- Increment this with each change
-addon.BUILD_DATE = "2025-05-30-16:00" -- Update timestamp
+addon.BUILD_DATE = "2025-05-30-15:10"
 
 -- Debug flag
 addon.DEBUG = true

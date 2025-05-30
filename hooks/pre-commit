@@ -1,0 +1,50 @@
+#!/bin/bash
+# hooks/pre-commit
+# Git hook to automatically update version in MyUI.lua
+# 
+# To install this hook, run: ./hooks/install-hooks.sh
+# Or manually copy to .git/hooks/pre-commit and make executable
+
+# Get Git info
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "000000")
+TIMESTAMP=$(date '+%Y-%m-%d-%H:%M')
+
+# Create version string
+VERSION="${BRANCH}-${HASH}"
+
+echo "Updating version to: ${VERSION} (${TIMESTAMP})"
+
+# Check if MyUI.lua exists
+if [ ! -f "MyUI.lua" ]; then
+    echo "Warning: MyUI.lua not found, skipping version update"
+    exit 0
+fi
+
+# Create backup
+cp MyUI.lua MyUI.lua.bak
+
+# Update MyUI.lua using sed
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS version of sed
+    sed -i '' "s/^addon\.VERSION = .*/addon.VERSION = \"${VERSION}\"/" MyUI.lua
+    sed -i '' "s/^addon\.BUILD_DATE = .*/addon.BUILD_DATE = \"${TIMESTAMP}\"/" MyUI.lua
+else
+    # Linux version of sed
+    sed -i "s/^addon\.VERSION = .*/addon.VERSION = \"${VERSION}\"/" MyUI.lua
+    sed -i "s/^addon\.BUILD_DATE = .*/addon.BUILD_DATE = \"${TIMESTAMP}\"/" MyUI.lua
+fi
+
+# Check if changes were made
+if ! diff -q MyUI.lua MyUI.lua.bak > /dev/null; then
+    echo "Version updated successfully"
+    # Add the modified file to the commit
+    git add MyUI.lua
+else
+    echo "No version changes needed"
+fi
+
+# Clean up backup
+rm -f MyUI.lua.bak
+
+exit 0
