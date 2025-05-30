@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-BaseMeterWindow-60412b9"
-addon.BUILD_DATE = "2025-05-30-15:23"
+addon.VERSION = "main-4b2d3f5"
+addon.BUILD_DATE = "2025-05-30-19:00"
 
 -- Debug flag
 addon.DEBUG = true
