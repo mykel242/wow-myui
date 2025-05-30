@@ -29,12 +29,12 @@ function BaseMeterWindow:Initialize()
     end
 end
 
--- Create the meter window
+-- Create the meter window - COMPLETE FUNCTION REPLACEMENT (OPTIMIZED FONT SETTING)
 function BaseMeterWindow:Create()
     if self.frame then return end
 
     local frame = CreateFrame("Frame", addonName .. self.config.frameName, UIParent)
-    frame:SetSize(160, 80)
+    frame:SetSize(210, 80)
 
     -- Restore saved position or use default
     if addon.db[self.config.positionKey] then
@@ -85,8 +85,45 @@ function BaseMeterWindow:Create()
     topBg:SetHeight(32)
     topBg:SetColorTexture(0, 0, 0, 0.8)
 
-    -- Main number (large, top-left with margin, aligned with label)
-    local mainText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    -- Font loading with fallback (OPTIMIZED - ONLY SET ONCE)
+    local function SetCustomFont(fontString, size)
+        -- Don't set font if it's already been set for this fontstring
+        if fontString._fontSet then
+            return
+        end
+
+        local fontPaths = {
+            "Interface/AddOns/MyUI/SCP-SB.ttf",
+            "Interface\\AddOns\\MyUI\\SCP-SB.ttf",
+            "Interface/AddOns/myui2/SCP-SB.ttf",
+            "Interface\\AddOns\\myui2\\SCP-SB.ttf"
+        }
+
+        local fontSet = false
+        for _, fontPath in ipairs(fontPaths) do
+            if fontString:SetFont(fontPath, size, "OUTLINE") then
+                fontSet = true
+                if addon.DEBUG then
+                    print("Font loaded successfully: " .. fontPath)
+                end
+                break
+            end
+        end
+
+        if not fontSet then
+            fontString:SetFont("Fonts\\FRIZQT__.TTF", size, "OUTLINE")
+            if addon.DEBUG then
+                print("Using fallback font - SCP-SB.ttf not found")
+            end
+        end
+
+        -- Mark this fontstring as having its font set
+        fontString._fontSet = true
+    end
+
+    -- Main number with custom font
+    local mainText = frame:CreateFontString(nil, "OVERLAY")
+    SetCustomFont(mainText, 18)
     mainText:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -8)
     mainText:SetText("0")
     mainText:SetTextColor(1, 1, 1, 1)
@@ -100,66 +137,73 @@ function BaseMeterWindow:Create()
     label:SetTextColor(self.config.labelColor.r, self.config.labelColor.g, self.config.labelColor.b, 1)
     label:SetJustifyH("RIGHT")
 
-    -- Secondary stats in 4 columns with proper alignment
+    -- TIGHTER SECONDARY STATS LAYOUT - SIZED FOR 888.88M
+
     -- Row 1: Left side (max value and label)
-    local maxValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    maxValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 8, 20)
-    maxValue:SetSize(45, 0) -- Wider for larger numbers
+    local maxValue = frame:CreateFontString(nil, "OVERLAY")
+    SetCustomFont(maxValue, 11)
+    maxValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 20)
+    maxValue:SetSize(55, 0)
     maxValue:SetText("0")
     maxValue:SetTextColor(0.8, 0.8, 0.8, 1)
     maxValue:SetJustifyH("RIGHT")
     frame.maxValue = maxValue
 
     local maxLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    maxLabel:SetPoint("LEFT", maxValue, "RIGHT", 2, 0)
+    maxLabel:SetPoint("LEFT", maxValue, "RIGHT", 1, 0)
     maxLabel:SetText("max")
     maxLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     maxLabel:SetJustifyH("LEFT")
 
     -- Row 2: Left side (total value and label)
-    local totalValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    totalValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 8, 8)
-    totalValue:SetSize(45, 0) -- Same width as max
+    local totalValue = frame:CreateFontString(nil, "OVERLAY")
+    SetCustomFont(totalValue, 11)
+    totalValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 8)
+    totalValue:SetSize(55, 0)
     totalValue:SetText("0")
     totalValue:SetTextColor(0.8, 0.8, 0.8, 1)
     totalValue:SetJustifyH("RIGHT")
     frame.totalValue = totalValue
 
     local totalLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    totalLabel:SetPoint("LEFT", totalValue, "RIGHT", 2, 0)
+    totalLabel:SetPoint("LEFT", totalValue, "RIGHT", 1, 0)
     totalLabel:SetText("total")
     totalLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     totalLabel:SetJustifyH("LEFT")
 
-    -- Absorb (only if enabled in config) - Right side
+    -- Row 1: Right side (absorb value and label) - PROPERLY ALIGNED
     if self.config.showAbsorb == true then
-        local absorbValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        absorbValue:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -50, 20)
-        absorbValue:SetSize(25, 0) -- Width for absorb numbers
+        local absorbValue = frame:CreateFontString(nil, "OVERLAY")
+        SetCustomFont(absorbValue, 11)
+        absorbValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 110, 20)
+        absorbValue:SetSize(55, 0)
         absorbValue:SetText("0")
         absorbValue:SetTextColor(0.8, 0.8, 0.8, 1)
         absorbValue:SetJustifyH("RIGHT")
+        absorbValue:SetWordWrap(false)
         frame.absorbValue = absorbValue
 
         local absorbLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        absorbLabel:SetPoint("LEFT", absorbValue, "RIGHT", 2, 0)
+        absorbLabel:SetPoint("LEFT", absorbValue, "RIGHT", 1, 0)
         absorbLabel:SetText("absorb")
         absorbLabel:SetTextColor(0.8, 0.8, 0.8, 1)
         absorbLabel:SetJustifyH("LEFT")
     end
 
-    -- Overheal (only if enabled in config) - Right side
+    -- Row 2: Right side (overheal value and label) - PROPERLY ALIGNED
     if self.config.showOverheal == true then
-        local overhealValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        overhealValue:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -50, 8)
-        overhealValue:SetSize(25, 0) -- Width for percentage
+        local overhealValue = frame:CreateFontString(nil, "OVERLAY")
+        SetCustomFont(overhealValue, 11)
+        overhealValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 110, 8)
+        overhealValue:SetSize(45, 0)
         overhealValue:SetText("0%")
         overhealValue:SetTextColor(0.8, 0.8, 0.8, 1)
         overhealValue:SetJustifyH("RIGHT")
+        overhealValue:SetWordWrap(false)
         frame.overhealValue = overhealValue
 
         local overhealLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        overhealLabel:SetPoint("LEFT", overhealValue, "RIGHT", 2, 0)
+        overhealLabel:SetPoint("LEFT", overhealValue, "RIGHT", 1, 0)
         overhealLabel:SetText("overheal")
         overhealLabel:SetTextColor(0.8, 0.8, 0.8, 1)
         overhealLabel:SetJustifyH("LEFT")
@@ -194,19 +238,26 @@ function BaseMeterWindow:UpdateDisplay()
     self.frame.maxValue:SetText(addon.CombatTracker:FormatNumber(maxValue))
     self.frame.totalValue:SetText(addon.CombatTracker:FormatNumber(totalValue))
 
-    -- Update absorb if enabled
+    -- Update absorb if enabled - FIXED FORMATTING (NO DEBUG SPAM)
     if self.config.showAbsorb == true and self.frame.absorbValue then
-        self.frame.absorbValue:SetText(addon.CombatTracker:FormatNumber(absorbValue))
+        -- Use the same FormatNumber function for consistency
+        local formattedAbsorb = addon.CombatTracker:FormatNumber(absorbValue)
+        self.frame.absorbValue:SetText(formattedAbsorb)
     end
 
-    -- Update overheal if enabled
+    -- Update overheal if enabled - FIXED CALCULATION (NO DEBUG SPAM)
     if self.config.showOverheal == true and self.frame.overhealValue then
         local overhealPercent = 0
-        local effectiveHealing = totalHealing -- This is healing without overheal
-        if overhealValue > 0 and effectiveHealing > 0 then
-            -- Overheal % = overheal / (effective healing + overheal)
-            overhealPercent = math.floor((overhealValue / (effectiveHealing + overhealValue)) * 100)
+
+        -- Calculate overheal percentage correctly
+        -- Total healing includes: effective healing + overheal + absorbs
+        -- Overheal % = overheal / (total healing including overheal)
+        local totalHealingWithOverheal = totalHealing + overhealValue
+
+        if overhealValue > 0 and totalHealingWithOverheal > 0 then
+            overhealPercent = math.floor((overhealValue / totalHealingWithOverheal) * 100)
         end
+
         self.frame.overhealValue:SetText(overhealPercent .. "%")
     end
 

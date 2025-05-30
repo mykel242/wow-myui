@@ -1,5 +1,6 @@
 -- CombatTracker.lua
 -- Tracks DPS and HPS for the player
+-- Refactored for readability and maintainability
 
 local addonName, addon = ...
 
@@ -7,19 +8,57 @@ local addonName, addon = ...
 addon.CombatTracker = {}
 local CombatTracker = addon.CombatTracker
 
--- Combat data storage
+-- ============================================================================
+-- CONSTANTS AND CONFIGURATION
+-- ============================================================================
+
+local UPDATE_INTERVAL = 0.1 -- How often to update displays (seconds)
+
+-- Event types we care about for damage tracking
+local DAMAGE_EVENTS = {
+    "SPELL_DAMAGE",
+    "SPELL_PERIODIC_DAMAGE",
+    "SWING_DAMAGE",
+    "RANGE_DAMAGE",
+    "SPELL_BUILDING_DAMAGE",
+    "ENVIRONMENTAL_DAMAGE"
+}
+
+-- Event types we care about for healing tracking
+local HEALING_EVENTS = {
+    "SPELL_HEAL",
+    "SPELL_PERIODIC_HEAL"
+}
+
+-- Event types we care about for absorb tracking
+local ABSORB_AURA_EVENTS = {
+    "SPELL_AURA_APPLIED",
+    "SPELL_AURA_APPLIED_DOSE"
+}
+
+-- ============================================================================
+-- DATA STORAGE
+-- ============================================================================
+
+-- Combat data storage - all combat statistics
 local combatData = {
+    -- Current combat values
     damage = 0,
     healing = 0,
     overheal = 0,
     absorb = 0,
+
+    -- Combat timing
     startTime = nil,
     endTime = nil,
     inCombat = false,
     lastUpdate = 0,
+
+    -- Peak values during combat
     maxDPS = 0,
     maxHPS = 0,
-    -- Final values captured at combat end
+
+    -- Final values captured at combat end (for persistent display)
     finalDamage = 0,
     finalHealing = 0,
     finalOverheal = 0,
@@ -27,69 +66,90 @@ local combatData = {
     finalMaxDPS = 0,
     finalMaxHPS = 0,
     finalDPS = 0,
-    finalHPS = 0
+    finalHPS = 0,
+
+    -- Debug statistics
+    debugCounters = {
+        totalEvents = 0,
+        damageEvents = 0,
+        healingEvents = 0,
+        absorbEvents = 0,
+        unknownEvents = 0
+    }
 }
 
--- Initialize combat tracker
-function CombatTracker:Initialize()
-    self.frame = CreateFrame("Frame")
-    self.frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    self.frame:RegisterEvent("PLAYER_REGEN_DISABLED") -- Entering combat
-    self.frame:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Leaving combat
-    self.frame:SetScript("OnEvent", function(self, event, ...)
-        CombatTracker:OnEvent(event, ...)
-    end)
+-- ============================================================================
+-- UTILITY FUNCTIONS
+-- ============================================================================
 
-    -- Update timer
-    self.updateTimer = C_Timer.NewTicker(0.1, function()
-        CombatTracker:UpdateDisplays()
-    end)
-end
-
--- Event handler
-function CombatTracker:OnEvent(event, ...)
-    if event == "PLAYER_REGEN_DISABLED" then
-        self:StartCombat()
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        -- Capture final values IMMEDIATELY when combat ends, before any other processing
-        if combatData.inCombat then
-            -- Calculate final DPS/HPS rates while still in combat
-            local elapsed = GetTime() - combatData.startTime
-            print(string.format("Combat ending: elapsed=%.1f, damage=%d, healing=%d", elapsed, combatData.damage,
-                combatData.healing))
-
-            if elapsed > 0 then
-                combatData.finalDPS = combatData.damage / elapsed
-                combatData.finalHPS = combatData.healing / elapsed
-                print(string.format("Calculated finalDPS=%.1f, finalHPS=%.1f", combatData.finalDPS, combatData.finalHPS))
-            else
-                combatData.finalDPS = 0
-                combatData.finalHPS = 0
-                print("Elapsed time was 0, setting final values to 0")
-            end
-
-            -- Capture other final values
-            combatData.finalDamage = combatData.damage
-            combatData.finalHealing = combatData.healing
-            combatData.finalOverheal = combatData.overheal
-            combatData.finalAbsorb = combatData.absorb
-            combatData.finalMaxDPS = combatData.maxDPS
-            combatData.finalMaxHPS = combatData.maxHPS
-        end
-        self:EndCombat()
-    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        -- Only process combat events if we're still in combat
-        if combatData.inCombat then
-            self:ParseCombatLog(CombatLogGetCurrentEventInfo())
-        end
+-- Debug print function - only prints when debug mode is enabled
+local function DebugPrint(...)
+    if addon.DEBUG then
+        print("[CombatTracker]", ...)
     end
 end
 
--- Start combat tracking
-function CombatTracker:StartCombat()
-    combatData.inCombat = true
-    combatData.startTime = GetTime()
-    combatData.endTime = nil
+-- Check if an event type is in a list of event types
+local function IsEventType(eventType, eventList)
+    for _, validEvent in ipairs(eventList) do
+        if eventType == validEvent then
+            return true
+        end
+    end
+    return false
+end
+
+-- ============================================================================
+-- ABSORB SPELL DETECTION
+-- ============================================================================
+
+-- Future-proof absorb spell detection
+-- Returns true if the spell name indicates an absorb effect
+local function IsAbsorbSpell(spellName)
+    if not spellName then
+        return false
+    end
+
+    local lowerName = string.lower(spellName)
+
+    -- Common patterns that indicate absorb spells
+    local absorbPatterns = {
+        "shield", "absorb", "barrier", "cocoon", "ward", "aegis", "protection",
+        "deflection", "guard", "bulwark", "carapace", "shell", "mantle",
+        "veil", "shroud"
+    }
+
+    -- Check if spell name contains any absorb patterns
+    for _, pattern in ipairs(absorbPatterns) do
+        if string.find(lowerName, pattern) then
+            return true
+        end
+    end
+
+    -- Specific spell names that don't follow common patterns
+    local specificAbsorbSpells = {
+        "strength of the black ox", "black ox", "divine aegis", "blazing barrier",
+        "ice barrier", "mana shield", "bone armor", "frost armor", "demon skin",
+        "fel armor", "anti-magic shell", "anti-magic zone", "temporal shield",
+        "greater invisibility", "dampen magic"
+    }
+
+    -- Check specific spell names
+    for _, specificSpell in ipairs(specificAbsorbSpells) do
+        if string.find(lowerName, string.lower(specificSpell)) then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- ============================================================================
+-- COMBAT DATA MANAGEMENT
+-- ============================================================================
+
+-- Reset all combat data to initial state
+local function ResetCombatData()
     combatData.damage = 0
     combatData.healing = 0
     combatData.overheal = 0
@@ -104,242 +164,370 @@ function CombatTracker:StartCombat()
     combatData.finalMaxHPS = 0
     combatData.finalDPS = 0
     combatData.finalHPS = 0
+    combatData.startTime = nil
+    combatData.endTime = nil
     combatData.lastUpdate = GetTime()
-    print("Combat started!")
+
+    -- Reset debug counters
+    combatData.debugCounters = {
+        totalEvents = 0,
+        damageEvents = 0,
+        healingEvents = 0,
+        absorbEvents = 0,
+        unknownEvents = 0
+    }
 end
 
--- End combat tracking
-function CombatTracker:EndCombat()
-    if not combatData.inCombat then return end
+-- Capture final values when combat ends (for persistent display)
+local function CaptureFinalValues()
+    -- Safety check for startTime
+    if not combatData.startTime or not combatData.endTime then
+        DebugPrint("ERROR: Missing startTime or endTime in CaptureFinalValues")
+        combatData.finalDPS = 0
+        combatData.finalHPS = 0
+        return
+    end
 
-    combatData.endTime = GetTime()
-
-    -- Calculate final values BEFORE setting inCombat to false
-    local finalDPS = self:GetDPS()
-    local finalHPS = self:GetHPS()
-    local totalDamage = combatData.damage
-    local totalHealing = combatData.healing
-    local maxDPS = combatData.maxDPS
-    local maxHPS = combatData.maxHPS
-
-    -- Format timestamps
-    local startTime = date("%H:%M:%S", combatData.startTime)
-    local endTime = date("%H:%M:%S", combatData.endTime)
     local elapsed = combatData.endTime - combatData.startTime
-    local elapsedMin = math.floor(elapsed / 60)
-    local elapsedSec = elapsed % 60
 
-    combatData.inCombat = false
+    -- Calculate final rates
+    if elapsed > 0 then
+        combatData.finalDPS = combatData.damage / elapsed
+        combatData.finalHPS = combatData.healing / elapsed
+    else
+        combatData.finalDPS = 0
+        combatData.finalHPS = 0
+    end
 
-    -- Print detailed combat summary
-    print("Combat Ended")
-    print("--------------------")
-    print(string.format("Start: %s", startTime))
-    print(string.format("End:   %s", endTime))
-    print(string.format("Elapsed: %02d:%02d", elapsedMin, elapsedSec))
-    print("--------------------")
-    print(string.format("Max DPS: %s", self:FormatNumber(maxDPS)))
-    print(string.format("Total Damage: %s", self:FormatNumber(totalDamage)))
-    print(string.format("Max HPS: %s", self:FormatNumber(maxHPS)))
-    print(string.format("Total Healing: %s", self:FormatNumber(totalHealing)))
-    print(string.format("Total Overheal: %s", self:FormatNumber(combatData.finalOverheal)))
-    print(string.format("Total Absorbs: %s", self:FormatNumber(combatData.finalAbsorb)))
-    print("--------------------")
+    -- Store final totals
+    combatData.finalDamage = combatData.damage
+    combatData.finalHealing = combatData.healing
+    combatData.finalOverheal = combatData.overheal
+    combatData.finalAbsorb = combatData.absorb
+    combatData.finalMaxDPS = combatData.maxDPS
+    combatData.finalMaxHPS = combatData.maxHPS
 
-    -- Keep displaying the final numbers until manual reset or new combat
-    -- Removed automatic reset timer - numbers persist until refresh clicked or new combat starts
+    DebugPrint(string.format("Final values captured - DPS: %.1f, HPS: %.1f",
+        combatData.finalDPS, combatData.finalHPS))
 end
 
--- Parse combat log events
+-- ============================================================================
+-- COMBAT LOG PARSING - INDIVIDUAL EVENT HANDLERS
+-- ============================================================================
+
+-- Handle damage events from the player
+local function HandleDamageEvent(subevent, ...)
+    local amount
+
+    -- Different damage events have different argument structures
+    if subevent == "SWING_DAMAGE" then
+        amount = select(1, ...)
+    elseif subevent == "ENVIRONMENTAL_DAMAGE" then
+        amount = select(2, ...)
+    else
+        amount = select(4, ...) -- Most spell damage events
+    end
+
+    if amount and amount > 0 then
+        combatData.damage = combatData.damage + amount
+        combatData.debugCounters.damageEvents = combatData.debugCounters.damageEvents + 1
+        DebugPrint(string.format("[DAMAGE] %s: +%d (total: %d)", subevent, amount, combatData.damage))
+    end
+end
+
+-- Handle healing events from the player
+local function HandleHealingEvent(subevent, spellName, ...)
+    -- Skip if this spell was already processed as an absorb
+    if IsAbsorbSpell(spellName) then
+        return
+    end
+
+    local amount, overhealing, absorbed = select(4, ...), select(5, ...), select(6, ...)
+
+    -- Track effective healing
+    if amount and amount > 0 then
+        combatData.healing = combatData.healing + amount
+        combatData.debugCounters.healingEvents = combatData.debugCounters.healingEvents + 1
+        DebugPrint(string.format("[HEALING] %s (%s): +%d (total: %d)",
+            subevent, tostring(spellName), amount, combatData.healing))
+    end
+
+    -- Track overhealing
+    if overhealing and overhealing > 0 then
+        combatData.overheal = combatData.overheal + overhealing
+        DebugPrint(string.format("[OVERHEAL] +%d (total: %d)", overhealing, combatData.overheal))
+    end
+
+    -- Track absorbs created by healing spells (backup method)
+    if absorbed and absorbed > 0 then
+        combatData.absorb = combatData.absorb + absorbed
+        combatData.healing = combatData.healing + absorbed
+        combatData.debugCounters.absorbEvents = combatData.debugCounters.absorbEvents + 1
+        DebugPrint(string.format("*** HEALING EVENT ABSORB: %d (total: %d) ***", absorbed, combatData.absorb))
+    end
+end
+
+-- Handle absorb aura events (shield creation)
+local function HandleAbsorbAuraEvent(subevent, sourceGUID, sourceName, destGUID, destName, ...)
+    local playerGUID = UnitGUID("player")
+    local spellId, spellName, spellSchool, auraType, amount = select(1, ...)
+
+    if not (spellName and IsAbsorbSpell(spellName)) then
+        return false -- Not an absorb spell
+    end
+
+    DebugPrint("=== ABSORB AURA DETECTED ===")
+    DebugPrint("Event: " .. subevent)
+    DebugPrint("Spell: " .. tostring(spellName) .. " (ID: " .. tostring(spellId) .. ")")
+    DebugPrint("Source: " .. tostring(sourceName) .. " (Player: " .. tostring(sourceGUID == playerGUID) .. ")")
+    DebugPrint("Dest: " .. tostring(destName))
+    DebugPrint("Aura Type: " .. tostring(auraType))
+
+    -- Only track absorbs that originate from the player (healer mode)
+    if sourceGUID ~= playerGUID then
+        DebugPrint("*** ABSORB NOT TRACKED (not from player) ***")
+        return true -- Was an absorb event, but not tracked
+    end
+
+    -- Determine who received the shield
+    if destGUID == playerGUID then
+        DebugPrint("^ Player shield applied to SELF")
+    else
+        DebugPrint("^ Player shield applied to ALLY: " .. tostring(destName))
+    end
+
+    -- Try to find absorb amount
+    local absorbAmount = 0
+    if amount and type(amount) == "number" and amount > 0 then
+        absorbAmount = amount
+        DebugPrint("Amount: " .. amount)
+    else
+        -- Search through all arguments for possible absorb amounts
+        local args = { ... }
+        for i = 1, math.min(10, #args) do
+            local arg = args[i]
+            if type(arg) == "number" and arg > 0 and arg < 10000000 then
+                DebugPrint(string.format("  [%d] = %d ← POSSIBLE ABSORB", i, arg))
+                if absorbAmount == 0 then
+                    absorbAmount = arg
+                end
+            end
+        end
+    end
+
+    -- Track the absorb
+    if absorbAmount > 0 then
+        combatData.absorb = combatData.absorb + absorbAmount
+        combatData.healing = combatData.healing + absorbAmount
+        combatData.debugCounters.absorbEvents = combatData.debugCounters.absorbEvents + 1
+        DebugPrint(string.format("*** ABSORB TRACKED: +%d (total: %d) ***", absorbAmount, combatData.absorb))
+    else
+        DebugPrint("*** ABSORB NOT TRACKED (no valid amount found) ***")
+    end
+
+    DebugPrint("============================")
+    return true -- Was an absorb event
+end
+
+-- Handle heal-based absorb events (spells that directly create absorbs)
+local function HandleHealBasedAbsorb(subevent, spellName, destName, ...)
+    if not IsAbsorbSpell(spellName) then
+        return false -- Not an absorb spell
+    end
+
+    local amount, overhealing, absorbed = select(4, ...), select(5, ...), select(6, ...)
+
+    DebugPrint("=== HEAL-BASED ABSORB ===")
+    DebugPrint("Spell: " .. tostring(spellName))
+    DebugPrint("Target: " .. tostring(destName))
+    DebugPrint("Amount: " .. tostring(amount))
+    DebugPrint("Absorbed: " .. tostring(absorbed))
+    DebugPrint("=========================")
+
+    if amount and amount > 0 then
+        combatData.absorb = combatData.absorb + amount
+        combatData.healing = combatData.healing + amount
+        combatData.debugCounters.absorbEvents = combatData.debugCounters.absorbEvents + 1
+        DebugPrint(string.format("*** HEAL-BASED ABSORB TRACKED: +%d ***", amount))
+    end
+
+    return true -- Was an absorb event
+end
+
+-- ============================================================================
+-- MAIN COMBAT LOG PARSER
+-- ============================================================================
+
+-- Parse combat log events - main entry point
 function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
                                       destGUID, destName, destFlags, destRaidFlags, ...)
     local playerGUID = UnitGUID("player")
+    combatData.debugCounters.totalEvents = combatData.debugCounters.totalEvents + 1
 
-    -- Only track events where the player is the source
+    -- Handle SPELL_ABSORBED events (when absorb shields consume damage)
+    if subevent == "SPELL_ABSORBED" then
+        combatData.debugCounters.absorbEvents = combatData.debugCounters.absorbEvents + 1
+        if addon.DEBUG then
+            print("=== SPELL_ABSORBED EVENT ===")
+            print("Event: " .. subevent)
+            print("Source: " .. tostring(sourceName) .. " (attacking)")
+            print("Dest: " .. tostring(destName) .. " (being protected)")
+            print("*** SPELL_ABSORBED NOTED - Relying on creation events for tracking ***")
+        end
+        return -- Skip direct absorption tracking for now
+    end
+
+    -- Handle other absorb-related events
+    if string.find(string.lower(subevent), "absorb") and subevent ~= "SPELL_ABSORBED" then
+        combatData.debugCounters.absorbEvents = combatData.debugCounters.absorbEvents + 1
+        DebugPrint("=== OTHER ABSORB EVENT ===")
+        DebugPrint("Event: " .. subevent)
+        DebugPrint("Source: " .. tostring(sourceName))
+        -- Could implement specific handling here if needed
+        return
+    end
+
+    -- Handle absorb aura applications (shield creation)
+    if IsEventType(subevent, ABSORB_AURA_EVENTS) then
+        if HandleAbsorbAuraEvent(subevent, sourceGUID, sourceName, destGUID, destName, ...) then
+            return -- Was an absorb event, early exit
+        end
+    end
+
+    -- Only track player-sourced events for damage and healing
     if sourceGUID ~= playerGUID then
         return
     end
 
-    -- Damage events
-    if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or subevent == "RANGE_DAMAGE" then
-        local amount
-        if subevent == "SWING_DAMAGE" then
-            amount = select(1, ...)
-        else
-            amount = select(4, ...)
+    -- Handle damage events from player
+    if IsEventType(subevent, DAMAGE_EVENTS) then
+        HandleDamageEvent(subevent, ...)
+        return
+    end
+
+    -- Handle healing events from player
+    if IsEventType(subevent, HEALING_EVENTS) then
+        local spellName = select(2, ...)
+
+        -- Check if this is a heal-based absorb
+        if HandleHealBasedAbsorb(subevent, spellName, destName, ...) then
+            return -- Was an absorb, don't double-count as healing
         end
 
-        if amount and amount > 0 then
-            combatData.damage = combatData.damage + amount
-        end
-
-        -- Periodic damage (DOTs)
-    elseif subevent == "SPELL_PERIODIC_DAMAGE" then
-        local amount = select(4, ...)
-        if amount and amount > 0 then
-            combatData.damage = combatData.damage + amount
-        end
-
-        -- Healing events (now split between effective healing and overhealing)
-    elseif subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_HEAL" then
-        -- For healing events: spellId, spellName, spellSchool, amount, overhealing, absorbed, critical
-        local spellId, spellName, spellSchool, amount, overhealing, absorbed, critical = select(1, ...)
-
-        if amount and amount > 0 then
-            -- Add all healing (including overhealing) to total for HPS calculation
-            combatData.healing = combatData.healing + amount
-        end
-
-        if overhealing and overhealing > 0 then
-            -- Track overhealing separately
-            combatData.overheal = combatData.overheal + overhealing
-            -- Removed debug spam since it's working
-        end
-
-        -- Absorb shield events
-    elseif subevent == "SPELL_ABSORBED" then
-        print("*** ABSORB EVENT DETECTED ***")
-        local args = { ... }
-        for i = 1, math.min(10, #args) do
-            print(string.format("  arg[%d] = %s (%s)", i, tostring(args[i]), type(args[i])))
-        end
-
-        -- Try to find absorb amount - it's usually in position 8
-        local absorbAmount = select(8, ...)
-        if absorbAmount and absorbAmount > 0 then
-            combatData.absorb = combatData.absorb + absorbAmount
-            combatData.healing = combatData.healing + absorbAmount
-            print(string.format("*** ABSORB: %d (total: %d) ***", absorbAmount, combatData.absorb))
-        end
+        -- Handle as regular healing
+        HandleHealingEvent(subevent, spellName, ...)
+        return
     end
 end
 
--- Calculate DPS
-function CombatTracker:GetDPS()
-    -- Return final DPS if combat has ended and we have a final value
-    if not combatData.inCombat and combatData.finalDPS > 0 then
-        return combatData.finalDPS
-    end
+-- ============================================================================
+-- COMBAT STATE MANAGEMENT
+-- ============================================================================
 
-    -- Otherwise calculate current DPS if in combat
-    if not combatData.inCombat or not combatData.startTime then
-        return 0
-    end
+-- Start combat tracking
+function CombatTracker:StartCombat()
+    combatData.inCombat = true
+    combatData.endTime = nil
 
-    local elapsed = GetTime() - combatData.startTime
-    if elapsed <= 0 then
-        return 0
-    end
+    ResetCombatData()
 
-    return combatData.damage / elapsed
+    -- Set start time AFTER reset (since ResetCombatData sets it to nil)
+    combatData.startTime = GetTime()
+
+    print("Combat started!")
+    DebugPrint("Combat tracking reset and started")
 end
 
--- Calculate HPS
-function CombatTracker:GetHPS()
-    -- Return final HPS if combat has ended and we have a final value
-    if not combatData.inCombat and combatData.finalHPS > 0 then
-        return combatData.finalHPS
-    end
-
-    -- Otherwise calculate current HPS if in combat
-    if not combatData.inCombat or not combatData.startTime then
-        return 0
-    end
-
-    local elapsed = GetTime() - combatData.startTime
-    if elapsed <= 0 then
-        return 0
-    end
-
-    return combatData.healing / elapsed
-end
-
--- Get total damage (use final value if combat ended)
-function CombatTracker:GetTotalDamage()
-    if not combatData.inCombat and combatData.finalDamage > 0 then
-        return combatData.finalDamage
-    end
-    return combatData.damage
-end
-
--- Get total healing (use final value if combat ended)
-function CombatTracker:GetTotalHealing()
-    if not combatData.inCombat and combatData.finalHealing > 0 then
-        return combatData.finalHealing
-    end
-    return combatData.healing
-end
-
--- Get total overheal (use final value if combat ended)
-function CombatTracker:GetTotalOverheal()
-    if not combatData.inCombat and combatData.finalOverheal > 0 then
-        return combatData.finalOverheal
-    end
-    return combatData.overheal
-end
-
--- Get total absorb shields (use final value if combat ended)
-function CombatTracker:GetTotalAbsorb()
-    if not combatData.inCombat and combatData.finalAbsorb > 0 then
-        return combatData.finalAbsorb
-    end
-    return combatData.absorb
-end
-
--- Get combat duration
-function CombatTracker:GetCombatTime()
-    if not combatData.startTime then
-        return 0
-    end
-    return GetTime() - combatData.startTime
-end
-
--- Get max DPS recorded (use final value if combat ended)
-function CombatTracker:GetMaxDPS()
-    if not combatData.inCombat and combatData.finalMaxDPS > 0 then
-        return combatData.finalMaxDPS
-    end
-    return combatData.maxDPS
-end
-
--- Get max HPS recorded (use final value if combat ended)
-function CombatTracker:GetMaxHPS()
-    if not combatData.inCombat and combatData.finalMaxHPS > 0 then
-        return combatData.finalMaxHPS
-    end
-    return combatData.maxHPS
-end
-
--- Reset display stats (for refresh button)
-function CombatTracker:ResetDisplayStats()
+-- End combat tracking
+function CombatTracker:EndCombat()
     if not combatData.inCombat then
-        combatData.damage = 0
-        combatData.healing = 0
-        combatData.overheal = 0
-        combatData.absorb = 0
-        combatData.maxDPS = 0
-        combatData.maxHPS = 0
-        combatData.finalDamage = 0
-        combatData.finalHealing = 0
-        combatData.finalOverheal = 0
-        combatData.finalAbsorb = 0
-        combatData.finalMaxDPS = 0
-        combatData.finalMaxHPS = 0
-        combatData.finalDPS = 0
-        combatData.finalHPS = 0
-        combatData.startTime = nil
-        combatData.endTime = nil
+        return
+    end
+
+    combatData.endTime = GetTime()
+
+    -- Safety check for startTime
+    if not combatData.startTime then
+        DebugPrint("ERROR: startTime is nil in EndCombat, setting to endTime")
+        combatData.startTime = combatData.endTime
+    end
+
+    local elapsed = combatData.endTime - combatData.startTime
+    local elapsedMin = math.floor(elapsed / 60)
+    local elapsedSec = elapsed % 60
+
+    -- Capture final values before marking combat as ended
+    CaptureFinalValues()
+    combatData.inCombat = false
+
+    -- Print combat summary
+    print("Combat Ended")
+    print("--------------------")
+    print(string.format("Elapsed: %02d:%02d", elapsedMin, elapsedSec))
+    print("--------------------")
+    print(string.format("Final DPS: %s", self:FormatNumber(combatData.finalDPS)))
+    print(string.format("Max DPS: %s", self:FormatNumber(combatData.finalMaxDPS)))
+    print(string.format("Total Damage: %s", self:FormatNumber(combatData.finalDamage)))
+    print(string.format("Final HPS: %s", self:FormatNumber(combatData.finalHPS)))
+    print(string.format("Max HPS: %s", self:FormatNumber(combatData.finalMaxHPS)))
+    print(string.format("Total Healing: %s", self:FormatNumber(combatData.finalHealing)))
+    print(string.format("Total Overheal: %s", self:FormatNumber(combatData.finalOverheal)))
+    print(string.format("Total Absorbs: %s", self:FormatNumber(combatData.finalAbsorb)))
+    print("--------------------")
+
+    -- Print debug statistics
+    if addon.DEBUG then
+        print("Debug Statistics:")
+        print(string.format("Total Events: %d", combatData.debugCounters.totalEvents))
+        print(string.format("Damage Events: %d", combatData.debugCounters.damageEvents))
+        print(string.format("Healing Events: %d", combatData.debugCounters.healingEvents))
+        print(string.format("Absorb Events: %d", combatData.debugCounters.absorbEvents))
+        print("--------------------")
     end
 end
 
--- Check if in combat
-function CombatTracker:IsInCombat()
-    return combatData.inCombat
+-- ============================================================================
+-- EVENT HANDLING
+-- ============================================================================
+
+-- Main event handler
+function CombatTracker:OnEvent(event, ...)
+    if event == "PLAYER_REGEN_DISABLED" then
+        self:StartCombat()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        self:EndCombat()
+    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        if combatData.inCombat then
+            self:ParseCombatLog(CombatLogGetCurrentEventInfo())
+        end
+    end
 end
 
--- Update all displays
+-- ============================================================================
+-- INITIALIZATION AND UPDATES
+-- ============================================================================
+
+-- Initialize combat tracker
+function CombatTracker:Initialize()
+    self.frame = CreateFrame("Frame")
+    self.frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    self.frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    self.frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    self.frame:SetScript("OnEvent", function(self, event, ...)
+        CombatTracker:OnEvent(event, ...)
+    end)
+
+    -- Update timer for displays and max value tracking
+    self.updateTimer = C_Timer.NewTicker(UPDATE_INTERVAL, function()
+        CombatTracker:UpdateDisplays()
+    end)
+
+    DebugPrint("Combat tracker initialized")
+end
+
+-- Update displays and track maximum values
 function CombatTracker:UpdateDisplays()
-    -- Track max DPS and HPS during combat
+    -- Track peak DPS and HPS during combat
     if combatData.inCombat then
         local currentDPS = self:GetDPS()
         local currentHPS = self:GetHPS()
@@ -353,24 +541,126 @@ function CombatTracker:UpdateDisplays()
         end
     end
 
-    -- Update DPS window
+    -- Update visible windows only
     if addon.DPSWindow and addon.DPSWindow.frame and addon.DPSWindow.frame:IsShown() then
         addon.DPSWindow:UpdateDisplay()
     end
 
-    -- Update HPS window
     if addon.HPSWindow and addon.HPSWindow.frame and addon.HPSWindow.frame:IsShown() then
         addon.HPSWindow:UpdateDisplay()
     end
 end
 
--- Format numbers (like 1.5M, 2.3K, etc.)
+-- ============================================================================
+-- PUBLIC API - DATA GETTERS
+-- ============================================================================
+
+-- Calculate current DPS
+function CombatTracker:GetDPS()
+    -- Return final DPS if combat has ended
+    if not combatData.inCombat and combatData.finalDPS > 0 then
+        return combatData.finalDPS
+    end
+
+    -- Calculate current DPS if in combat
+    if not combatData.inCombat or not combatData.startTime then
+        return 0
+    end
+
+    local elapsed = GetTime() - combatData.startTime
+    return elapsed > 0 and (combatData.damage / elapsed) or 0
+end
+
+-- Calculate current HPS
+function CombatTracker:GetHPS()
+    -- Return final HPS if combat has ended
+    if not combatData.inCombat and combatData.finalHPS > 0 then
+        return combatData.finalHPS
+    end
+
+    -- Calculate current HPS if in combat
+    if not combatData.inCombat or not combatData.startTime then
+        return 0
+    end
+
+    local elapsed = GetTime() - combatData.startTime
+    return elapsed > 0 and (combatData.healing / elapsed) or 0
+end
+
+-- Get total damage (use final value if combat ended)
+function CombatTracker:GetTotalDamage()
+    return (not combatData.inCombat and combatData.finalDamage > 0) and combatData.finalDamage or combatData.damage
+end
+
+-- Get total healing (use final value if combat ended)
+function CombatTracker:GetTotalHealing()
+    return (not combatData.inCombat and combatData.finalHealing > 0) and combatData.finalHealing or combatData.healing
+end
+
+-- Get total overheal (use final value if combat ended)
+function CombatTracker:GetTotalOverheal()
+    return (not combatData.inCombat and combatData.finalOverheal > 0) and combatData.finalOverheal or combatData
+    .overheal
+end
+
+-- Get total absorb shields (use final value if combat ended)
+function CombatTracker:GetTotalAbsorb()
+    return (not combatData.inCombat and combatData.finalAbsorb > 0) and combatData.finalAbsorb or combatData.absorb
+end
+
+-- Get maximum DPS recorded (use final value if combat ended)
+function CombatTracker:GetMaxDPS()
+    return (not combatData.inCombat and combatData.finalMaxDPS > 0) and combatData.finalMaxDPS or combatData.maxDPS
+end
+
+-- Get maximum HPS recorded (use final value if combat ended)
+function CombatTracker:GetMaxHPS()
+    return (not combatData.inCombat and combatData.finalMaxHPS > 0) and combatData.finalMaxHPS or combatData.maxHPS
+end
+
+-- Get combat duration
+function CombatTracker:GetCombatTime()
+    return combatData.startTime and (GetTime() - combatData.startTime) or 0
+end
+
+-- Check if currently in combat
+function CombatTracker:IsInCombat()
+    return combatData.inCombat
+end
+
+-- ============================================================================
+-- UTILITY FUNCTIONS
+-- ============================================================================
+
+-- Format numbers with consistent decimal alignment
 function CombatTracker:FormatNumber(num)
     if num >= 1000000 then
-        return string.format("%.1fM", num / 1000000)
+        return string.format("%.2fM", num / 1000000)
     elseif num >= 1000 then
-        return string.format("%.1fK", num / 1000)
+        return string.format("%.2fK", num / 1000)
     else
-        return tostring(math.floor(num))
+        return string.format("%.2f", num)
     end
+end
+
+-- Reset all statistics (for refresh button)
+function CombatTracker:ResetDisplayStats()
+    if not combatData.inCombat then
+        ResetCombatData()
+        DebugPrint("Combat stats reset")
+    end
+end
+
+-- Get debug information (for status commands)
+function CombatTracker:GetDebugInfo()
+    return {
+        inCombat = combatData.inCombat,
+        damage = combatData.damage,
+        healing = combatData.healing,
+        overheal = combatData.overheal,
+        absorb = combatData.absorb,
+        counters = combatData.debugCounters,
+        dps = self:GetDPS(),
+        hps = self:GetHPS()
+    }
 end

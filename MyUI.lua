@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-4b2d3f5"
-addon.BUILD_DATE = "2025-05-30-19:00"
+addon.VERSION = "main-a6a2aa3"
+addon.BUILD_DATE = "2025-05-30-19:01"
 
 -- Debug flag
 addon.DEBUG = true
@@ -392,11 +392,110 @@ function SlashCmdList.MYUISTATUS(msg, editBox)
     print("Sub Window: " .. (addon.SubWindow and "Loaded" or "Missing"))
     if addon.CombatTracker then
         print("In Combat: " .. tostring(addon.CombatTracker:IsInCombat()))
+
+        -- Show combat debug info
+        local debugInfo = addon.CombatTracker:GetDebugInfo()
+        if debugInfo then
+            print("Current DPS: " .. addon.CombatTracker:FormatNumber(debugInfo.dps))
+            print("Current HPS: " .. addon.CombatTracker:FormatNumber(debugInfo.hps))
+            print("Total Damage: " .. addon.CombatTracker:FormatNumber(debugInfo.damage))
+            print("Total Healing: " .. addon.CombatTracker:FormatNumber(debugInfo.healing))
+            print("Total Absorb: " .. addon.CombatTracker:FormatNumber(debugInfo.absorb))
+            if debugInfo.counters then
+                print("Event Counters:")
+                print("  Total: " .. debugInfo.counters.totalEvents)
+                print("  Damage: " .. debugInfo.counters.damageEvents)
+                print("  Healing: " .. debugInfo.counters.healingEvents)
+                print("  Absorb: " .. debugInfo.counters.absorbEvents)
+            end
+        end
     end
     print("Main Frame: " .. (addon.mainFrame and "Created" or "Not Created"))
     if addon.mainFrame then
         print("Main Frame Visible: " .. tostring(addon.mainFrame:IsShown()))
     end
+end
+
+-- Combat debug command
+SLASH_MYUICOMBATDEBUG1 = "/muicombatdebug"
+function SlashCmdList.MYUICOMBATDEBUG(msg, editBox)
+    if not addon.CombatTracker then
+        print("CombatTracker not loaded!")
+        return
+    end
+
+    local debugInfo = addon.CombatTracker:GetDebugInfo()
+    print("=== Combat Debug Info ===")
+    addon:DumpTable(debugInfo)
+end
+
+-- Absorb testing command
+SLASH_MYUIABSORBTEST1 = "/muiabsorb"
+function SlashCmdList.MYUIABSORBTEST(msg, editBox)
+    print("=== Testing Absorb Detection ===")
+    print("1. Cast an absorb spell (Power Word: Shield, etc.)")
+    print("2. Watch chat for absorb events")
+    print("3. Use /muistatus to see absorb counter")
+    print("4. Enable debug mode with /muidebug if not already on")
+    print("================================")
+
+    -- Also show current absorb status
+    if addon.CombatTracker then
+        local debugInfo = addon.CombatTracker:GetDebugInfo()
+        if debugInfo then
+            print("Current absorb total: " .. addon.CombatTracker:FormatNumber(debugInfo.absorb))
+            print("Absorb events detected: " .. (debugInfo.counters.absorbEvents or 0))
+        end
+    end
+end
+
+-- Clear absorb debug logs
+SLASH_MYUIABSORBCLEAR1 = "/muiabsorbclear"
+function SlashCmdList.MYUIABSORBCLEAR(msg, editBox)
+    if addon.CombatTracker then
+        -- Reset just the absorb counter for testing
+        local debugInfo = addon.CombatTracker:GetDebugInfo()
+        if debugInfo and debugInfo.counters then
+            debugInfo.counters.absorbEvents = 0
+        end
+        print("Absorb event counter reset")
+    end
+end
+
+-- Debug display values command (one-time check, no spam)
+SLASH_MYUIDISPLAYCHECK1 = "/muidisplay"
+function SlashCmdList.MYUIDISPLAYCHECK(msg, editBox)
+    if not addon.CombatTracker then
+        print("CombatTracker not loaded!")
+        return
+    end
+
+    print("=== Display Values Check ===")
+    print("In Combat: " .. tostring(addon.CombatTracker:IsInCombat()))
+
+    local absorbValue = addon.CombatTracker:GetTotalAbsorb()
+    local overhealValue = addon.CombatTracker:GetTotalOverheal()
+    local totalHealing = addon.CombatTracker:GetTotalHealing()
+
+    print("Raw Values:")
+    print("  Absorb: " .. absorbValue)
+    print("  Overheal: " .. overhealValue)
+    print("  Total Healing: " .. totalHealing)
+
+    print("Formatted Values:")
+    print("  Absorb: " .. addon.CombatTracker:FormatNumber(absorbValue))
+    print("  Overheal: " .. addon.CombatTracker:FormatNumber(overhealValue))
+    print("  Total Healing: " .. addon.CombatTracker:FormatNumber(totalHealing))
+
+    -- Overheal calculation
+    local totalHealingWithOverheal = totalHealing + overhealValue
+    local overhealPercent = 0
+    if overhealValue > 0 and totalHealingWithOverheal > 0 then
+        overhealPercent = math.floor((overhealValue / totalHealingWithOverheal) * 100)
+    end
+    print("  Overheal %: " .. overhealPercent .. "%")
+
+    print("============================")
 end
 
 -- Minimap button (optional)
