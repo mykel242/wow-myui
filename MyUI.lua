@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-rolling-average-d324432"
-addon.BUILD_DATE = "2025-05-31-14:37"
+addon.VERSION = "feature-rolling-average-c299a58"
+addon.BUILD_DATE = "2025-05-31-14:59"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false

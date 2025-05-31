@@ -114,12 +114,77 @@ function BaseMeterWindow:Create()
     -- Store frame reference
     self.frame = frame
 
-    -- Secondary stats - moved closer to left edge
-    -- Row 1: Left side (max value and label) - moved from x=8 to x=4
+    -- Meter mode indicator (small text showing current max and mode)
+    local meterIndicator = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    meterIndicator:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 4, 4) -- Bottom left near reset button
+    meterIndicator:SetText("1.9M (auto)")                            -- Remove "max:" prefix
+    meterIndicator:SetTextColor(0, 1, 1, 0.8)                        -- Cyan for auto
+    meterIndicator:SetJustifyH("LEFT")
+    frame.meterIndicator = meterIndicator
+
+    -- Reset button (small, lower right corner)
+    local resetBtn = CreateFrame("Button", nil, frame)
+    resetBtn:SetSize(16, 16)
+    resetBtn:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
+
+    -- Button texture (your custom refresh icon)
+    local texture = resetBtn:CreateTexture(nil, "ARTWORK")
+    texture:SetAllPoints(resetBtn)
+    texture:SetTexture("Interface\\AddOns\\myui2\\refresh-icon") -- Your custom icon path
+    texture:SetAlpha(0.6)
+
+    -- Button highlight
+    local highlight = resetBtn:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints(resetBtn)
+    texture:SetTexture("Interface\\AddOns\\myui2\\refresh-icon") -- Your custom icon path
+    highlight:SetAlpha(1.0)
+
+    -- Button functionality
+    resetBtn:SetScript("OnClick", function()
+        -- Reset the associated pixel meter if it exists
+        local meterName = self.config.label:lower() -- "DPS" -> "dps", "HPS" -> "hps"
+        local pixelMeter = nil
+
+        if meterName == "dps" and addon.dpsPixelMeter then
+            pixelMeter = addon.dpsPixelMeter
+        elseif meterName == "hps" and addon.hpsPixelMeter then
+            pixelMeter = addon.hpsPixelMeter
+        end
+
+        if pixelMeter then
+            pixelMeter:ResetMaxValue()
+            -- Update the meter indicator immediately
+            instance:UpdateMeterIndicator()
+        end
+
+        -- Also reset the combat stats for this meter type
+        if addon.CombatTracker then
+            addon.CombatTracker:ResetDisplayStats()
+        end
+
+        print(self.config.label .. " meter reset")
+    end)
+
+    -- Tooltip
+    resetBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Reset " .. instance.config.label .. " Meter")
+        GameTooltip:AddLine("Resets max value scaling and combat stats", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+
+    resetBtn:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
+    end)
+
+    frame.resetBtn = resetBtn
+
+    -- Secondary stats - moved up to be just below main counter
+    -- Row 1: Left side (max value and label) - moved up from bottom
     print("Creating maxValue...")
     local maxValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    maxValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 4, 16) -- Changed from 8 to 4
-    maxValue:SetSize(50, 0)                                     -- Reduced from 60 to 50
+    maxValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -44) -- Just below main counter area
+    maxValue:SetSize(50, 0)
     maxValue:SetText("0")
     maxValue:SetTextColor(0.8, 0.8, 0.8, 1)
     maxValue:SetJustifyH("RIGHT")
@@ -131,11 +196,11 @@ function BaseMeterWindow:Create()
     maxLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     maxLabel:SetJustifyH("LEFT")
 
-    -- Row 2: Left side (total value and label) - moved from x=8 to x=4
+    -- Row 2: Left side (total value and label) - moved up from bottom
     print("Creating totalValue...")
     local totalValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    totalValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 4, 4) -- Changed from 8 to 4
-    totalValue:SetSize(50, 0)                                    -- Reduced from 60 to 50
+    totalValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -56) -- Below max counter
+    totalValue:SetSize(50, 0)
     totalValue:SetText("0")
     totalValue:SetTextColor(0.8, 0.8, 0.8, 1)
     totalValue:SetJustifyH("RIGHT")
@@ -148,29 +213,14 @@ function BaseMeterWindow:Create()
     totalLabel:SetJustifyH("LEFT")
 
     -- Absorb counter - DISABLED FOR NOW
-    -- if self.config.showAbsorb == true then
-    --     print("Creating absorb stats...")
-    --     local absorbValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    --     absorbValue:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -50, 16)
-    --     absorbValue:SetSize(40, 0)
-    --     absorbValue:SetText("0")
-    --     absorbValue:SetTextColor(0.8, 0.8, 0.8, 1)
-    --     absorbValue:SetJustifyH("RIGHT")
-    --     frame.absorbValue = absorbValue
+    -- (keeping this comment block for reference)
 
-    --     local absorbLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    --     absorbLabel:SetPoint("LEFT", absorbValue, "RIGHT", 2, 0)
-    --     absorbLabel:SetText("absorb")
-    --     absorbLabel:SetTextColor(0.8, 0.8, 0.8, 1)
-    --     absorbLabel:SetJustifyH("LEFT")
-    -- end
-
-    -- Overheal (only if enabled in config) - Right side, properly contained
+    -- Overheal (only if enabled in config) - Right side, top position
     if self.config.showOverheal == true then
         print("Creating overheal stats...")
         local overhealValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        overhealValue:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -65, 4) -- More space from edge
-        overhealValue:SetSize(25, 0)                                        -- Smaller value field
+        overhealValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -65, -44) -- Top row, right side
+        overhealValue:SetSize(25, 0)
         overhealValue:SetText("0%")
         overhealValue:SetTextColor(0.8, 0.8, 0.8, 1)
         overhealValue:SetJustifyH("RIGHT")
@@ -252,6 +302,72 @@ function BaseMeterWindow:CreatePixelMeterGrid()
     print("=== CreatePixelMeterGrid() COMPLETED ===")
 end
 
+-- Update the max indicator display
+function BaseMeterWindow:UpdateMaxIndicator()
+    if not self.frame or not self.frame.maxIndicator then return end
+
+    local meterName = self.config.label:lower()
+    local pixelMeter = nil
+
+    if meterName == "dps" and addon.dpsPixelMeter then
+        pixelMeter = addon.dpsPixelMeter
+    elseif meterName == "hps" and addon.hpsPixelMeter then
+        pixelMeter = addon.hpsPixelMeter
+    end
+
+    if pixelMeter then
+        local info = pixelMeter:GetDebugInfo()
+        local maxText = string.format("max: %s (%s)",
+            addon.CombatTracker:FormatNumber(info.currentMax),
+            info.isManual and "manual" or "auto"
+        )
+        self.frame.maxIndicator:SetText(maxText)
+
+        -- Color coding: manual = yellow, auto = gray
+        if info.isManual then
+            self.frame.maxIndicator:SetTextColor(1.0, 1.0, 0.4, 0.8) -- Yellow
+        else
+            self.frame.maxIndicator:SetTextColor(0.6, 0.6, 0.6, 0.8) -- Gray
+        end
+    else
+        self.frame.maxIndicator:SetText("max: -- (--)")
+        self.frame.maxIndicator:SetTextColor(0.6, 0.6, 0.6, 0.8)
+    end
+end
+
+-- Update the meter indicator display
+function BaseMeterWindow:UpdateMeterIndicator()
+    if not self.frame or not self.frame.meterIndicator then return end
+
+    local meterName = self.config.label:lower()
+    local pixelMeter = nil
+
+    if meterName == "dps" and addon.dpsPixelMeter then
+        pixelMeter = addon.dpsPixelMeter
+    elseif meterName == "hps" and addon.hpsPixelMeter then
+        pixelMeter = addon.hpsPixelMeter
+    end
+
+    if pixelMeter then
+        local info = pixelMeter:GetDebugInfo()
+        local indicatorText = string.format("%s (%s)",
+            addon.CombatTracker:FormatNumber(info.currentMax),
+            info.isManual and "manual" or "auto"
+        )
+        self.frame.meterIndicator:SetText(indicatorText)
+
+        -- Color coding: manual = green, auto = cyan
+        if info.isManual then
+            self.frame.meterIndicator:SetTextColor(0, 1, 0, 0.8) -- Green for manual
+        else
+            self.frame.meterIndicator:SetTextColor(0, 1, 1, 0.8) -- Cyan for auto
+        end
+    else
+        self.frame.meterIndicator:SetText("-- (--)")
+        self.frame.meterIndicator:SetTextColor(0.6, 0.6, 0.6, 0.8)
+    end
+end
+
 -- Update the display with current combat data
 function BaseMeterWindow:UpdateDisplay()
     if not self.frame then return end
@@ -299,6 +415,9 @@ function BaseMeterWindow:UpdateDisplay()
         end
         self.frame.overhealValue:SetText(overhealPercent .. "%")
     end
+
+    -- Update meter indicator
+    self:UpdateMeterIndicator()
 
     -- Simple alpha based on combat state
     if inCombat then
