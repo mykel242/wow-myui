@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-045f133"
-addon.BUILD_DATE = "2025-05-30-19:29"
+addon.VERSION = "feature-rolling-average-ba51085"
+addon.BUILD_DATE = "2025-05-31-12:31"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -177,7 +177,7 @@ function addon:UpdateStatusDisplay()
 
     local debugStatus = self.DEBUG and "|cff00ff00ON|r" or "|cffff0000OFF|r"
     local combatStatus = (self.CombatTracker and self.CombatTracker:IsInCombat()) and "|cffff0000IN COMBAT|r" or
-    "|cff888888Out of Combat|r"
+        "|cff888888Out of Combat|r"
 
     self.mainFrame.statusText:SetText("Debug: " .. debugStatus .. "\nCombat: " .. combatStatus)
 end
@@ -279,7 +279,7 @@ function addon:CreateMainFrame()
     -- End Combat Button
     local endCombatBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
     endCombatBtn:SetSize(100, 30)
-    endCombatBtn:SetPoint("TOP", frame, "TOP", 0, -160)
+    endCombatBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -160)
     endCombatBtn:SetText("End Combat")
     endCombatBtn:SetScript("OnClick", function()
         if addon.CombatTracker then
@@ -288,6 +288,9 @@ function addon:CreateMainFrame()
             addon:UpdateStatusDisplay()
         end
     end)
+
+
+
 
     -- Close button functionality
     frame.CloseButton:SetScript("OnClick", function()
@@ -363,7 +366,7 @@ function SlashCmdList.MYUI(msg, editBox)
         print("Forced combat end")
         addon:UpdateStatusDisplay()
     else
-        print("Usage: /myui [show | hide | toggle | dps | hps | debug | cstart | cend]")
+        print("Usage: /myui [show | hide | toggle | dps | hps | debug | cstart | cend ]")
     end
 end
 
