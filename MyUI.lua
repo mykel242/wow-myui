@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-rolling-average-ba51085"
-addon.BUILD_DATE = "2025-05-31-12:31"
+addon.VERSION = "feature-rolling-average-39f9b87"
+addon.BUILD_DATE = "2025-05-31-13:46"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -289,9 +289,6 @@ function addon:CreateMainFrame()
         end
     end)
 
-
-
-
     -- Close button functionality
     frame.CloseButton:SetScript("OnClick", function()
         frame:Hide()
@@ -349,6 +346,37 @@ function SlashCmdList.MYUI(msg, editBox)
         addon.db.debugMode = addon.DEBUG
         print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
         addon:UpdateStatusDisplay()
+    elseif command == "pixeltest" then
+        print("=== PIXEL METER TEST ===")
+        if not addon.HPSWindow then
+            print("ERROR: HPSWindow doesn't exist")
+            return
+        end
+        if not addon.HPSWindow.frame then
+            print("ERROR: HPSWindow.frame doesn't exist")
+            return
+        end
+        if not addon.HPSWindow.pixelMeter then
+            print("ERROR: HPSWindow.pixelMeter doesn't exist")
+            return
+        end
+
+        local pm = addon.HPSWindow.pixelMeter
+        print("PixelMeter object exists:", pm ~= nil)
+        print("PixelMeter.frame exists:", pm.frame ~= nil)
+        print("PixelMeter.pixels table exists:", pm.pixels ~= nil)
+
+        if pm.pixels then
+            print("PixelMeter.pixels[1] exists:", pm.pixels[1] ~= nil)
+            if pm.pixels[1] then
+                print("PixelMeter.pixels[1][1] exists:", pm.pixels[1][1] ~= nil)
+            end
+        end
+
+        print("Calling pm:Show()...")
+        pm:Show()
+        print("pm:Show() completed")
+        print("=== END PIXEL TEST ===")
     elseif command == "cstart" then
         if not addon.CombatTracker then
             print("CombatTracker not loaded!")
@@ -365,8 +393,58 @@ function SlashCmdList.MYUI(msg, editBox)
         addon.CombatTracker:EndCombat()
         print("Forced combat end")
         addon:UpdateStatusDisplay()
+    elseif command == "hpsmeter" then
+        if not addon.hpsPixelMeter then
+            if addon.WorkingPixelMeter then
+                addon.hpsPixelMeter = addon.WorkingPixelMeter:New({
+                    cols = 20,
+                    rows = 1,
+                    pixelSize = 8,
+                    gap = 1,
+                    maxValue = 15000
+                })
+                addon.hpsPixelMeter:SetValueSource(function()
+                    return addon.CombatTracker:GetRollingHPS()
+                end)
+            else
+                print("ERROR: WorkingPixelMeter not loaded")
+                return
+            end
+        end
+        addon.hpsPixelMeter:Toggle()
+
+        -- Position after showing (when frame exists)
+        if addon.hpsPixelMeter.frame and addon.HPSWindow and addon.HPSWindow.frame then
+            addon.hpsPixelMeter.frame:ClearAllPoints()
+            addon.hpsPixelMeter.frame:SetPoint("BOTTOM", addon.HPSWindow.frame, "TOP", 0, 5)
+        end
+    elseif command == "dpsmeter" then
+        if not addon.dpsPixelMeter then
+            if addon.WorkingPixelMeter then
+                addon.dpsPixelMeter = addon.WorkingPixelMeter:New({
+                    cols = 20,
+                    rows = 1,
+                    pixelSize = 8,
+                    gap = 1,
+                    maxValue = 15000
+                })
+                addon.dpsPixelMeter:SetValueSource(function()
+                    return addon.CombatTracker:GetRollingDPS()
+                end)
+            else
+                print("ERROR: WorkingPixelMeter not loaded")
+                return
+            end
+        end
+        addon.dpsPixelMeter:Toggle()
+
+        -- Position after showing (when frame exists)
+        if addon.dpsPixelMeter.frame and addon.DPSWindow and addon.DPSWindow.frame then
+            addon.dpsPixelMeter.frame:ClearAllPoints()
+            addon.dpsPixelMeter.frame:SetPoint("BOTTOM", addon.DPSWindow.frame, "TOP", 0, 5)
+        end
     else
-        print("Usage: /myui [show | hide | toggle | dps | hps | debug | cstart | cend ]")
+        print("Usage: /myui [show | hide | toggle | dps | hps | debug | pixeltest | cstart | cend ]")
     end
 end
 

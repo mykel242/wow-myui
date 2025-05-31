@@ -228,17 +228,21 @@ function BaseMeterWindow:Create()
     print("  overhealValue:", frame.overhealValue ~= nil)
 end
 
--- Create Pixel Meter Grid (generic)
+-- Create Pixel Meter Grid (generic) - DEBUG VERSION
 function BaseMeterWindow:CreatePixelMeterGrid()
-    print("CreatePixelMeterGrid() called")
+    print("=== CreatePixelMeterGrid() STARTING ===")
 
     if not self.frame then
+        print("ERROR: self.frame is nil in CreatePixelMeterGrid")
         error("self.frame is nil in CreatePixelMeterGrid")
     end
+    print("✓ self.frame exists")
 
     if not addon.PixelMeterGrid then
+        print("ERROR: addon.PixelMeterGrid is nil")
         error("addon.PixelMeterGrid is nil")
     end
+    print("✓ addon.PixelMeterGrid exists")
 
     print("BaseMeterWindow: Creating PixelMeterGrid for", self.config.label)
 
@@ -251,26 +255,35 @@ function BaseMeterWindow:CreatePixelMeterGrid()
         maxValue = 10000
     }
 
-    print("PixelMeter config:", meterConfig.cols, "x", meterConfig.rows)
+    print("✓ PixelMeter config:", meterConfig.cols, "x", meterConfig.rows)
 
     -- Create the pixel meter (using PixelMeterGrid as the implementation)
+    print("About to call PixelMeterGrid:New...")
     self.pixelMeter = addon.PixelMeterGrid:New(self.frame, meterConfig)
-    print("PixelMeterGrid:New returned:", self.pixelMeter ~= nil)
+    print("✓ PixelMeterGrid:New returned:", self.pixelMeter ~= nil)
+
+    if not self.pixelMeter then
+        error("PixelMeterGrid:New returned nil")
+    end
 
     -- Position it between main text and stats
-    self.pixelMeter:SetPoint("TOP", 0, -40)
-    print("PixelMeter positioned")
+    print("About to set position...")
+    self.pixelMeter:SetPoint("TOPLEFT", UIParent, "CENTER", 0, 0) -- Position relative to screen center
 
     -- Set the value source from config
     if self.config.getPixelMeterValue then
+        print("About to set value source...")
         self.pixelMeter:SetValueSource(self.config.getPixelMeterValue)
-        print("Value source set")
+        print("✓ Value source set")
     else
         print("WARNING: No getPixelMeterValue in config")
     end
 
+    print("About to call Show()...")
     self.pixelMeter:Show()
-    print("PixelMeter:Show() called")
+    print("✓ PixelMeter:Show() called")
+
+    print("=== CreatePixelMeterGrid() COMPLETED ===")
 end
 
 -- Update the display with current combat data

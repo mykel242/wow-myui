@@ -29,37 +29,58 @@ end
 function PixelMeterGrid:Create()
     if self.frame then return end
 
-    -- Calculate total meter size
-    local totalWidth = (self.cols * self.pixelSize) + ((self.cols - 1) * self.gap)
-    local totalHeight = (self.rows * self.pixelSize) + ((self.rows - 1) * self.gap)
+    -- AGGRESSIVE DEBUG: Make frame HUGE in debug mode
+    local debugMultiplier = addon.DEBUG and 2 or 1
+    local totalWidth = ((self.cols * self.pixelSize) + ((self.cols - 1) * self.gap)) * debugMultiplier
+    local totalHeight = ((self.rows * self.pixelSize) + ((self.rows - 1) * self.gap)) * debugMultiplier
 
     if addon.DEBUG then
-        print(string.format("PixelMeterGrid: Creating %dx%d meter, size %dx%d",
+        print(string.format("PixelMeterGrid: Creating HUGE %dx%d meter, size %dx%d",
             self.cols, self.rows, totalWidth, totalHeight))
     end
 
     -- Create meter frame as child of parent
     local frame = CreateFrame("Frame", nil, self.parent)
     frame:SetSize(totalWidth, totalHeight)
-    frame:SetFrameStrata("DIALOG")
-    frame:SetFrameLevel(self.parent:GetFrameLevel() + 10)
+    frame:SetFrameStrata("TOOLTIP")                       -- Higher strata to be on top
+    frame:SetFrameLevel(self.parent:GetFrameLevel() + 20) -- Much higher level
+
+    -- DEBUG: Add BRIGHT border to see frame bounds
+    if addon.DEBUG then
+        local border = frame:CreateTexture(nil, "BACKGROUND")
+        border:SetAllPoints(frame)
+        border:SetColorTexture(1, 1, 0, 0.8) -- Bright yellow border
+        print("PixelMeterGrid: Added BRIGHT YELLOW debug border")
+    end
 
     -- Create pixels using the proven method
     for row = 1, self.rows do
         self.pixels[row] = {}
         for col = 1, self.cols do
             local pixel = frame:CreateTexture(nil, "OVERLAY")
-            pixel:SetSize(self.pixelSize, self.pixelSize)
 
-            -- Position from left to right
-            local x = (col - 1) * (self.pixelSize + self.gap)
-            local y = -((row - 1) * (self.pixelSize + self.gap))
+            -- AGGRESSIVE DEBUG: Make pixels HUGE and BRIGHT
+            if addon.DEBUG then
+                pixel:SetSize(15, 15)             -- MASSIVE pixels
+                pixel:SetColorTexture(1, 0, 1, 1) -- Bright magenta, full alpha
+            else
+                pixel:SetSize(self.pixelSize, self.pixelSize)
+                pixel:SetColorTexture(0.2, 0.2, 0.2, 0.6)
+            end
+
+            -- Position from left to right with bigger gaps in debug mode
+            local actualPixelSize = addon.DEBUG and 15 or self.pixelSize
+            local actualGap = addon.DEBUG and 2 or self.gap
+            local x = (col - 1) * (actualPixelSize + actualGap)
+            local y = -((row - 1) * (actualPixelSize + actualGap))
             pixel:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
 
-            -- Start dim
-            pixel:SetColorTexture(0.2, 0.2, 0.2, 0.6)
-
             self.pixels[row][col] = pixel
+
+            if addon.DEBUG then
+                print(string.format("Created HUGE pixel [%d,%d] at (%d,%d), size=%d",
+                    row, col, x, y, actualPixelSize))
+            end
         end
     end
 
@@ -74,12 +95,6 @@ function PixelMeterGrid:Create()
 
     if addon.DEBUG then
         print("PixelMeterGrid created successfully")
-    end
-
-    -- TEMP DEBUG: Make pixels VERY visible
-    if addon.DEBUG then
-        pixel:SetColorTexture(1, 0, 1, 1) -- Bright magenta
-        pixel:SetSize(10, 10)             -- Bigger pixels
     end
 end
 
@@ -116,19 +131,21 @@ function PixelMeterGrid:Update()
         end
     end
 
-    -- Update pixel colors
-    for row = 1, self.rows do
-        for col = 1, self.cols do
-            local pixel = self.pixels[row][col]
+    -- Update pixel colors (skip in debug mode to keep them visible)
+    if not addon.DEBUG then
+        for row = 1, self.rows do
+            for col = 1, self.cols do
+                local pixel = self.pixels[row][col]
 
-            if col <= activeCols then
-                -- Active pixel - color based on position
-                local colPercent = col / self.cols
-                local r, g, b = self:GetHPSColor(colPercent)
-                pixel:SetColorTexture(r, g, b, 1.0)
-            else
-                -- Inactive pixel
-                pixel:SetColorTexture(0.2, 0.2, 0.2, 0.4)
+                if col <= activeCols then
+                    -- Active pixel - color based on position
+                    local colPercent = col / self.cols
+                    local r, g, b = self:GetHPSColor(colPercent)
+                    pixel:SetColorTexture(r, g, b, 1.0)
+                else
+                    -- Inactive pixel
+                    pixel:SetColorTexture(0.2, 0.2, 0.2, 0.4)
+                end
             end
         end
     end

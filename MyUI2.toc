@@ -8,8 +8,9 @@
 
 CombatTracker.lua
 BaseMeterWindow.lua
-PixelMeterGrid.lua
 SimpleGridWindow.lua
 MyUI.lua
 DPSWindow.lua
 HPSWindow.lua
+PixelMeterGrid.lua
+WorkingPixelMeter.lua
