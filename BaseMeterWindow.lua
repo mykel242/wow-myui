@@ -94,14 +94,15 @@ function BaseMeterWindow:Create()
     topBg:SetColorTexture(0, 0, 0, 0.8)
     print("Backgrounds created")
 
-    -- Main number (large, top-left with margin, aligned with label)
-    local mainText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    -- Main number (large, top-left with margin, aligned with label) - CUSTOM FONT
+    local mainText = frame:CreateFontString(nil, "OVERLAY")
+    mainText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 20, "OUTLINE")
     mainText:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -8)
     mainText:SetText("0")
     mainText:SetTextColor(1, 1, 1, 1)
     mainText:SetJustifyH("LEFT")
     frame.mainText = mainText
-    print("Main text created")
+    print("Main text created with custom font")
 
     -- Label (top right, aligned with main number)
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -117,7 +118,7 @@ function BaseMeterWindow:Create()
     -- Meter mode indicator (small text showing current max and mode)
     local meterIndicator = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     meterIndicator:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 4, 4) -- Bottom left near reset button
-    meterIndicator:SetText("1.9M (auto)")                            -- Remove "max:" prefix
+    meterIndicator:SetText("15.0K (auto)")                           -- Remove "max:" prefix
     meterIndicator:SetTextColor(0, 1, 1, 0.8)                        -- Cyan for auto
     meterIndicator:SetJustifyH("LEFT")
     frame.meterIndicator = meterIndicator
@@ -136,7 +137,7 @@ function BaseMeterWindow:Create()
     -- Button highlight
     local highlight = resetBtn:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints(resetBtn)
-    texture:SetTexture("Interface\\AddOns\\myui2\\refresh-icon") -- Your custom icon path
+    highlight:SetTexture("Interface\\AddOns\\myui2\\refresh-icon") -- Your custom icon path
     highlight:SetAlpha(1.0)
 
     -- Button functionality
@@ -179,59 +180,41 @@ function BaseMeterWindow:Create()
 
     frame.resetBtn = resetBtn
 
-    -- Secondary stats - moved up to be just below main counter
-    -- Row 1: Left side (max value and label) - moved up from bottom
-    print("Creating maxValue...")
-    local maxValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    maxValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -44) -- Just below main counter area
-    maxValue:SetSize(50, 0)
-    maxValue:SetText("0")
+    -- Secondary stats - redesigned with better alignment and inline labels
+    -- Row 1: Left side (max value with inline label) - CUSTOM FONT
+    local maxValue = frame:CreateFontString(nil, "OVERLAY")
+    maxValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    maxValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -44)
+    maxValue:SetSize(120, 12) -- Wider and set height
+    maxValue:SetText("0 max")
     maxValue:SetTextColor(0.8, 0.8, 0.8, 1)
-    maxValue:SetJustifyH("RIGHT")
+    maxValue:SetJustifyH("LEFT")
+    maxValue:SetWordWrap(false) -- Prevent wrapping
     frame.maxValue = maxValue
 
-    local maxLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    maxLabel:SetPoint("LEFT", maxValue, "RIGHT", 2, 0)
-    maxLabel:SetText("max")
-    maxLabel:SetTextColor(0.8, 0.8, 0.8, 1)
-    maxLabel:SetJustifyH("LEFT")
-
-    -- Row 2: Left side (total value and label) - moved up from bottom
-    print("Creating totalValue...")
-    local totalValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    totalValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -56) -- Below max counter
-    totalValue:SetSize(50, 0)
-    totalValue:SetText("0")
+    -- Row 2: Left side (total value with inline label) - CUSTOM FONT
+    local totalValue = frame:CreateFontString(nil, "OVERLAY")
+    totalValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    totalValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -56)
+    totalValue:SetSize(120, 12) -- Wider and set height
+    totalValue:SetText("0 total")
     totalValue:SetTextColor(0.8, 0.8, 0.8, 1)
-    totalValue:SetJustifyH("RIGHT")
+    totalValue:SetJustifyH("LEFT")
+    totalValue:SetWordWrap(false) -- Prevent wrapping
     frame.totalValue = totalValue
 
-    local totalLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    totalLabel:SetPoint("LEFT", totalValue, "RIGHT", 2, 0)
-    totalLabel:SetText("total")
-    totalLabel:SetTextColor(0.8, 0.8, 0.8, 1)
-    totalLabel:SetJustifyH("LEFT")
-
-    -- Absorb counter - DISABLED FOR NOW
-    -- (keeping this comment block for reference)
-
-    -- Overheal (only if enabled in config) - Right side, top position
+    -- Overheal (only if enabled in config) - Right side, top position - CUSTOM FONT
     if self.config.showOverheal == true then
         print("Creating overheal stats...")
-        local overhealValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        overhealValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -65, -44) -- Top row, right side
-        overhealValue:SetSize(25, 0)
-        overhealValue:SetText("0%")
+        local overhealValue = frame:CreateFontString(nil, "OVERLAY")
+        overhealValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+        overhealValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -44) -- More space from right edge
+        overhealValue:SetSize(100, 12)                                 -- Wider and set height to prevent wrapping
+        overhealValue:SetText("0% overheal")                           -- Include label in the text
         overhealValue:SetTextColor(0.8, 0.8, 0.8, 1)
         overhealValue:SetJustifyH("RIGHT")
+        overhealValue:SetWordWrap(false) -- Explicitly disable word wrapping
         frame.overhealValue = overhealValue
-
-        local overhealLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        overhealLabel:SetPoint("LEFT", overhealValue, "RIGHT", 2, 0)
-        overhealLabel:SetPoint("RIGHT", frame, "RIGHT", -4, 0) -- Anchor to frame edge
-        overhealLabel:SetText("overheal")
-        overhealLabel:SetTextColor(0.8, 0.8, 0.8, 1)
-        overhealLabel:SetJustifyH("LEFT")
         print("Overheal stats created")
     end
 
@@ -242,97 +225,6 @@ function BaseMeterWindow:Create()
     end
 
     print("BaseMeterWindow:Create() completed for", self.config.label)
-end
-
--- Create Pixel Meter Grid (generic) - DEBUG VERSION
-function BaseMeterWindow:CreatePixelMeterGrid()
-    print("=== CreatePixelMeterGrid() STARTING ===")
-
-    if not self.frame then
-        print("ERROR: self.frame is nil in CreatePixelMeterGrid")
-        error("self.frame is nil in CreatePixelMeterGrid")
-    end
-    print("✓ self.frame exists")
-
-    if not addon.PixelMeterGrid then
-        print("ERROR: addon.PixelMeterGrid is nil")
-        error("addon.PixelMeterGrid is nil")
-    end
-    print("✓ addon.PixelMeterGrid exists")
-
-    print("BaseMeterWindow: Creating PixelMeterGrid for", self.config.label)
-
-    -- Get meter config from window config
-    local meterConfig = self.config.pixelMeterConfig or {
-        cols = 20,
-        rows = 1,
-        pixelSize = 6,
-        gap = 1,
-        maxValue = 10000
-    }
-
-    print("✓ PixelMeter config:", meterConfig.cols, "x", meterConfig.rows)
-
-    -- Create the pixel meter (using PixelMeterGrid as the implementation)
-    print("About to call PixelMeterGrid:New...")
-    self.pixelMeter = addon.PixelMeterGrid:New(self.frame, meterConfig)
-    print("✓ PixelMeterGrid:New returned:", self.pixelMeter ~= nil)
-
-    if not self.pixelMeter then
-        error("PixelMeterGrid:New returned nil")
-    end
-
-    -- Position it between main text and stats
-    print("About to set position...")
-    self.pixelMeter:SetPoint("TOPLEFT", UIParent, "CENTER", 0, 0) -- Position relative to screen center
-
-    -- Set the value source from config
-    if self.config.getPixelMeterValue then
-        print("About to set value source...")
-        self.pixelMeter:SetValueSource(self.config.getPixelMeterValue)
-        print("✓ Value source set")
-    else
-        print("WARNING: No getPixelMeterValue in config")
-    end
-
-    print("About to call Show()...")
-    self.pixelMeter:Show()
-    print("✓ PixelMeter:Show() called")
-
-    print("=== CreatePixelMeterGrid() COMPLETED ===")
-end
-
--- Update the max indicator display
-function BaseMeterWindow:UpdateMaxIndicator()
-    if not self.frame or not self.frame.maxIndicator then return end
-
-    local meterName = self.config.label:lower()
-    local pixelMeter = nil
-
-    if meterName == "dps" and addon.dpsPixelMeter then
-        pixelMeter = addon.dpsPixelMeter
-    elseif meterName == "hps" and addon.hpsPixelMeter then
-        pixelMeter = addon.hpsPixelMeter
-    end
-
-    if pixelMeter then
-        local info = pixelMeter:GetDebugInfo()
-        local maxText = string.format("max: %s (%s)",
-            addon.CombatTracker:FormatNumber(info.currentMax),
-            info.isManual and "manual" or "auto"
-        )
-        self.frame.maxIndicator:SetText(maxText)
-
-        -- Color coding: manual = yellow, auto = gray
-        if info.isManual then
-            self.frame.maxIndicator:SetTextColor(1.0, 1.0, 0.4, 0.8) -- Yellow
-        else
-            self.frame.maxIndicator:SetTextColor(0.6, 0.6, 0.6, 0.8) -- Gray
-        end
-    else
-        self.frame.maxIndicator:SetText("max: -- (--)")
-        self.frame.maxIndicator:SetTextColor(0.6, 0.6, 0.6, 0.8)
-    end
 end
 
 -- Update the meter indicator display
@@ -386,34 +278,29 @@ function BaseMeterWindow:UpdateDisplay()
         print("ERROR: mainText is nil in UpdateDisplay")
     end
 
-    -- Update secondary stats with nil checks
+    -- Update secondary stats with inline labels (no floating labels)
     if self.frame.maxValue then
-        self.frame.maxValue:SetText(addon.CombatTracker:FormatNumber(maxValue))
+        local formattedMax = addon.CombatTracker:FormatNumber(maxValue)
+        self.frame.maxValue:SetText(formattedMax .. " max")
     else
         print("ERROR: maxValue is nil in UpdateDisplay for", self.config.label)
     end
 
     if self.frame.totalValue then
-        self.frame.totalValue:SetText(addon.CombatTracker:FormatNumber(totalValue))
+        local formattedTotal = addon.CombatTracker:FormatNumber(totalValue)
+        self.frame.totalValue:SetText(formattedTotal .. " total")
     else
         print("ERROR: totalValue is nil in UpdateDisplay for", self.config.label)
     end
 
-    -- Update absorb if enabled AND the UI element exists
-    -- (DISABLED - absorb counter removed from UI)
-    -- if self.config.showAbsorb == true and self.frame.absorbValue then
-    --     local absorbValue = addon.CombatTracker:GetTotalAbsorb()
-    --     self.frame.absorbValue:SetText(addon.CombatTracker:FormatNumber(absorbValue))
-    -- end
-
-    -- Update overheal if enabled AND the UI element exists
+    -- Update overheal if enabled AND the UI element exists (inline label format)
     if self.config.showOverheal == true and self.frame.overhealValue then
         local overhealPercent = 0
         local effectiveHealing = totalHealing
         if overhealValue > 0 and effectiveHealing > 0 then
             overhealPercent = math.floor((overhealValue / (effectiveHealing + overhealValue)) * 100)
         end
-        self.frame.overhealValue:SetText(overhealPercent .. "%")
+        self.frame.overhealValue:SetText(overhealPercent .. "% overheal")
     end
 
     -- Update meter indicator
