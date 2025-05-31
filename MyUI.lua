@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-rolling-average-39f9b87"
-addon.BUILD_DATE = "2025-05-31-13:46"
+addon.VERSION = "feature-rolling-average-d324432"
+addon.BUILD_DATE = "2025-05-31-14:37"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -443,6 +443,84 @@ function SlashCmdList.MYUI(msg, editBox)
             addon.dpsPixelMeter.frame:ClearAllPoints()
             addon.dpsPixelMeter.frame:SetPoint("BOTTOM", addon.DPSWindow.frame, "TOP", 0, 5)
         end
+    elseif command:match("^hpsmax%s+(%d+)$") then
+        local maxValue = tonumber(command:match("^hpsmax%s+(%d+)$"))
+        if addon.hpsPixelMeter then
+            addon.hpsPixelMeter:SetMaxValue(maxValue)
+        else
+            print("HPS meter not active")
+        end
+    elseif command:match("^dpsmax%s+(%d+)$") then
+        local maxValue = tonumber(command:match("^dpsmax%s+(%d+)$"))
+        if addon.dpsPixelMeter then
+            addon.dpsPixelMeter:SetMaxValue(maxValue)
+        else
+            print("DPS meter not active")
+        end
+    elseif command == "hpsreset" then
+        if addon.hpsPixelMeter then
+            addon.hpsPixelMeter:ResetMaxValue()
+        else
+            print("HPS meter not active")
+        end
+    elseif command == "dpsreset" then
+        if addon.dpsPixelMeter then
+            addon.dpsPixelMeter:ResetMaxValue()
+        else
+            print("DPS meter not active")
+        end
+    elseif command == "meterinfo" then
+        print("=== METER DEBUG INFO ===")
+        if addon.hpsPixelMeter then
+            local info = addon.hpsPixelMeter:GetDebugInfo()
+            print(string.format("HPS: %s/%s (%s) [%d/%d pixels] %s",
+                addon.CombatTracker:FormatNumber(info.currentValue),
+                addon.CombatTracker:FormatNumber(info.currentMax),
+                string.format("%.1f%%", info.percent),
+                info.activeCols, info.totalCols,
+                info.isManual and "(manual)" or "(auto)"
+            ))
+        else
+            print("HPS meter: Not active")
+        end
+
+        if addon.dpsPixelMeter then
+            local info = addon.dpsPixelMeter:GetDebugInfo()
+            print(string.format("DPS: %s/%s (%s) [%d/%d pixels] %s",
+                addon.CombatTracker:FormatNumber(info.currentValue),
+                addon.CombatTracker:FormatNumber(info.currentMax),
+                string.format("%.1f%%", info.percent),
+                info.activeCols, info.totalCols,
+                info.isManual and "(manual)" or "(auto)"
+            ))
+        else
+            print("DPS meter: Not active")
+        end
+        print("=== END METER INFO ===")
+    elseif command == "resetmeters" then
+        if addon.hpsPixelMeter then
+            addon.hpsPixelMeter:ResetMaxValue()
+        end
+        if addon.dpsPixelMeter then
+            addon.dpsPixelMeter:ResetMaxValue()
+        end
+        print("All meter max values reset to defaults")
+    elseif command == "resetcombat" then
+        print("=== RESETTING COMBAT DATA ===")
+        if addon.CombatTracker then
+            addon.CombatTracker:ResetDisplayStats()
+            print("Combat stats reset")
+        end
+
+        -- Reset meter scaling
+        if addon.hpsPixelMeter then
+            addon.hpsPixelMeter:ResetMaxValue()
+        end
+        if addon.dpsPixelMeter then
+            addon.dpsPixelMeter:ResetMaxValue()
+        end
+        print("Meter scaling reset to defaults")
+        print("=== RESET COMPLETE ===")
     else
         print("Usage: /myui [show | hide | toggle | dps | hps | debug | pixeltest | cstart | cend ]")
     end

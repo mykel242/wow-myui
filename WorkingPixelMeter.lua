@@ -15,6 +15,9 @@ function WorkingPixelMeter:New(config)
     instance.pixels = {}
     instance.getValue = nil
     instance.maxValue = config.maxValue or 15000
+    instance.originalMaxValue = instance.maxValue      -- Store original for reset
+    instance.manualMaxValue = nil                      -- For manual override
+    instance.meterName = config.meterName or "Unknown" -- For debug/commands
 
     -- Set defaults
     instance.rows = config.rows or 1
@@ -73,12 +76,9 @@ function WorkingPixelMeter:Create()
         end
     end
 
-    -- Make it draggable
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    -- Make it non-draggable (it should follow its parent window)
+    frame:SetMovable(false)
+    frame:EnableMouse(false) -- Disable mouse interaction entirely
 
     self.frame = frame
     self.gridFrame = gridFrame
@@ -97,17 +97,55 @@ function WorkingPixelMeter:SetValueSource(getValue)
     self.getValue = getValue
 end
 
+-- Manual scaling functions
+function WorkingPixelMeter:SetMaxValue(newMax)
+    self.manualMaxValue = newMax
+    print(string.format("%s meter max set to %s", self.meterName, addon.CombatTracker:FormatNumber(newMax)))
+end
+
+function WorkingPixelMeter:ResetMaxValue()
+    self.manualMaxValue = nil
+    self.maxValue = self.originalMaxValue
+    print(string.format("%s meter max reset to %s", self.meterName,
+        addon.CombatTracker:FormatNumber(self.originalMaxValue)))
+end
+
+function WorkingPixelMeter:GetCurrentMaxValue()
+    return self.manualMaxValue or self.maxValue
+end
+
+function WorkingPixelMeter:GetDebugInfo()
+    local currentValue = self.getValue and self.getValue() or 0
+    local currentMax = self:GetCurrentMaxValue()
+    local percent = currentMax > 0 and (currentValue / currentMax) or 0
+    local activeCols = math.floor(self.cols * percent)
+
+    return {
+        name = self.meterName,
+        currentValue = currentValue,
+        currentMax = currentMax,
+        originalMax = self.originalMaxValue,
+        manualMax = self.manualMaxValue,
+        percent = percent * 100,
+        activeCols = activeCols,
+        totalCols = self.cols,
+        isManual = self.manualMaxValue ~= nil
+    }
+end
+
 function WorkingPixelMeter:Update()
     if not self.frame or not self.getValue then return end
 
     local value = self.getValue() or 0
+    local currentMax = self:GetCurrentMaxValue()
 
-    -- Auto-scale maxValue if needed
-    if value > self.maxValue then
+    -- Only auto-scale if no manual override is set
+    if not self.manualMaxValue and value > self.maxValue then
         self.maxValue = value * 1.2
+        currentMax = self.maxValue
     end
 
-    local percent = math.min(1.0, value / self.maxValue)
+    local percent = math.min(1.0, currentMax > 0 and (value / currentMax) or 0)
     local activeCols = math.floor(self.cols * percent)
 
     -- Update pixel colors

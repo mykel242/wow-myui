@@ -375,17 +375,23 @@ function CombatTracker:EndCombat()
     -- Removed automatic reset timer - numbers persist until refresh clicked or new combat starts
 end
 
--- Parse combat log events
+-- Parse combat log events with improved filtering
 function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
                                       destGUID, destName, destFlags, destRaidFlags, ...)
     local playerGUID = UnitGUID("player")
+    local playerName = UnitName("player")
 
-    -- Only track events where the player is the source
+    -- Only track events where YOU are the source
     if sourceGUID ~= playerGUID then
         return
     end
 
-    -- Damage events
+    -- Additional safety check with player name
+    if sourceName and sourceName ~= playerName then
+        return
+    end
+
+    -- Damage events with reasonable limits
     if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or subevent == "RANGE_DAMAGE" then
         local amount
         if subevent == "SWING_DAMAGE" then
@@ -394,47 +400,73 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
             amount = select(4, ...)
         end
 
-        if amount and amount > 0 then
+        -- Sanity check: reject unreasonably large damage values
+        if amount and amount > 0 and amount < 10000000 then -- Max 10M per hit
             combatData.damage = combatData.damage + amount
+
+            if addon.DEBUG then
+                print(string.format("Damage: %s (%s)", addon.CombatTracker:FormatNumber(amount), subevent))
+            end
+        elseif amount and amount >= 10000000 then
+            if addon.DEBUG then
+                print(string.format("REJECTED large damage: %s (%s)", addon.CombatTracker:FormatNumber(amount), subevent))
+            end
         end
 
-        -- Periodic damage (DOTs)
+        -- Periodic damage (DOTs) with limits
     elseif subevent == "SPELL_PERIODIC_DAMAGE" then
         local amount = select(4, ...)
-        if amount and amount > 0 then
+
+        -- Sanity check for DOT damage
+        if amount and amount > 0 and amount < 5000000 then -- Max 5M per DOT tick
             combatData.damage = combatData.damage + amount
+
+            if addon.DEBUG then
+                print(string.format("DOT Damage: %s", addon.CombatTracker:FormatNumber(amount)))
+            end
+        elseif amount and amount >= 5000000 then
+            if addon.DEBUG then
+                print(string.format("REJECTED large DOT: %s", addon.CombatTracker:FormatNumber(amount)))
+            end
         end
 
-        -- Healing events (now split between effective healing and overhealing)
+        -- Healing events with limits
     elseif subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_HEAL" then
-        -- For healing events: spellId, spellName, spellSchool, amount, overhealing, absorbed, critical
         local spellId, spellName, spellSchool, amount, overhealing, absorbed, critical = select(1, ...)
 
-        if amount and amount > 0 then
-            -- Add all healing (including overhealing) to total for HPS calculation
+        -- Sanity check for healing
+        if amount and amount > 0 and amount < 5000000 then -- Max 5M heal
             combatData.healing = combatData.healing + amount
+
+            if addon.DEBUG then
+                print(string.format("Heal: %s (%s%s)",
+                    addon.CombatTracker:FormatNumber(amount),
+                    spellName or "Unknown",
+                    critical and " CRIT" or ""
+                ))
+            end
+        elseif amount and amount >= 5000000 then
+            if addon.DEBUG then
+                print(string.format("REJECTED large heal: %s (%s)",
+                    addon.CombatTracker:FormatNumber(amount),
+                    spellName or "Unknown"
+                ))
+            end
         end
 
-        if overhealing and overhealing > 0 then
-            -- Track overhealing separately
+        -- Track overhealing separately with limits
+        if overhealing and overhealing > 0 and overhealing < 5000000 then
             combatData.overheal = combatData.overheal + overhealing
         end
 
-        -- Absorb shield events
-    elseif subevent == "SPELL_ABSORBED" then
-        print("*** ABSORB EVENT DETECTED ***")
-        local args = { ... }
-        for i = 1, math.min(10, #args) do
-            print(string.format("  arg[%d] = %s (%s)", i, tostring(args[i]), type(args[i])))
-        end
-
-        -- Try to find absorb amount - it's usually in position 8
-        local absorbAmount = select(8, ...)
-        if absorbAmount and absorbAmount > 0 then
-            combatData.absorb = combatData.absorb + absorbAmount
-            combatData.healing = combatData.healing + absorbAmount
-            print(string.format("*** ABSORB: %d (total: %d) ***", absorbAmount, combatData.absorb))
-        end
+        -- Absorb shield events (commented out since we disabled absorb counter)
+        -- elseif subevent == "SPELL_ABSORBED" then
+        --     local args = { ... }
+        --     local absorbAmount = select(8, ...)
+        --     if absorbAmount and absorbAmount > 0 and absorbAmount < 5000000 then
+        --         combatData.absorb = combatData.absorb + absorbAmount
+        --         combatData.healing = combatData.healing + absorbAmount
+        --     end
     end
 end
 

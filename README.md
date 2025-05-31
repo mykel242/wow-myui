@@ -53,3 +53,15 @@ Coverage Estimate:
 
 ~95% of absorb spells should be caught automatically
 Only truly unique names would need manual addition.
+
+Manual scaling: /myui hpsmax 500000 or /myui dpsmax 100000
+Show current values: /myui meterinfo
+Reset individual: /myui hpsreset or /myui dpsreset
+Reset all: /myui resetmeters
+
+Enhanced Features:
+
+Manual override: When you set a manual max, auto-scaling stops
+Debug info: Shows current/max values, percentages, pixel counts
+Reset capability: Returns to original auto-scaling behavior
+Status indicators: Shows "(manual)" vs "(auto)" in debug output

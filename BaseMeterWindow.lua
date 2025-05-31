@@ -35,9 +35,12 @@ function BaseMeterWindow:Create()
 
     print("BaseMeterWindow:Create() starting for", self.config.label)
 
+    -- Calculate pixel meter width to match our frame width
+    local pixelMeterWidth = (20 * 8) + (19 * 1) + 8 -- 20 cols * 8px + 19 gaps * 1px + 8px padding
+
     local frame = CreateFrame("Frame", addonName .. self.config.frameName, UIParent)
-    frame:SetSize(160, 110) -- Taller to accommodate pixel meter grid
-    print("Created main frame")
+    frame:SetSize(pixelMeterWidth, 85) -- Match pixel meter width, reduce height
+    print("Created main frame with width:", pixelMeterWidth)
 
     -- Restore saved position or use default
     if addon.db[self.config.positionKey] then
@@ -108,98 +111,66 @@ function BaseMeterWindow:Create()
     label:SetJustifyH("RIGHT")
     print("Label created")
 
-    -- Store frame reference BEFORE creating PixelMeter
+    -- Store frame reference
     self.frame = frame
-    print("Frame reference stored")
 
-    -- Try to create PixelMeterGrid if config specifies it
-    local pixelMeterCreated = false
-    if self.config.enablePixelMeterGrid then
-        print("PixelMeterGrid enabled, attempting to create...")
-        if addon.PixelMeterGrid then
-            local success, error = pcall(function()
-                self:CreatePixelMeterGrid()
-                pixelMeterCreated = true
-            end)
-            if not success then
-                print("ERROR creating PixelMeterGrid:", error)
-                pixelMeterCreated = false
-            else
-                print("PixelMeterGrid created successfully")
-            end
-        else
-            print("ERROR: addon.PixelMeterGrid is nil - PixelMeterGrid.lua not loaded?")
-        end
-    else
-        print("PixelMeterGrid not enabled")
-    end
-
-    -- Secondary stats in 4 columns with proper alignment
-    -- Only apply offset if PixelMeter was actually created
-    local statsYOffset = (pixelMeterCreated and self.config.enablePixelMeterGrid) and -20 or 0
-    print("Stats Y offset:", statsYOffset)
-
-    -- Row 1: Left side (max value and label)
+    -- Secondary stats - moved closer to left edge
+    -- Row 1: Left side (max value and label) - moved from x=8 to x=4
     print("Creating maxValue...")
     local maxValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    maxValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 8, 20 + statsYOffset)
-    maxValue:SetSize(45, 0)
+    maxValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 4, 16) -- Changed from 8 to 4
+    maxValue:SetSize(50, 0)                                     -- Reduced from 60 to 50
     maxValue:SetText("0")
     maxValue:SetTextColor(0.8, 0.8, 0.8, 1)
     maxValue:SetJustifyH("RIGHT")
     frame.maxValue = maxValue
-    print("maxValue created:", frame.maxValue ~= nil)
 
     local maxLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     maxLabel:SetPoint("LEFT", maxValue, "RIGHT", 2, 0)
     maxLabel:SetText("max")
     maxLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     maxLabel:SetJustifyH("LEFT")
-    print("maxLabel created")
 
-    -- Row 2: Left side (total value and label)
+    -- Row 2: Left side (total value and label) - moved from x=8 to x=4
     print("Creating totalValue...")
     local totalValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    totalValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 8, 8 + statsYOffset)
-    totalValue:SetSize(45, 0)
+    totalValue:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 4, 4) -- Changed from 8 to 4
+    totalValue:SetSize(50, 0)                                    -- Reduced from 60 to 50
     totalValue:SetText("0")
     totalValue:SetTextColor(0.8, 0.8, 0.8, 1)
     totalValue:SetJustifyH("RIGHT")
     frame.totalValue = totalValue
-    print("totalValue created:", frame.totalValue ~= nil)
 
     local totalLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     totalLabel:SetPoint("LEFT", totalValue, "RIGHT", 2, 0)
     totalLabel:SetText("total")
     totalLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     totalLabel:SetJustifyH("LEFT")
-    print("totalLabel created")
 
-    -- Absorb (only if enabled in config) - Right side
-    if self.config.showAbsorb == true then
-        print("Creating absorb stats...")
-        local absorbValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        absorbValue:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -50, 20 + statsYOffset)
-        absorbValue:SetSize(25, 0)
-        absorbValue:SetText("0")
-        absorbValue:SetTextColor(0.8, 0.8, 0.8, 1)
-        absorbValue:SetJustifyH("RIGHT")
-        frame.absorbValue = absorbValue
+    -- Absorb counter - DISABLED FOR NOW
+    -- if self.config.showAbsorb == true then
+    --     print("Creating absorb stats...")
+    --     local absorbValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    --     absorbValue:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -50, 16)
+    --     absorbValue:SetSize(40, 0)
+    --     absorbValue:SetText("0")
+    --     absorbValue:SetTextColor(0.8, 0.8, 0.8, 1)
+    --     absorbValue:SetJustifyH("RIGHT")
+    --     frame.absorbValue = absorbValue
 
-        local absorbLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        absorbLabel:SetPoint("LEFT", absorbValue, "RIGHT", 2, 0)
-        absorbLabel:SetText("absorb")
-        absorbLabel:SetTextColor(0.8, 0.8, 0.8, 1)
-        absorbLabel:SetJustifyH("LEFT")
-        print("Absorb stats created")
-    end
+    --     local absorbLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    --     absorbLabel:SetPoint("LEFT", absorbValue, "RIGHT", 2, 0)
+    --     absorbLabel:SetText("absorb")
+    --     absorbLabel:SetTextColor(0.8, 0.8, 0.8, 1)
+    --     absorbLabel:SetJustifyH("LEFT")
+    -- end
 
-    -- Overheal (only if enabled in config) - Right side
+    -- Overheal (only if enabled in config) - Right side, properly contained
     if self.config.showOverheal == true then
         print("Creating overheal stats...")
         local overhealValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        overhealValue:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -50, 8 + statsYOffset)
-        overhealValue:SetSize(25, 0)
+        overhealValue:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -65, 4) -- More space from edge
+        overhealValue:SetSize(25, 0)                                        -- Smaller value field
         overhealValue:SetText("0%")
         overhealValue:SetTextColor(0.8, 0.8, 0.8, 1)
         overhealValue:SetJustifyH("RIGHT")
@@ -207,6 +178,7 @@ function BaseMeterWindow:Create()
 
         local overhealLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         overhealLabel:SetPoint("LEFT", overhealValue, "RIGHT", 2, 0)
+        overhealLabel:SetPoint("RIGHT", frame, "RIGHT", -4, 0) -- Anchor to frame edge
         overhealLabel:SetText("overheal")
         overhealLabel:SetTextColor(0.8, 0.8, 0.8, 1)
         overhealLabel:SetJustifyH("LEFT")
@@ -220,12 +192,6 @@ function BaseMeterWindow:Create()
     end
 
     print("BaseMeterWindow:Create() completed for", self.config.label)
-    print("Frame elements check:")
-    print("  mainText:", frame.mainText ~= nil)
-    print("  maxValue:", frame.maxValue ~= nil)
-    print("  totalValue:", frame.totalValue ~= nil)
-    print("  absorbValue:", frame.absorbValue ~= nil)
-    print("  overhealValue:", frame.overhealValue ~= nil)
 end
 
 -- Create Pixel Meter Grid (generic) - DEBUG VERSION
@@ -294,7 +260,6 @@ function BaseMeterWindow:UpdateDisplay()
     local mainValue = self.config.getMainValue()
     local maxValue = self.config.getMaxValue()
     local totalValue = self.config.getTotalValue()
-    local absorbValue = addon.CombatTracker:GetTotalAbsorb()
     local overhealValue = addon.CombatTracker:GetTotalOverheal()
     local totalHealing = addon.CombatTracker:GetTotalHealing()
 
@@ -318,12 +283,14 @@ function BaseMeterWindow:UpdateDisplay()
         print("ERROR: totalValue is nil in UpdateDisplay for", self.config.label)
     end
 
-    -- Update absorb if enabled
-    if self.config.showAbsorb == true and self.frame.absorbValue then
-        self.frame.absorbValue:SetText(addon.CombatTracker:FormatNumber(absorbValue))
-    end
+    -- Update absorb if enabled AND the UI element exists
+    -- (DISABLED - absorb counter removed from UI)
+    -- if self.config.showAbsorb == true and self.frame.absorbValue then
+    --     local absorbValue = addon.CombatTracker:GetTotalAbsorb()
+    --     self.frame.absorbValue:SetText(addon.CombatTracker:FormatNumber(absorbValue))
+    -- end
 
-    -- Update overheal if enabled
+    -- Update overheal if enabled AND the UI element exists
     if self.config.showOverheal == true and self.frame.overhealValue then
         local overhealPercent = 0
         local effectiveHealing = totalHealing
