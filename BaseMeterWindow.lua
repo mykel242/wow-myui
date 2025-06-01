@@ -33,14 +33,18 @@ end
 function BaseMeterWindow:Create()
     if self.frame then return end
 
-    print("BaseMeterWindow:Create() starting for", self.config.label)
+    if addon.DEBUG then
+        print("BaseMeterWindow:Create() starting for", self.config.label)
+    end
 
-    -- Calculate pixel meter width to match our frame width
-    local pixelMeterWidth = (20 * 8) + (19 * 1) + 8 -- 20 cols * 8px + 19 gaps * 1px + 8px padding
-
+    -- Set desired window width
+    local windowWidth = 220
     local frame = CreateFrame("Frame", addonName .. self.config.frameName, UIParent)
-    frame:SetSize(pixelMeterWidth, 85) -- Match pixel meter width, reduce height
-    print("Created main frame with width:", pixelMeterWidth)
+    frame:SetSize(windowWidth, 85) -- Use fixed 220px width
+    if addon.DEBUG then
+        print("Created main frame with width:", windowWidth)
+    end
+
 
     -- Restore saved position or use default
     if addon.db[self.config.positionKey] then
@@ -61,7 +65,10 @@ function BaseMeterWindow:Create()
             self.config.defaultPosition.yOffset
         )
     end
-    print("Frame positioned")
+    if addon.DEBUG then
+        print("Frame positioned")
+    end
+
 
     -- Make it draggable
     frame:SetMovable(true)
@@ -79,7 +86,10 @@ function BaseMeterWindow:Create()
             yOffset = yOfs
         }
     end)
-    print("Frame made draggable")
+    if addon.DEBUG then
+        print("Frame made draggable")
+    end
+
 
     -- Background (black semi-transparent)
     local bg = frame:CreateTexture(nil, "BACKGROUND")
@@ -92,7 +102,9 @@ function BaseMeterWindow:Create()
     topBg:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     topBg:SetHeight(32)
     topBg:SetColorTexture(0, 0, 0, 0.8)
-    print("Backgrounds created")
+    if addon.DEBUG then
+        print("Backgrounds created")
+    end
 
     -- Main number (large, top-left with margin, aligned with label) - CUSTOM FONT
     local mainText = frame:CreateFontString(nil, "OVERLAY")
@@ -102,7 +114,9 @@ function BaseMeterWindow:Create()
     mainText:SetTextColor(1, 1, 1, 1)
     mainText:SetJustifyH("LEFT")
     frame.mainText = mainText
-    print("Main text created with custom font")
+    if addon.DEBUG then
+        print("Main text created with custom font")
+    end
 
     -- Label (top right, aligned with main number)
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -110,7 +124,9 @@ function BaseMeterWindow:Create()
     label:SetText(self.config.label)
     label:SetTextColor(self.config.labelColor.r, self.config.labelColor.g, self.config.labelColor.b, 1)
     label:SetJustifyH("RIGHT")
-    print("Label created")
+    if addon.DEBUG then
+        print("Label created")
+    end
 
     -- Store frame reference
     self.frame = frame
@@ -118,7 +134,7 @@ function BaseMeterWindow:Create()
     -- Meter mode indicator (small text showing current max and mode)
     local meterIndicator = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     meterIndicator:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 4, 4) -- Bottom left near reset button
-    meterIndicator:SetText("15.0K (auto)")                           -- Remove "max:" prefix
+    meterIndicator:SetText("15.0K (auto)")                           -- No prefix to save space
     meterIndicator:SetTextColor(0, 1, 1, 0.8)                        -- Cyan for auto
     meterIndicator:SetJustifyH("LEFT")
     frame.meterIndicator = meterIndicator
@@ -158,12 +174,17 @@ function BaseMeterWindow:Create()
             instance:UpdateMeterIndicator()
         end
 
-        -- Also reset the combat stats for this meter type
+        -- Reset the combat stats for this meter type (both peak and totals)
         if addon.CombatTracker then
-            addon.CombatTracker:ResetDisplayStats()
+            -- Reset both combat stats AND the specific meter's peak values
+            if meterName == "dps" then
+                addon.CombatTracker:ResetDPSStats()
+            elseif meterName == "hps" then
+                addon.CombatTracker:ResetHPSStats()
+            end
         end
 
-        print(self.config.label .. " meter reset")
+        print(self.config.label .. " meter and peak values reset")
     end)
 
     -- Tooltip
@@ -182,40 +203,73 @@ function BaseMeterWindow:Create()
 
     -- Secondary stats - redesigned with better alignment and inline labels
     -- Row 1: Left side (max value with inline label) - CUSTOM FONT
+
+    if addon.DEBUG then
+        print("Creating maxValue...")
+    end
+
     local maxValue = frame:CreateFontString(nil, "OVERLAY")
-    maxValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    maxValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -44)
-    maxValue:SetSize(120, 12) -- Wider and set height
-    maxValue:SetText("0 max")
+    maxValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    maxValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -40) -- Just below main counter area
+    maxValue:SetSize(106, 0)                               -- Wider to accommodate "123K max" format
+    maxValue:SetText("0 peak")                             -- Include label in the text
     maxValue:SetTextColor(0.8, 0.8, 0.8, 1)
     maxValue:SetJustifyH("LEFT")
-    maxValue:SetWordWrap(false) -- Prevent wrapping
     frame.maxValue = maxValue
 
     -- Row 2: Left side (total value with inline label) - CUSTOM FONT
+    if addon.DEBUG then
+        print("Creating totalValue...")
+    end
     local totalValue = frame:CreateFontString(nil, "OVERLAY")
-    totalValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    totalValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -56)
-    totalValue:SetSize(120, 12) -- Wider and set height
-    totalValue:SetText("0 total")
+    totalValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    totalValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -52) -- Below peak counter
+    totalValue:SetSize(106, 0)                               -- Wider to accommodate "456K total" format
+    totalValue:SetText("0 total")                            -- Include label in the text
     totalValue:SetTextColor(0.8, 0.8, 0.8, 1)
     totalValue:SetJustifyH("LEFT")
-    totalValue:SetWordWrap(false) -- Prevent wrapping
+    totalValue:SetWordWrap(false)
     frame.totalValue = totalValue
 
-    -- Overheal (only if enabled in config) - Right side, top position - CUSTOM FONT
+    -- Absorb (only if enabled in config) - Right side, top position - CUSTOM FONT
+    if self.config.showAbsorb == true then
+        if addon.DEBUG then
+            print("Creating absorb stats...")
+        end
+        local absorbValue = frame:CreateFontString(nil, "OVERLAY")
+        absorbValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        absorbValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -40) -- Top row, right side
+        absorbValue:SetSize(106, 0)                                  -- Wider to accommodate "456K absorb" format
+        absorbValue:SetText("0 absorb")                              -- Include label in the text
+        absorbValue:SetTextColor(0.7, 0.7, 1.0, 1)                   -- Light blue for absorb
+        absorbValue:SetJustifyH("RIGHT")
+        frame.absorbValue = absorbValue
+        if addon.DEBUG then
+            print("Absorb stats created")
+        end
+    end
+
+    -- Overheal (only if enabled in config) - Right side, bottom position - CUSTOM FONT
     if self.config.showOverheal == true then
-        print("Creating overheal stats...")
+        if addon.DEBUG then
+            print("Creating overheal stats...")
+        end
         local overhealValue = frame:CreateFontString(nil, "OVERLAY")
-        overhealValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-        overhealValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -44) -- More space from right edge
-        overhealValue:SetSize(100, 12)                                 -- Wider and set height to prevent wrapping
-        overhealValue:SetText("0% overheal")                           -- Include label in the text
+        overhealValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        -- Position below absorb if absorb is shown, otherwise use top position
+        if self.config.showAbsorb == true then
+            overhealValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -52) -- Bottom row, right side
+        else
+            overhealValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -40) -- Top row, right side
+        end
+        overhealValue:SetSize(106, 0)                                      -- Wider to accommodate "45% overheal" format
+        overhealValue:SetText("0% over")                                   -- Include label in the text
         overhealValue:SetTextColor(0.8, 0.8, 0.8, 1)
         overhealValue:SetJustifyH("RIGHT")
-        overhealValue:SetWordWrap(false) -- Explicitly disable word wrapping
         frame.overhealValue = overhealValue
-        print("Overheal stats created")
+        if addon.DEBUG then
+            print("Overheal stats created")
+        end
     end
 
     frame:Hide()
@@ -224,7 +278,9 @@ function BaseMeterWindow:Create()
         frame:Show()
     end
 
-    print("BaseMeterWindow:Create() completed for", self.config.label)
+    if addon.DEBUG then
+        print("BaseMeterWindow:Create() completed for", self.config.label)
+    end
 end
 
 -- Update the meter indicator display
@@ -270,18 +326,17 @@ function BaseMeterWindow:UpdateDisplay()
     local totalValue = self.config.getTotalValue()
     local overhealValue = addon.CombatTracker:GetTotalOverheal()
     local totalHealing = addon.CombatTracker:GetTotalHealing()
+    local absorbValue = self.config.getAbsorbValue and self.config.getAbsorbValue() or 0
 
     -- Update main number
     if self.frame.mainText then
         self.frame.mainText:SetText(addon.CombatTracker:FormatNumber(mainValue))
-    else
-        print("ERROR: mainText is nil in UpdateDisplay")
     end
 
     -- Update secondary stats with inline labels (no floating labels)
     if self.frame.maxValue then
         local formattedMax = addon.CombatTracker:FormatNumber(maxValue)
-        self.frame.maxValue:SetText(formattedMax .. " max")
+        self.frame.maxValue:SetText(formattedMax .. " peak") -- Changed from "max" to "peak"
     else
         print("ERROR: maxValue is nil in UpdateDisplay for", self.config.label)
     end
@@ -289,8 +344,12 @@ function BaseMeterWindow:UpdateDisplay()
     if self.frame.totalValue then
         local formattedTotal = addon.CombatTracker:FormatNumber(totalValue)
         self.frame.totalValue:SetText(formattedTotal .. " total")
-    else
-        print("ERROR: totalValue is nil in UpdateDisplay for", self.config.label)
+    end
+
+    -- Update absorb if enabled AND the UI element exists (inline label format)
+    if self.config.showAbsorb == true and self.frame.absorbValue then
+        local formattedAbsorb = addon.CombatTracker:FormatNumber(absorbValue)
+        self.frame.absorbValue:SetText(formattedAbsorb .. " absorb")
     end
 
     -- Update overheal if enabled AND the UI element exists (inline label format)
@@ -300,7 +359,7 @@ function BaseMeterWindow:UpdateDisplay()
         if overhealValue > 0 and effectiveHealing > 0 then
             overhealPercent = math.floor((overhealValue / (effectiveHealing + overhealValue)) * 100)
         end
-        self.frame.overhealValue:SetText(overhealPercent .. "% overheal")
+        self.frame.overhealValue:SetText(overhealPercent .. "% over")
     end
 
     -- Update meter indicator

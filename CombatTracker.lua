@@ -459,14 +459,21 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
             combatData.overheal = combatData.overheal + overhealing
         end
 
-        -- Absorb shield events (commented out since we disabled absorb counter)
-        -- elseif subevent == "SPELL_ABSORBED" then
-        --     local args = { ... }
-        --     local absorbAmount = select(8, ...)
-        --     if absorbAmount and absorbAmount > 0 and absorbAmount < 5000000 then
-        --         combatData.absorb = combatData.absorb + absorbAmount
-        --         combatData.healing = combatData.healing + absorbAmount
-        --     end
+        -- Absorb shield events - re-enabled for healing calculations
+    elseif subevent == "SPELL_ABSORBED" then
+        local absorbAmount = select(8, ...)
+        if absorbAmount and absorbAmount > 0 and absorbAmount < 5000000 then
+            combatData.absorb = combatData.absorb + absorbAmount
+            combatData.healing = combatData.healing + absorbAmount     -- Count absorbs as healing
+
+            if addon.DEBUG then
+                print(string.format("Absorb: %s", addon.CombatTracker:FormatNumber(absorbAmount)))
+            end
+        elseif absorbAmount and absorbAmount >= 5000000 then
+            if addon.DEBUG then
+                print(string.format("REJECTED large absorb: %s", addon.CombatTracker:FormatNumber(absorbAmount)))
+            end
+        end
     end
 end
 
@@ -631,6 +638,62 @@ function CombatTracker:ResetDisplayStats()
         rollingData.currentIndex = 1
         rollingData.initialized = false
         timelineData.samples = {}
+    end
+end
+
+-- Reset only DPS-related stats (for individual DPS meter reset)
+function CombatTracker:ResetDPSStats()
+    if not combatData.inCombat then
+        -- Reset DPS-specific values
+        combatData.damage = 0
+        combatData.maxDPS = 0
+        combatData.finalDamage = 0
+        combatData.finalMaxDPS = 0
+        combatData.finalDPS = 0
+
+        -- Reset timeline and rolling data (affects both DPS and HPS calculations)
+        rollingData.samples = {}
+        rollingData.currentIndex = 1
+        rollingData.initialized = false
+        timelineData.samples = {}
+
+        -- Reset start time if no combat is active
+        combatData.startTime = nil
+        combatData.endTime = nil
+
+        print("DPS stats and peak values reset")
+    else
+        print("Cannot reset DPS stats during combat")
+    end
+end
+
+-- Reset only HPS-related stats (for individual HPS meter reset)
+function CombatTracker:ResetHPSStats()
+    if not combatData.inCombat then
+        -- Reset HPS-specific values
+        combatData.healing = 0
+        combatData.overheal = 0
+        combatData.absorb = 0
+        combatData.maxHPS = 0
+        combatData.finalHealing = 0
+        combatData.finalOverheal = 0
+        combatData.finalAbsorb = 0
+        combatData.finalMaxHPS = 0
+        combatData.finalHPS = 0
+
+        -- Reset timeline and rolling data (affects both DPS and HPS calculations)
+        rollingData.samples = {}
+        rollingData.currentIndex = 1
+        rollingData.initialized = false
+        timelineData.samples = {}
+
+        -- Reset start time if no combat is active
+        combatData.startTime = nil
+        combatData.endTime = nil
+
+        print("HPS stats and peak values reset")
+    else
+        print("Cannot reset HPS stats during combat")
     end
 end
 

@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-ff22661"
-addon.BUILD_DATE = "2025-05-31-17:07"
+addon.VERSION = "main-73c452e"
+addon.BUILD_DATE = "2025-06-01-18:42"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -24,14 +24,16 @@ addon.DEBUG = false
 addon.db = {}
 addon.defaults = {
     enabled = true,
-    showMinimap = true,
+    showMinimap = false,
+    minimapButtonAngle = 225, -- Default bottom-left position
     scale = 1.0,
     framePosition = nil,
     dpsWindowPosition = nil,
     showDPSWindow = false,
     hpsWindowPosition = nil,
     showHPSWindow = false,
-    debugMode = false
+    debugMode = false,
+    showMainWindow = false
 }
 
 -- Debug print function
@@ -125,12 +127,20 @@ function addon:OnInitialize()
     end
 
     print(addonName .. " loaded successfully!")
+    print("Use /myui to toggle the main configuration window")
 end
 
 -- Enable function
 function addon:OnEnable()
     if self.db.enabled then
+        -- Create main frame but don't show it yet
         self:CreateMainFrame()
+        -- self:CreateMinimapButton()
+
+        -- Only show main window if it was explicitly shown before
+        if self.db.showMainWindow then
+            self.mainFrame:Show()
+        end
 
         -- Restore DPS window visibility
         if self.db.showDPSWindow and self.DPSWindow then
@@ -159,6 +169,11 @@ function addon:OnDisable()
         }
     end
 
+    -- Save main window visibility state
+    if self.mainFrame then
+        self.db.showMainWindow = self.mainFrame:IsShown()
+    end
+
     -- Save visibility states for all windows
     if self.DPSWindow and self.DPSWindow.frame then
         self.db.showDPSWindow = self.DPSWindow.frame:IsShown()
@@ -166,6 +181,23 @@ function addon:OnDisable()
 
     if self.HPSWindow and self.HPSWindow.frame then
         self.db.showHPSWindow = self.HPSWindow.frame:IsShown()
+    end
+end
+
+-- Toggle main window function
+function addon:ToggleMainWindow()
+    if not self.mainFrame then
+        self:CreateMainFrame()
+    end
+
+    if self.mainFrame:IsShown() then
+        self.mainFrame:Hide()
+        self.db.showMainWindow = false
+        print("Main window hidden")
+    else
+        self.mainFrame:Show()
+        self.db.showMainWindow = true
+        print("Main window shown")
     end
 end
 
@@ -289,15 +321,30 @@ function addon:CreateMainFrame()
         end
     end)
 
-    -- Close button functionality
+    -- Close button functionality - SAVE STATE WHEN CLOSED
     frame.CloseButton:SetScript("OnClick", function()
         frame:Hide()
+        addon.db.showMainWindow = false
+        print("Main window hidden")
     end)
+
+    -- Make ESC key close the window and save state
+    table.insert(UISpecialFrames, frame:GetName())
+
+    -- Override Hide function to save state when closed by ESC
+    local originalHide = frame.Hide
+    frame.Hide = function(frame)
+        addon.db.showMainWindow = false
+        originalHide(frame)
+    end
 
     self.mainFrame = frame
 
     -- Apply saved scale
     frame:SetScale(self.db.scale)
+
+    -- Start hidden unless explicitly saved as shown
+    frame:Hide()
 
     -- Initial status update
     self:UpdateStatusDisplay()
@@ -313,26 +360,21 @@ SLASH_MYUI1 = "/myui"
 function SlashCmdList.MYUI(msg, editBox)
     local command = string.lower(msg)
 
-    if command == "show" or command == "" then
-        if addon.mainFrame then
-            addon.mainFrame:Show()
-        else
+    if command == "show" then
+        if not addon.mainFrame then
             addon:CreateMainFrame()
         end
+        addon.mainFrame:Show()
+        addon.db.showMainWindow = true
+        print("Main window shown")
     elseif command == "hide" then
         if addon.mainFrame then
             addon.mainFrame:Hide()
+            addon.db.showMainWindow = false
+            print("Main window hidden")
         end
-    elseif command == "toggle" then
-        if addon.mainFrame then
-            if addon.mainFrame:IsShown() then
-                addon.mainFrame:Hide()
-            else
-                addon.mainFrame:Show()
-            end
-        else
-            addon:CreateMainFrame()
-        end
+    elseif command == "toggle" or command == "" then
+        addon:ToggleMainWindow()
     elseif command == "dps" then
         if addon.DPSWindow then
             addon.DPSWindow:Toggle()
@@ -526,40 +568,182 @@ function SlashCmdList.MYUI(msg, editBox)
     end
 end
 
--- Minimap button (optional)
 function addon:CreateMinimapButton()
     if not self.db.showMinimap then return end
+    if self.minimapButton then return end
+
+    print("Creating minimap button with dynamic radius...")
 
     local button = CreateFrame("Button", addonName .. "MinimapButton", Minimap)
     button:SetSize(32, 32)
     button:SetFrameStrata("MEDIUM")
     button:SetFrameLevel(8)
-    button:SetPoint("TOPLEFT", Minimap, "TOPLEFT", 0, 0)
 
-    -- Button texture
-    local texture = button:CreateTexture(nil, "BACKGROUND")
+    -- Create background circle
+    local bg = button:CreateTexture(nil, "BACKGROUND")
+    bg:SetSize(32, 32)
+    bg:SetPoint("CENTER")
+    bg:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+
+    -- Button icon
+    local texture = button:CreateTexture(nil, "ARTWORK")
     texture:SetSize(20, 20)
     texture:SetPoint("CENTER")
     texture:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
 
-    -- Button functionality
-    button:SetScript("OnClick", function(self, button)
-        if button == "LeftButton" then
-            SlashCmdList.MYUI("toggle")
+    -- Create highlight texture
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetSize(32, 32)
+    highlight:SetPoint("CENTER")
+    highlight:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    highlight:SetBlendMode("ADD")
+    highlight:SetAlpha(0.5)
+
+    -- Position button using dynamic radius
+    local angle = self.db.minimapButtonAngle or 225
+    self:PositionMinimapButton(button, angle)
+
+    -- FIXED DRAGGING - follows mouse smoothly around circle
+    button:EnableMouse(true)
+    button:RegisterForDrag("LeftButton")
+
+    local isDragging = false
+    local dragStartTime = 0
+
+    button:SetScript("OnDragStart", function(self)
+        isDragging = true
+        dragStartTime = GetTime()
+
+        -- Get the dynamic radius once at start of drag
+        local dragRadius = addon:GetDynamicRadius()
+        if not dragRadius or dragRadius <= 0 then
+            dragRadius = 85
+        end
+
+        self:SetScript("OnUpdate", function(self)
+            local centerX, centerY = Minimap:GetCenter()
+            local cursorX, cursorY = GetCursorPosition()
+            local scale = UIParent:GetEffectiveScale()
+
+            cursorX = cursorX / scale
+            cursorY = cursorY / scale
+
+            if centerX and centerY then
+                -- Calculate angle from minimap center to cursor
+                local deltaX = cursorX - centerX
+                local deltaY = cursorY - centerY
+                local angle = math.atan2(deltaY, deltaX)
+
+                -- Position button at fixed radius in direction of cursor
+                local newX = centerX + math.cos(angle) * dragRadius
+                local newY = centerY + math.sin(angle) * dragRadius
+
+                -- Position relative to UIParent (screen coordinates)
+                self:ClearAllPoints()
+                self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", newX, newY)
+            end
+        end)
+    end)
+
+    button:SetScript("OnDragStop", function(self)
+        local dragDuration = GetTime() - dragStartTime
+        isDragging = false
+        self:SetScript("OnUpdate", nil)
+
+        -- Save the final position
+        addon:UpdateMinimapButtonAngle()
+
+        -- If it was a very short drag (< 0.1 seconds), treat it as a click
+        if dragDuration < 0.1 then
+            addon:ToggleMainWindow()
+        end
+    end)
+
+    -- SIMPLIFIED CLICK HANDLING - only for right-click since left-click is handled by drag
+    button:SetScript("OnMouseUp", function(self, clickButton)
+        if clickButton == "RightButton" and not isDragging then
+            addon:ShowMinimapButtonMenu()
         end
     end)
 
     -- Tooltip
     button:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText(addonName)
-        GameTooltip:AddLine("Left-click to toggle", 1, 1, 1)
-        GameTooltip:Show()
+        if not isDragging then -- Only show tooltip when not dragging
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText("My UI v" .. addon.VERSION, 1, 1, 1)
+            GameTooltip:AddLine("Left-click: Toggle main window", 0.8, 0.8, 0.8)
+            GameTooltip:AddLine("Right-click: Options menu", 0.8, 0.8, 0.8)
+            GameTooltip:AddLine("Drag: Move around minimap", 0.6, 0.6, 0.6)
+            GameTooltip:Show()
+        end
     end)
 
     button:SetScript("OnLeave", function(self)
         GameTooltip:Hide()
     end)
 
+    button:Show()
     self.minimapButton = button
+    print("MyUI minimap button created with smooth dragging!")
+end
+
+function addon:PositionMinimapButton(button, angle)
+    local radius = self:GetDynamicRadius() or 98 -- Dynamic with fallback
+    local radian = math.rad(angle)
+    local x = math.cos(radian) * radius
+    local y = math.sin(radian) * radius
+
+    button:ClearAllPoints()
+    button:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+function addon:UpdateMinimapButtonAngle()
+    if not self.minimapButton then return end
+
+    local centerX, centerY = Minimap:GetCenter()
+    local buttonX, buttonY = self.minimapButton:GetCenter()
+
+    if centerX and centerY and buttonX and buttonY then
+        local angle = math.deg(math.atan2(buttonY - centerY, buttonX - centerX))
+        self.db.minimapButtonAngle = angle
+        -- Don't reposition here - it's already positioned correctly
+    end
+end
+
+function addon:ShowMinimapButtonMenu()
+    addon:ShowSimpleRightClickMenu()
+end
+
+-- Simple text-based right-click menu that always works
+function addon:ShowSimpleRightClickMenu()
+    print("|cffFFD700=== My UI Quick Menu ===|r")
+    print("|cff80FF80Left-click this button:|r Toggle main window")
+    print("|cff80FF80Available commands:|r")
+    print("  |cffFFFFFF/myui|r - Toggle main window")
+    print("  |cffFFFFFF/myui dps|r - Toggle DPS window")
+    print("  |cffFFFFFF/myui hps|r - Toggle HPS window")
+    print("  |cffFFFFFF/myui debug|r - Toggle debug mode")
+    print("  |cffFFFFFF/myui minimap|r - Hide this button")
+    print("|cffFFD700=======================|r")
+end
+
+function addon:GetDynamicRadius()
+    -- Get minimap boundaries
+    local minimapLeft = Minimap:GetLeft() or 0
+    local minimapRight = Minimap:GetRight() or 0
+    local minimapTop = Minimap:GetTop() or 0
+    local minimapBottom = Minimap:GetBottom() or 0
+
+    local minimapWidth = minimapRight - minimapLeft
+    local minimapHeight = minimapTop - minimapBottom
+
+    -- Calculate radius based on actual minimap size
+    local actualRadius = math.min(minimapWidth, minimapHeight) / 2
+    local buttonRadius = actualRadius + 18 -- Add space for button outside border
+
+    print("Minimap boundaries:", minimapLeft, minimapRight, minimapTop, minimapBottom)
+    print("Minimap dimensions:", minimapWidth, "x", minimapHeight)
+    print("Dynamic radius:", math.floor(buttonRadius))
+
+    return buttonRadius
 end

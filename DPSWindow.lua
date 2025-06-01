@@ -50,7 +50,7 @@ function addon.DPSWindow:Show()
         addon.dpsPixelMeter = addon.WorkingPixelMeter:New({
             cols = 20,
             rows = 1,
-            pixelSize = 8,
+            pixelSize = 10,
             gap = 1,
             maxValue = 15000,
             meterName = "DPS" -- For debug/commands

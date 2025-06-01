@@ -35,12 +35,14 @@ function WorkingPixelMeter:Create()
     local totalWidth = (self.cols * self.pixelSize) + ((self.cols - 1) * self.gap)
     local totalHeight = (self.rows * self.pixelSize) + ((self.rows - 1) * self.gap)
 
-    print(string.format("WorkingPixelMeter: Creating %dx%d grid, window size %dx%d",
-        self.cols, self.rows, totalWidth, totalHeight))
+    if addon.DEBUG then
+        print(string.format("WorkingPixelMeter: Creating %dx%d grid, window size %dx%d",
+            self.cols, self.rows, totalWidth, totalHeight))
+    end
 
-    -- Create main window frame - much more compact
+    -- Create main window frame - match parent width
     local frame = CreateFrame("Frame", nil, UIParent)
-    frame:SetSize(totalWidth + 8, totalHeight + 8)       -- Minimal padding
+    frame:SetSize(220, totalHeight + 8)                  -- Match the 220px window width
     frame:SetPoint("CENTER", UIParent, "CENTER", 200, 0) -- Right of center
     frame:SetFrameStrata("HIGH")
 
@@ -72,7 +74,9 @@ function WorkingPixelMeter:Create()
 
             self.pixels[row][col] = pixel
 
-            print(string.format("Created pixel [%d,%d] at (%d,%d)", row, col, x, y))
+            if addon.DEBUG then
+                print(string.format("Created pixel [%d,%d] at (%d,%d)", row, col, x, y))
+            end
         end
     end
 
@@ -90,7 +94,9 @@ function WorkingPixelMeter:Create()
         end)
     end
 
-    print("WorkingPixelMeter created successfully")
+    if addon.DEBUG then
+        print("WorkingPixelMeter created successfully")
+    end
 end
 
 function WorkingPixelMeter:SetValueSource(getValue)
@@ -100,14 +106,18 @@ end
 -- Manual scaling functions
 function WorkingPixelMeter:SetMaxValue(newMax)
     self.manualMaxValue = newMax
-    print(string.format("%s meter max set to %s", self.meterName, addon.CombatTracker:FormatNumber(newMax)))
+    if addon.DEBUG then
+        print(string.format("%s meter max set to %s", self.meterName, addon.CombatTracker:FormatNumber(newMax)))
+    end
 end
 
 function WorkingPixelMeter:ResetMaxValue()
     self.manualMaxValue = nil
     self.maxValue = self.originalMaxValue
-    print(string.format("%s meter max reset to %s", self.meterName,
-        addon.CombatTracker:FormatNumber(self.originalMaxValue)))
+    if addon.DEBUG then
+        print(string.format("%s meter max reset to %s", self.meterName,
+            addon.CombatTracker:FormatNumber(self.originalMaxValue)))
+    end
 end
 
 function WorkingPixelMeter:GetCurrentMaxValue()

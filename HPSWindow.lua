@@ -10,7 +10,7 @@ local hpsConfig = {
     labelColor = { r = 0, g = 1, b = 0.5 }, -- Teal green
     positionKey = "hpsWindowPosition",
     visibilityKey = "showHPSWindow",
-    showAbsorb = false,           -- Disabled absorb counter
+    showAbsorb = true,            -- Enable absorb counter
     showOverheal = true,          -- Show overheal for HPS
     enablePixelMeterGrid = false, -- Disable built-in pixel meter (using WorkingPixelMeter instead)
     defaultPosition = {
@@ -22,7 +22,8 @@ local hpsConfig = {
     -- Main value functions
     getMainValue = function() return addon.CombatTracker:GetRollingHPS() end,
     getMaxValue = function() return addon.CombatTracker:GetMaxHPS() end,
-    getTotalValue = function() return addon.CombatTracker:GetTotalHealing() end
+    getTotalValue = function() return addon.CombatTracker:GetTotalHealing() end,
+    getAbsorbValue = function() return addon.CombatTracker:GetTotalAbsorb() end -- Add absorb getter
 }
 
 -- Create HPS Window instance
@@ -51,7 +52,7 @@ function addon.HPSWindow:Show()
         addon.hpsPixelMeter = addon.WorkingPixelMeter:New({
             cols = 20,
             rows = 1,
-            pixelSize = 8,
+            pixelSize = 10,
             gap = 1,
             maxValue = 15000,
             meterName = "HPS" -- For debug/commands
