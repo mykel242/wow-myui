@@ -11,5 +11,4 @@ CombatTracker.lua
 BaseMeterWindow.lua
 DPSWindow.lua
 HPSWindow.lua
-SimpleGridWindow.lua
 WorkingPixelMeter.lua
