@@ -10,9 +10,8 @@ local dpsConfig = {
     labelColor = { r = 1, g = 0.2, b = 0.2 }, -- Red
     positionKey = "dpsWindowPosition",
     visibilityKey = "showDPSWindow",
-    showAbsorb = false,           -- Hide absorb for DPS
-    showOverheal = false,         -- Hide overheal for DPS
-    enablePixelMeterGrid = false, -- Disable built-in pixel meter (using WorkingPixelMeter instead)
+    showAbsorb = false,   -- Hide absorb for DPS
+    showOverheal = false, -- Hide overheal for DPS
     defaultPosition = {
         point = "RIGHT",
         relativePoint = "RIGHT",
@@ -52,7 +51,6 @@ function addon.DPSWindow:Show()
             rows = 1,
             pixelSize = 10,
             gap = 1,
-            maxValue = 15000,
             meterName = "DPS" -- For debug/commands
         })
         addon.dpsPixelMeter:SetValueSource(function()

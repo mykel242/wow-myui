@@ -134,7 +134,7 @@ function BaseMeterWindow:Create()
     -- Meter mode indicator (small text showing current max and mode)
     local meterIndicator = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     meterIndicator:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 4, 4) -- Bottom left near reset button
-    meterIndicator:SetText("15.0K (auto)")                           -- No prefix to save space
+    meterIndicator:SetText("auto")                                   -- No prefix to save space
     meterIndicator:SetTextColor(0, 1, 1, 0.8)                        -- Cyan for auto
     meterIndicator:SetJustifyH("LEFT")
     frame.meterIndicator = meterIndicator

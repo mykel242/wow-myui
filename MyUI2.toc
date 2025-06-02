@@ -6,11 +6,10 @@
 ## SavedVariables: MyUIDB
 ## DefaultState: enabled
 
+MyUI.lua
 CombatTracker.lua
 BaseMeterWindow.lua
-SimpleGridWindow.lua
-MyUI.lua
 DPSWindow.lua
 HPSWindow.lua
-PixelMeterGrid.lua
+SimpleGridWindow.lua
 WorkingPixelMeter.lua

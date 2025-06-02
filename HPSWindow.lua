@@ -10,9 +10,8 @@ local hpsConfig = {
     labelColor = { r = 0, g = 1, b = 0.5 }, -- Teal green
     positionKey = "hpsWindowPosition",
     visibilityKey = "showHPSWindow",
-    showAbsorb = true,            -- Enable absorb counter
-    showOverheal = true,          -- Show overheal for HPS
-    enablePixelMeterGrid = false, -- Disable built-in pixel meter (using WorkingPixelMeter instead)
+    showAbsorb = true,   -- Enable absorb counter
+    showOverheal = true, -- Show overheal for HPS
     defaultPosition = {
         point = "RIGHT",
         relativePoint = "RIGHT",
@@ -54,7 +53,6 @@ function addon.HPSWindow:Show()
             rows = 1,
             pixelSize = 10,
             gap = 1,
-            maxValue = 15000,
             meterName = "HPS" -- For debug/commands
         })
         addon.hpsPixelMeter:SetValueSource(function()

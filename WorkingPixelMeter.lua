@@ -14,7 +14,7 @@ function WorkingPixelMeter:New(config)
     instance.frame = nil
     instance.pixels = {}
     instance.getValue = nil
-    instance.maxValue = config.maxValue or 15000
+    instance.maxValue = config.maxValue or 500000      -- CHANGED: 500K default instead of 15K
     instance.originalMaxValue = instance.maxValue      -- Store original for reset
     instance.manualMaxValue = nil                      -- For manual override
     instance.meterName = config.meterName or "Unknown" -- For debug/commands
@@ -150,9 +150,11 @@ function WorkingPixelMeter:Update()
     local currentMax = self:GetCurrentMaxValue()
 
     -- Only auto-scale if no manual override is set
-    if not self.manualMaxValue and value > self.maxValue then
-        self.maxValue = value * 1.2
-        currentMax = self.maxValue
+    if not self.manualMaxValue then
+        -- Simple approach: scale based on last combat's peak
+        local autoScale = self:GetAutoScale()
+        self.maxValue = autoScale
+        currentMax = autoScale
     end
 
     local percent = math.min(1.0, currentMax > 0 and (value / currentMax) or 0)
@@ -217,5 +219,57 @@ function WorkingPixelMeter:Toggle()
         self:Hide()
     else
         self:Show()
+    end
+end
+
+function WorkingPixelMeter:GetAutoScale()
+    if not addon.CombatTracker then
+        return self.originalMaxValue
+    end
+
+    -- Get the last combat's peak for this meter type
+    local lastPeak = 0
+    if self.meterName == "DPS" then
+        lastPeak = addon.CombatTracker:GetLastCombatMaxDPS()
+    elseif self.meterName == "HPS" then
+        lastPeak = addon.CombatTracker:GetLastCombatMaxHPS()
+    end
+
+    -- If we have a previous peak, use it with some headroom
+    if lastPeak > 0 then
+        local autoScale = lastPeak * 1.4 -- 40% headroom
+
+        -- Round to nice number
+        autoScale = self:RoundToNiceNumber(autoScale)
+
+        -- Reasonable bounds
+        autoScale = math.max(autoScale, self.originalMaxValue) -- Don't go below 500K
+        autoScale = math.min(autoScale, 20000000)              -- 20M cap
+
+        return autoScale
+    else
+        -- No previous data, use default (500K)
+        return self.originalMaxValue
+    end
+end
+
+function WorkingPixelMeter:RoundToNiceNumber(value)
+    -- Round to nice round numbers: 100K, 200K, 500K, 1M, 2M, 5M, 10M, etc.
+
+    if value < 100000 then
+        -- Below 100K: round to nearest 50K
+        return math.ceil(value / 50000) * 50000
+    elseif value < 1000000 then
+        -- 100K to 1M: round to nearest 100K
+        return math.ceil(value / 100000) * 100000
+    elseif value < 5000000 then
+        -- 1M to 5M: round to nearest 500K
+        return math.ceil(value / 500000) * 500000
+    elseif value < 10000000 then
+        -- 5M to 10M: round to nearest 1M
+        return math.ceil(value / 1000000) * 1000000
+    else
+        -- Above 10M: round to nearest 2M
+        return math.ceil(value / 2000000) * 2000000
     end
 end

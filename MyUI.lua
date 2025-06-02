@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-73c452e"
-addon.BUILD_DATE = "2025-06-01-18:42"
+addon.VERSION = "main-ad537b3"
+addon.BUILD_DATE = "2025-06-01-20:33"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -388,37 +388,6 @@ function SlashCmdList.MYUI(msg, editBox)
         addon.db.debugMode = addon.DEBUG
         print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
         addon:UpdateStatusDisplay()
-    elseif command == "pixeltest" then
-        print("=== PIXEL METER TEST ===")
-        if not addon.HPSWindow then
-            print("ERROR: HPSWindow doesn't exist")
-            return
-        end
-        if not addon.HPSWindow.frame then
-            print("ERROR: HPSWindow.frame doesn't exist")
-            return
-        end
-        if not addon.HPSWindow.pixelMeter then
-            print("ERROR: HPSWindow.pixelMeter doesn't exist")
-            return
-        end
-
-        local pm = addon.HPSWindow.pixelMeter
-        print("PixelMeter object exists:", pm ~= nil)
-        print("PixelMeter.frame exists:", pm.frame ~= nil)
-        print("PixelMeter.pixels table exists:", pm.pixels ~= nil)
-
-        if pm.pixels then
-            print("PixelMeter.pixels[1] exists:", pm.pixels[1] ~= nil)
-            if pm.pixels[1] then
-                print("PixelMeter.pixels[1][1] exists:", pm.pixels[1][1] ~= nil)
-            end
-        end
-
-        print("Calling pm:Show()...")
-        pm:Show()
-        print("pm:Show() completed")
-        print("=== END PIXEL TEST ===")
     elseif command == "cstart" then
         if not addon.CombatTracker then
             print("CombatTracker not loaded!")
@@ -435,56 +404,6 @@ function SlashCmdList.MYUI(msg, editBox)
         addon.CombatTracker:EndCombat()
         print("Forced combat end")
         addon:UpdateStatusDisplay()
-    elseif command == "hpsmeter" then
-        if not addon.hpsPixelMeter then
-            if addon.WorkingPixelMeter then
-                addon.hpsPixelMeter = addon.WorkingPixelMeter:New({
-                    cols = 20,
-                    rows = 1,
-                    pixelSize = 8,
-                    gap = 1,
-                    maxValue = 15000
-                })
-                addon.hpsPixelMeter:SetValueSource(function()
-                    return addon.CombatTracker:GetRollingHPS()
-                end)
-            else
-                print("ERROR: WorkingPixelMeter not loaded")
-                return
-            end
-        end
-        addon.hpsPixelMeter:Toggle()
-
-        -- Position after showing (when frame exists)
-        if addon.hpsPixelMeter.frame and addon.HPSWindow and addon.HPSWindow.frame then
-            addon.hpsPixelMeter.frame:ClearAllPoints()
-            addon.hpsPixelMeter.frame:SetPoint("BOTTOM", addon.HPSWindow.frame, "TOP", 0, 5)
-        end
-    elseif command == "dpsmeter" then
-        if not addon.dpsPixelMeter then
-            if addon.WorkingPixelMeter then
-                addon.dpsPixelMeter = addon.WorkingPixelMeter:New({
-                    cols = 20,
-                    rows = 1,
-                    pixelSize = 8,
-                    gap = 1,
-                    maxValue = 15000
-                })
-                addon.dpsPixelMeter:SetValueSource(function()
-                    return addon.CombatTracker:GetRollingDPS()
-                end)
-            else
-                print("ERROR: WorkingPixelMeter not loaded")
-                return
-            end
-        end
-        addon.dpsPixelMeter:Toggle()
-
-        -- Position after showing (when frame exists)
-        if addon.dpsPixelMeter.frame and addon.DPSWindow and addon.DPSWindow.frame then
-            addon.dpsPixelMeter.frame:ClearAllPoints()
-            addon.dpsPixelMeter.frame:SetPoint("BOTTOM", addon.DPSWindow.frame, "TOP", 0, 5)
-        end
     elseif command:match("^hpsmax%s+(%d+)$") then
         local maxValue = tonumber(command:match("^hpsmax%s+(%d+)$"))
         if addon.hpsPixelMeter then
@@ -563,187 +482,31 @@ function SlashCmdList.MYUI(msg, editBox)
         end
         print("Meter scaling reset to defaults")
         print("=== RESET COMPLETE ===")
+    elseif command == "debugpeaks" then
+        if addon.CombatTracker then
+            addon.CombatTracker:DebugPeakTracking()
+        else
+            print("CombatTracker not loaded")
+        end
+    elseif command == "debugdps" then
+        if addon.CombatTracker then
+            addon.CombatTracker:DebugDPSCalculation()
+        else
+            print("CombatTracker not loaded")
+        end
+    elseif command == "comparerolling" then
+        if addon.CombatTracker then
+            addon.CombatTracker:CompareRollingVsOverall()
+        else
+            print("CombatTracker not loaded")
+        end
+    elseif command == "checktiming" then
+        if addon.CombatTracker then
+            addon.CombatTracker:CheckUpdateTiming()
+        else
+            print("CombatTracker not loaded")
+        end
     else
-        print("Usage: /myui [show | hide | toggle | dps | hps | debug | pixeltest | cstart | cend ]")
+        print("Usage: /myui [TODO]")
     end
-end
-
-function addon:CreateMinimapButton()
-    if not self.db.showMinimap then return end
-    if self.minimapButton then return end
-
-    print("Creating minimap button with dynamic radius...")
-
-    local button = CreateFrame("Button", addonName .. "MinimapButton", Minimap)
-    button:SetSize(32, 32)
-    button:SetFrameStrata("MEDIUM")
-    button:SetFrameLevel(8)
-
-    -- Create background circle
-    local bg = button:CreateTexture(nil, "BACKGROUND")
-    bg:SetSize(32, 32)
-    bg:SetPoint("CENTER")
-    bg:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-
-    -- Button icon
-    local texture = button:CreateTexture(nil, "ARTWORK")
-    texture:SetSize(20, 20)
-    texture:SetPoint("CENTER")
-    texture:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
-
-    -- Create highlight texture
-    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-    highlight:SetSize(32, 32)
-    highlight:SetPoint("CENTER")
-    highlight:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    highlight:SetBlendMode("ADD")
-    highlight:SetAlpha(0.5)
-
-    -- Position button using dynamic radius
-    local angle = self.db.minimapButtonAngle or 225
-    self:PositionMinimapButton(button, angle)
-
-    -- FIXED DRAGGING - follows mouse smoothly around circle
-    button:EnableMouse(true)
-    button:RegisterForDrag("LeftButton")
-
-    local isDragging = false
-    local dragStartTime = 0
-
-    button:SetScript("OnDragStart", function(self)
-        isDragging = true
-        dragStartTime = GetTime()
-
-        -- Get the dynamic radius once at start of drag
-        local dragRadius = addon:GetDynamicRadius()
-        if not dragRadius or dragRadius <= 0 then
-            dragRadius = 85
-        end
-
-        self:SetScript("OnUpdate", function(self)
-            local centerX, centerY = Minimap:GetCenter()
-            local cursorX, cursorY = GetCursorPosition()
-            local scale = UIParent:GetEffectiveScale()
-
-            cursorX = cursorX / scale
-            cursorY = cursorY / scale
-
-            if centerX and centerY then
-                -- Calculate angle from minimap center to cursor
-                local deltaX = cursorX - centerX
-                local deltaY = cursorY - centerY
-                local angle = math.atan2(deltaY, deltaX)
-
-                -- Position button at fixed radius in direction of cursor
-                local newX = centerX + math.cos(angle) * dragRadius
-                local newY = centerY + math.sin(angle) * dragRadius
-
-                -- Position relative to UIParent (screen coordinates)
-                self:ClearAllPoints()
-                self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", newX, newY)
-            end
-        end)
-    end)
-
-    button:SetScript("OnDragStop", function(self)
-        local dragDuration = GetTime() - dragStartTime
-        isDragging = false
-        self:SetScript("OnUpdate", nil)
-
-        -- Save the final position
-        addon:UpdateMinimapButtonAngle()
-
-        -- If it was a very short drag (< 0.1 seconds), treat it as a click
-        if dragDuration < 0.1 then
-            addon:ToggleMainWindow()
-        end
-    end)
-
-    -- SIMPLIFIED CLICK HANDLING - only for right-click since left-click is handled by drag
-    button:SetScript("OnMouseUp", function(self, clickButton)
-        if clickButton == "RightButton" and not isDragging then
-            addon:ShowMinimapButtonMenu()
-        end
-    end)
-
-    -- Tooltip
-    button:SetScript("OnEnter", function(self)
-        if not isDragging then -- Only show tooltip when not dragging
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:SetText("My UI v" .. addon.VERSION, 1, 1, 1)
-            GameTooltip:AddLine("Left-click: Toggle main window", 0.8, 0.8, 0.8)
-            GameTooltip:AddLine("Right-click: Options menu", 0.8, 0.8, 0.8)
-            GameTooltip:AddLine("Drag: Move around minimap", 0.6, 0.6, 0.6)
-            GameTooltip:Show()
-        end
-    end)
-
-    button:SetScript("OnLeave", function(self)
-        GameTooltip:Hide()
-    end)
-
-    button:Show()
-    self.minimapButton = button
-    print("MyUI minimap button created with smooth dragging!")
-end
-
-function addon:PositionMinimapButton(button, angle)
-    local radius = self:GetDynamicRadius() or 98 -- Dynamic with fallback
-    local radian = math.rad(angle)
-    local x = math.cos(radian) * radius
-    local y = math.sin(radian) * radius
-
-    button:ClearAllPoints()
-    button:SetPoint("CENTER", Minimap, "CENTER", x, y)
-end
-
-function addon:UpdateMinimapButtonAngle()
-    if not self.minimapButton then return end
-
-    local centerX, centerY = Minimap:GetCenter()
-    local buttonX, buttonY = self.minimapButton:GetCenter()
-
-    if centerX and centerY and buttonX and buttonY then
-        local angle = math.deg(math.atan2(buttonY - centerY, buttonX - centerX))
-        self.db.minimapButtonAngle = angle
-        -- Don't reposition here - it's already positioned correctly
-    end
-end
-
-function addon:ShowMinimapButtonMenu()
-    addon:ShowSimpleRightClickMenu()
-end
-
--- Simple text-based right-click menu that always works
-function addon:ShowSimpleRightClickMenu()
-    print("|cffFFD700=== My UI Quick Menu ===|r")
-    print("|cff80FF80Left-click this button:|r Toggle main window")
-    print("|cff80FF80Available commands:|r")
-    print("  |cffFFFFFF/myui|r - Toggle main window")
-    print("  |cffFFFFFF/myui dps|r - Toggle DPS window")
-    print("  |cffFFFFFF/myui hps|r - Toggle HPS window")
-    print("  |cffFFFFFF/myui debug|r - Toggle debug mode")
-    print("  |cffFFFFFF/myui minimap|r - Hide this button")
-    print("|cffFFD700=======================|r")
-end
-
-function addon:GetDynamicRadius()
-    -- Get minimap boundaries
-    local minimapLeft = Minimap:GetLeft() or 0
-    local minimapRight = Minimap:GetRight() or 0
-    local minimapTop = Minimap:GetTop() or 0
-    local minimapBottom = Minimap:GetBottom() or 0
-
-    local minimapWidth = minimapRight - minimapLeft
-    local minimapHeight = minimapTop - minimapBottom
-
-    -- Calculate radius based on actual minimap size
-    local actualRadius = math.min(minimapWidth, minimapHeight) / 2
-    local buttonRadius = actualRadius + 18 -- Add space for button outside border
-
-    print("Minimap boundaries:", minimapLeft, minimapRight, minimapTop, minimapBottom)
-    print("Minimap dimensions:", minimapWidth, "x", minimapHeight)
-    print("Dynamic radius:", math.floor(buttonRadius))
-
-    return buttonRadius
 end

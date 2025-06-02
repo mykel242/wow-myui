@@ -262,17 +262,24 @@ function CombatTracker:OnEvent(event, ...)
         if combatData.inCombat then
             -- Calculate final DPS/HPS rates while still in combat
             local elapsed = GetTime() - combatData.startTime
-            print(string.format("Combat ending: elapsed=%.1f, damage=%d, healing=%d", elapsed, combatData.damage,
-                combatData.healing))
+            if addon.DEBUG then
+                print(string.format("Combat ending: elapsed=%.1f, damage=%d, healing=%d", elapsed, combatData.damage,
+                    combatData.healing))
+            end
 
             if elapsed > 0 then
                 combatData.finalDPS = combatData.damage / elapsed
                 combatData.finalHPS = combatData.healing / elapsed
-                print(string.format("Calculated finalDPS=%.1f, finalHPS=%.1f", combatData.finalDPS, combatData.finalHPS))
+                if addon.DEBUG then
+                    print(string.format("Calculated finalDPS=%.1f, finalHPS=%.1f", combatData.finalDPS,
+                        combatData.finalHPS))
+                end
             else
                 combatData.finalDPS = 0
                 combatData.finalHPS = 0
-                print("Elapsed time was 0, setting final values to 0")
+                if addon.DEBUG then
+                    print("Elapsed time was 0, setting final values to 0")
+                end
             end
 
             -- Capture other final values
@@ -306,14 +313,17 @@ function CombatTracker:StartCombat()
     combatData.absorb = 0
     combatData.maxDPS = 0
     combatData.maxHPS = 0
-    combatData.finalDamage = 0
-    combatData.finalHealing = 0
-    combatData.finalOverheal = 0
-    combatData.finalAbsorb = 0
-    combatData.finalMaxDPS = 0
-    combatData.finalMaxHPS = 0
-    combatData.finalDPS = 0
-    combatData.finalHPS = 0
+
+    -- DON'T RESET THESE - keep them for auto-scaling:
+    -- combatData.finalDamage = 0
+    -- combatData.finalHealing = 0
+    -- combatData.finalOverheal = 0
+    -- combatData.finalAbsorb = 0
+    -- combatData.finalMaxDPS = 0
+    -- combatData.finalMaxHPS = 0
+    -- combatData.finalDPS = 0
+    -- combatData.finalHPS = 0
+
     combatData.lastUpdate = GetTime()
 
     -- Reset sampling data
@@ -464,7 +474,7 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
         local absorbAmount = select(8, ...)
         if absorbAmount and absorbAmount > 0 and absorbAmount < 5000000 then
             combatData.absorb = combatData.absorb + absorbAmount
-            combatData.healing = combatData.healing + absorbAmount     -- Count absorbs as healing
+            combatData.healing = combatData.healing + absorbAmount -- Count absorbs as healing
 
             if addon.DEBUG then
                 print(string.format("Absorb: %s", addon.CombatTracker:FormatNumber(absorbAmount)))
@@ -702,19 +712,36 @@ function CombatTracker:IsInCombat()
     return combatData.inCombat
 end
 
--- Update all displays
+-- Simple UpdateDisplays fix - just replace this function in your CombatTracker.lua
+
 function CombatTracker:UpdateDisplays()
     -- Track max DPS and HPS during combat
     if combatData.inCombat then
-        local currentDPS = self:GetDPS()
-        local currentHPS = self:GetHPS()
+        local elapsed = GetTime() - combatData.startTime
 
-        if currentDPS > combatData.maxDPS then
-            combatData.maxDPS = currentDPS
-        end
+        -- TIMING PROTECTION: Don't track peaks for the first 1.5 seconds of combat
+        if elapsed >= 1.5 then
+            local rollingDPS = self:GetRollingDPS()
+            local rollingHPS = self:GetRollingHPS()
 
-        if currentHPS > combatData.maxHPS then
-            combatData.maxHPS = currentHPS
+            -- Track peaks of rolling averages (more stable than overall DPS)
+            if rollingDPS > combatData.maxDPS then
+                combatData.maxDPS = rollingDPS
+                if addon.DEBUG then
+                    addon:DebugPrint(string.format("NEW ROLLING DPS PEAK: %.0f", rollingDPS))
+                end
+            end
+
+            if rollingHPS > combatData.maxHPS then
+                combatData.maxHPS = rollingHPS
+                if addon.DEBUG then
+                    addon:DebugPrint(string.format("NEW ROLLING HPS PEAK: %.0f", rollingHPS))
+                end
+            end
+        else
+            if addon.DEBUG then
+                addon:DebugPrint(string.format("Peak tracking disabled: elapsed=%.2f < 1.5 seconds", elapsed))
+            end
         end
     end
 
@@ -738,4 +765,216 @@ function CombatTracker:FormatNumber(num)
     else
         return tostring(math.floor(num))
     end
+end
+
+-- === DEBUG FUNCTIONS ===
+
+-- Debug peak tracking values
+function CombatTracker:DebugPeakTracking()
+    print("=== PEAK TRACKING DEBUG ===")
+    print("Combat State:", self:IsInCombat() and "IN COMBAT" or "OUT OF COMBAT")
+    print("Current DPS:", math.floor(self:GetDPS()))
+    print("Current HPS:", math.floor(self:GetHPS()))
+    print("Rolling DPS:", math.floor(self:GetRollingDPS()))
+    print("Rolling HPS:", math.floor(self:GetRollingHPS()))
+
+    print("--- Stored Peak Values ---")
+    print("combatData.maxDPS:", math.floor(combatData.maxDPS))
+    print("combatData.maxHPS:", math.floor(combatData.maxHPS))
+    print("combatData.finalMaxDPS:", math.floor(combatData.finalMaxDPS))
+    print("combatData.finalMaxHPS:", math.floor(combatData.finalMaxHPS))
+
+    print("--- What GetMaxDPS/HPS Return ---")
+    print("GetMaxDPS():", math.floor(self:GetMaxDPS()))
+    print("GetMaxHPS():", math.floor(self:GetMaxHPS()))
+
+    print("--- Combat Totals ---")
+    print("Total Damage:", self:FormatNumber(combatData.damage))
+    print("Total Healing:", self:FormatNumber(combatData.healing))
+    print("Combat Duration:", string.format("%.1f seconds", self:GetCombatTime()))
+
+    if combatData.startTime then
+        local elapsed = GetTime() - combatData.startTime
+        if elapsed > 0 then
+            print("Expected Average DPS:", math.floor(combatData.damage / elapsed))
+            print("Expected Average HPS:", math.floor(combatData.healing / elapsed))
+        end
+    end
+    print("========================")
+end
+
+-- Debug DPS calculation in detail
+function CombatTracker:DebugDPSCalculation()
+    print("=== DPS CALCULATION DEBUG ===")
+
+    if not combatData.inCombat and combatData.finalDPS > 0 then
+        print("Using FINAL DPS:", combatData.finalDPS)
+        print("Final damage:", combatData.finalDamage)
+        return
+    end
+
+    if not combatData.inCombat or not combatData.startTime then
+        print("Not in combat or no start time")
+        return
+    end
+
+    local elapsed = GetTime() - combatData.startTime
+    local calculatedDPS = elapsed > 0 and (combatData.damage / elapsed) or 0
+
+    print("Combat Start Time:", combatData.startTime)
+    print("Current Time:", GetTime())
+    print("Elapsed Time:", elapsed)
+    print("Total Damage:", combatData.damage)
+    print("Calculated DPS:", calculatedDPS)
+    print("Stored Max DPS:", combatData.maxDPS)
+
+    -- Check if elapsed time is too small
+    if elapsed < 0.1 then
+        print("WARNING: Very short elapsed time, DPS calculation may be inflated!")
+    end
+
+    -- Check for timing issues
+    if elapsed < 1.0 and combatData.damage > 100000 then
+        print("WARNING: High damage in short time - potential timing issue!")
+        print("This could cause artificially high peak DPS values")
+    end
+
+    print("========================")
+end
+
+-- Compare rolling vs overall calculations
+function CombatTracker:CompareRollingVsOverall()
+    print("=== ROLLING VS OVERALL COMPARISON ===")
+    print("Overall DPS (from start):", math.floor(self:GetDPS()))
+    print("Rolling DPS (5-sec avg):", math.floor(self:GetRollingDPS()))
+    print("Overall HPS (from start):", math.floor(self:GetHPS()))
+    print("Rolling HPS (5-sec avg):", math.floor(self:GetRollingHPS()))
+
+    local rolling = CalculateRollingAverages()
+    print("Rolling sample count:", rolling.sampleCount)
+    print("Rolling window size:", ROLLING_WINDOW_SIZE, "seconds")
+    print("Sample interval:", SAMPLE_INTERVAL, "seconds")
+
+    -- Show timeline sample count
+    print("Timeline samples:", #timelineData.samples)
+    print("====================================")
+end
+
+-- Check update timing and timers
+function CombatTracker:CheckUpdateTiming()
+    print("=== UPDATE TIMING CHECK ===")
+    print("Update timer interval: 0.1 seconds")
+    print("Sample timer interval:", SAMPLE_INTERVAL, "seconds")
+    print("Rolling window size:", ROLLING_WINDOW_SIZE, "seconds")
+    print("Max timeline samples:", MAX_TIMELINE_SAMPLES)
+
+    if self.updateTimer then
+        print("Update timer exists and running")
+    else
+        print("WARNING: Update timer not found!")
+    end
+
+    if self.sampleTimer then
+        print("Sample timer exists and running")
+    else
+        print("WARNING: Sample timer not found!")
+    end
+
+    -- Check combat data timestamps
+    if combatData.startTime then
+        print("Combat start time:", combatData.startTime)
+        print("Last sample time:", combatData.lastSampleTime)
+        print("Current time:", GetTime())
+    else
+        print("No combat start time recorded")
+    end
+    print("==========================")
+end
+
+-- Debug what happens during peak detection
+function CombatTracker:DebugPeakDetection()
+    print("=== PEAK DETECTION DEBUG ===")
+
+    if not combatData.inCombat then
+        print("Not in combat - no peak detection active")
+        return
+    end
+
+    local currentDPS = self:GetDPS()
+    local currentHPS = self:GetHPS()
+    local rollingDPS = self:GetRollingDPS()
+    local rollingHPS = self:GetRollingHPS()
+    local elapsed = GetTime() - combatData.startTime
+
+    print("Time since combat start:", string.format("%.2f seconds", elapsed))
+    print("Total damage so far:", combatData.damage)
+    print("Total healing so far:", combatData.healing)
+    print("Current overall DPS:", math.floor(currentDPS))
+    print("Current overall HPS:", math.floor(currentHPS))
+    print("Current rolling DPS:", math.floor(rollingDPS))
+    print("Current rolling HPS:", math.floor(rollingHPS))
+    print("Current peak DPS:", math.floor(combatData.maxDPS))
+    print("Current peak HPS:", math.floor(combatData.maxHPS))
+
+    -- Predict if peaks will update
+    if currentDPS > combatData.maxDPS then
+        print(">>> DPS PEAK WILL UPDATE on next UpdateDisplays() call")
+    else
+        print("--- DPS peak will not update")
+    end
+
+    if currentHPS > combatData.maxHPS then
+        print(">>> HPS PEAK WILL UPDATE on next UpdateDisplays() call")
+    else
+        print("--- HPS peak will not update")
+    end
+
+    print("============================")
+end
+
+-- Test peak tracking with artificial values
+function CombatTracker:TestPeakTracking()
+    print("=== TESTING PEAK TRACKING ===")
+
+    -- Save original values
+    local origMaxDPS = combatData.maxDPS
+    local origMaxHPS = combatData.maxHPS
+    local origFinalMaxDPS = combatData.finalMaxDPS
+    local origFinalMaxHPS = combatData.finalMaxHPS
+
+    -- Test with artificial peaks
+    print("Setting artificial peak values...")
+    combatData.maxDPS = 500000 -- 500K
+    combatData.maxHPS = 300000 -- 300K
+
+    -- Force display update
+    self:UpdateDisplays()
+    print("Updated displays with 500K DPS peak, 300K HPS peak")
+
+    -- Test with higher values
+    combatData.maxDPS = 1000000 -- 1M
+    combatData.maxHPS = 600000  -- 600K
+
+    -- Force display update
+    self:UpdateDisplays()
+    print("Updated displays with 1M DPS peak, 600K HPS peak")
+
+    -- Restore original values
+    combatData.maxDPS = origMaxDPS
+    combatData.maxHPS = origMaxHPS
+    combatData.finalMaxDPS = origFinalMaxDPS
+    combatData.finalMaxHPS = origFinalMaxHPS
+
+    self:UpdateDisplays()
+    print("Restored original peak values")
+    print("===========================")
+end
+
+-- Get the final peak values from the last completed combat
+function CombatTracker:GetLastCombatMaxDPS()
+    return combatData.finalMaxDPS or 0
+end
+
+function CombatTracker:GetLastCombatMaxHPS()
+    return combatData.finalMaxHPS or 0
 end
