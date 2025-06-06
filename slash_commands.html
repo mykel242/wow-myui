@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyUI2 Slash Commands Reference</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0.75in;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.4;
+            color: #333;
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #2c5282;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #2c5282;
+            font-size: 28px;
+            margin: 0;
+            font-weight: bold;
+        }
+        
+        .header .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .section {
+            margin-bottom: 25px;
+            page-break-inside: avoid;
+        }
+        
+        .section h2 {
+            color: #2c5282;
+            font-size: 18px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .section h3 {
+            color: #4a5568;
+            font-size: 16px;
+            margin-bottom: 10px;
+            margin-top: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+        
+        th, td {
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+        
+        th {
+            background-color: #f7fafc;
+            font-weight: bold;
+            color: #2d3748;
+        }
+        
+        .command {
+            font-family: 'Courier New', monospace;
+            background-color: #f7fafc;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        
+        .example-box {
+            background-color: #f0fff4;
+            border: 1px solid #9ae6b4;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .example-box h4 {
+            color: #22543d;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .code-block {
+            font-family: 'Courier New', monospace;
+            background-color: #2d3748;
+            color: #e2e8f0;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+        
+        .note-box {
+            background-color: #fffaf0;
+            border: 1px solid #fbd38d;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .note-box h4 {
+            color: #c05621;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .two-column {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .column {
+            flex: 1;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+        }
+        
+        @media print {
+            .page-break {
+                page-break-before: always;
+            }
+            
+            .no-break {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>MyUI2 Slash Commands Reference</h1>
+        <div class="subtitle">World of Warcraft Addon - Complete Command Guide</div>
+    </div>
+
+    <div class="section">
+        <h2>🎮 Basic Commands</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30%">Command</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui</span></td>
+                    <td>Toggle main configuration window</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui show</span></td>
+                    <td>Show main configuration window</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui hide</span></td>
+                    <td>Hide main configuration window</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui toggle</span></td>
+                    <td>Same as <span class="command">/myui</span> - toggle main window</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>📊 Window Controls</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30%">Command</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui dps</span></td>
+                    <td>Toggle DPS meter window and pixel meter</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui hps</span></td>
+                    <td>Toggle HPS meter window and pixel meter</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>⚙️ Pixel Meter Controls</h2>
+        
+        <h3>Manual Scaling</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 35%">Command</th>
+                    <th style="width: 45%">Description</th>
+                    <th>Example</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui dpsmax &lt;value&gt;</span></td>
+                    <td>Set DPS meter maximum value</td>
+                    <td><span class="command">/myui dpsmax 100000</span></td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui hpsmax &lt;value&gt;</span></td>
+                    <td>Set HPS meter maximum value</td>
+                    <td><span class="command">/myui hpsmax 500000</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>Reset Commands</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 35%">Command</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui dpsreset</span></td>
+                    <td>Reset DPS meter to auto-scaling</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui hpsreset</span></td>
+                    <td>Reset HPS meter to auto-scaling</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui resetmeters</span></td>
+                    <td>Reset both DPS and HPS meters</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui resetcombat</span></td>
+                    <td>Reset all combat data and meter scaling</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>Information Commands</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 35%">Command</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui meterinfo</span></td>
+                    <td>Show current meter values, percentages, and scaling info</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="page-break"></div>
+
+    <div class="section">
+        <h2>🐛 Debug & Development</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 35%">Command</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui debug</span></td>
+                    <td>Toggle debug mode on/off</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui debugpeaks</span></td>
+                    <td>Show detailed peak tracking debug info</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui debugdps</span></td>
+                    <td>Show DPS calculation debug details</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui comparerolling</span></td>
+                    <td>Compare rolling vs overall DPS/HPS calculations</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui checktiming</span></td>
+                    <td>Check update timing and timer status</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>⚔️ Combat Control (Testing)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 35%">Command</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui cstart</span></td>
+                    <td>Force start combat tracking</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui cend</span></td>
+                    <td>Force end combat tracking</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="example-box">
+        <h4>💡 Common Usage Examples</h4>
+        <div class="code-block">/myui                    # Open main window
+/myui dps               # Show/hide DPS meter
+/myui hpsmax 750000     # Set HPS meter max to 750K
+/myui meterinfo         # Check current meter status
+/myui resetcombat       # Full reset for testing
+/myui debug             # Enable debug output</div>
+    </div>
+
+    <div class="section">
+        <h2>📈 Meter Scaling Explained</h2>
+        <ul>
+            <li><strong>Auto-scaling:</strong> Meters automatically scale based on your previous combat peaks with 40% headroom</li>
+            <li><strong>Manual scaling:</strong> Use <span class="command">dpsmax</span>/<span class="command">hpsmax</span> to set fixed maximum values</li>
+            <li><strong>Reset:</strong> Use reset commands to return to auto-scaling behavior</li>
+            <li><strong>Persistence:</strong> Manual scaling settings are saved between game sessions</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>🔍 Debug Output</h2>
+        <p>When debug mode is enabled (<span class="command">/myui debug</span>), you'll see:</p>
+        <ul>
+            <li>Combat event parsing details</li>
+            <li>Peak value tracking updates</li>
+            <li>Rolling average calculations</li>
+            <li>Meter scaling decisions</li>
+            <li>Automatic sample data every 5 seconds during combat</li>
+        </ul>
+    </div>
+
+    <div class="note-box">
+        <h4>📝 Important Notes</h4>
+        <ul>
+            <li>All window positions are automatically saved when you drag them</li>
+            <li>Meter scaling preferences persist between game sessions</li>
+            <li>Debug mode setting is saved in your addon data</li>
+            <li>Combat testing commands are for development/testing only</li>
+            <li>Meters show "(auto)" or "(manual)" status in the bottom indicator</li>
+            <li>Rolling averages are calculated over 5-second windows for smoother display</li>
+        </ul>
+    </div>
+
+    <div class="footer">
+        <p>MyUI2 Addon • Generated from code documentation • For World of Warcraft</p>
+    </div>
+</body>
+</html>
