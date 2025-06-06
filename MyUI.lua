@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-meter-history-7856c8b"
-addon.BUILD_DATE = "2025-06-06-11:21"
+addon.VERSION = "feature-main-window-update-7eeeaef"
+addon.BUILD_DATE = "2025-06-06-15:36"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -118,6 +118,7 @@ function addon:OnInitialize()
     -- Initialize all modules
     if self.CombatTracker then
         self.CombatTracker:Initialize()
+        self.CombatTracker:InitializeSessionHistory()
     end
     if self.DPSWindow then
         self.DPSWindow:Initialize()
@@ -130,24 +131,26 @@ function addon:OnInitialize()
     print("Use /myui to toggle the main configuration window")
 end
 
--- Enable function
 function addon:OnEnable()
     if self.db.enabled then
-        -- Create main frame but don't show it yet
         self:CreateMainFrame()
-        -- self:CreateMinimapButton()
 
-        -- Only show main window if it was explicitly shown before
+        -- Debug the state
+        print("showMainWindow value:", self.db.showMainWindow)
+
         if self.db.showMainWindow then
+            print("Showing main window")
             self.mainFrame:Show()
+        else
+            print("Not showing main window")
         end
 
-        -- Restore DPS window visibility
+
+        -- Restore other windows...
         if self.db.showDPSWindow and self.DPSWindow then
             self.DPSWindow:Show()
         end
 
-        -- Restore HPS window visibility
         if self.db.showHPSWindow and self.HPSWindow then
             self.HPSWindow:Show()
         end
@@ -159,18 +162,16 @@ end
 -- Disable function
 function addon:OnDisable()
     -- Save frame position before logout
-    if self.mainFrame and self.mainFrame:IsShown() then
-        local point, relativeTo, relativePoint, xOfs, yOfs = self.mainFrame:GetPoint()
-        self.db.framePosition = {
-            point = point,
-            relativePoint = relativePoint,
-            xOffset = xOfs,
-            yOffset = yOfs
-        }
-    end
-
-    -- Save main window visibility state
     if self.mainFrame then
+        if self.mainFrame:IsShown() then
+            local point, relativeTo, relativePoint, xOfs, yOfs = self.mainFrame:GetPoint()
+            self.db.framePosition = {
+                point = point,
+                relativePoint = relativePoint,
+                xOffset = xOfs,
+                yOffset = yOfs
+            }
+        end
         self.db.showMainWindow = self.mainFrame:IsShown()
     end
 
@@ -214,14 +215,18 @@ function addon:UpdateStatusDisplay()
     self.mainFrame.statusText:SetText("Debug: " .. debugStatus .. "\nCombat: " .. combatStatus)
 end
 
--- Create main addon frame
 function addon:CreateMainFrame()
     if self.mainFrame then return end
 
-    local frame = CreateFrame("Frame", addonName .. "MainFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(300, 250)
+    local frame = CreateFrame("Frame", addonName .. "MainFrame", UIParent)
+    frame:SetSize(440, 480)
 
-    -- Restore saved position or use default
+    -- Add main background
+    local mainBg = frame:CreateTexture(nil, "BACKGROUND")
+    mainBg:SetAllPoints(frame)
+    mainBg:SetColorTexture(0, 0, 0, 0.7)
+
+    -- Position and dragging
     if self.db.framePosition then
         frame:SetPoint(
             self.db.framePosition.point or "CENTER",
@@ -240,7 +245,6 @@ function addon:CreateMainFrame()
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
-        -- Save position immediately when dragging stops
         local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint()
         addon.db.framePosition = {
             point = point,
@@ -251,108 +255,478 @@ function addon:CreateMainFrame()
     end)
 
     -- Frame title
-    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    frame.title:SetPoint("LEFT", frame.TitleBg, "LEFT", 5, 0)
-    frame.title:SetText("My UI v" .. addon.VERSION)
+    -- frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    -- frame.title:SetPoint("LEFT", frame.TitleBg, "LEFT", 5, 0)
+    -- frame.title:SetText("MyUI v" .. addon.VERSION)
 
-    -- Status display
-    local statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    statusText:SetPoint("TOP", frame, "TOP", 0, -40)
-    statusText:SetJustifyH("CENTER")
-    frame.statusText = statusText
+    -- === CURRENT COMBAT PANEL ===
+    local combatPanel = CreateFrame("Frame", nil, frame)
+    combatPanel:SetSize(400, 75)
+    combatPanel:SetPoint("TOP", frame, "TOP", 0, -30)
 
-    -- DPS Window Toggle Button
-    local dpsBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    dpsBtn:SetSize(100, 30)
-    dpsBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -80)
-    dpsBtn:SetText("Toggle DPS")
+    local combatBg = combatPanel:CreateTexture(nil, "BACKGROUND")
+    combatBg:SetAllPoints(combatPanel)
+    combatBg:SetColorTexture(0, 0, 0, 0.7)
+
+    local combatBorder = combatPanel:CreateTexture(nil, "BORDER")
+    combatBorder:SetAllPoints(combatPanel)
+    combatBorder:SetColorTexture(0.3, 0.3, 0.3, 1)
+    combatBg:SetPoint("TOPLEFT", combatBorder, "TOPLEFT", 1, -1)
+    combatBg:SetPoint("BOTTOMRIGHT", combatBorder, "BOTTOMRIGHT", -1, 1)
+
+    local combatHeader = combatPanel:CreateFontString(nil, "OVERLAY")
+    combatHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    combatHeader:SetPoint("TOP", combatPanel, "TOP", 0, -8)
+    combatHeader:SetText("Last Combat")
+    frame.combatHeader = combatHeader
+
+    local dpsText = combatPanel:CreateFontString(nil, "OVERLAY")
+    dpsText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    dpsText:SetPoint("TOPLEFT", combatPanel, "TOPLEFT", 10, -25)
+    dpsText:SetText("DPS: 0")
+    frame.dpsText = dpsText
+
+    local hpsText = combatPanel:CreateFontString(nil, "OVERLAY")
+    hpsText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    hpsText:SetPoint("TOPRIGHT", combatPanel, "TOPRIGHT", -10, -25)
+    hpsText:SetText("HPS: 0")
+    frame.hpsText = hpsText
+
+    local damageText = combatPanel:CreateFontString(nil, "OVERLAY")
+    damageText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    damageText:SetPoint("TOPLEFT", combatPanel, "TOPLEFT", 10, -45)
+    damageText:SetText("Damage: 0")
+    frame.damageText = damageText
+
+    local healingText = combatPanel:CreateFontString(nil, "OVERLAY")
+    healingText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    healingText:SetPoint("TOPRIGHT", combatPanel, "TOPRIGHT", -10, -45)
+    healingText:SetText("Healing: 0")
+    frame.healingText = healingText
+
+    local timeText = combatPanel:CreateFontString(nil, "OVERLAY")
+    timeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    timeText:SetPoint("BOTTOM", combatPanel, "BOTTOM", 0, 5)
+    timeText:SetText("Duration: 0s")
+    frame.timeText = timeText
+
+    -- === SESSION HISTORY PANEL ===
+    local historyPanel = CreateFrame("Frame", nil, frame)
+    historyPanel:SetSize(400, 180)
+    historyPanel:SetPoint("TOP", combatPanel, "BOTTOM", 0, -5)
+
+    local historyBg = historyPanel:CreateTexture(nil, "BACKGROUND")
+    historyBg:SetAllPoints(historyPanel)
+    historyBg:SetColorTexture(0, 0, 0, 0.7)
+
+    local historyBorder = historyPanel:CreateTexture(nil, "BORDER")
+    historyBorder:SetAllPoints(historyPanel)
+    historyBorder:SetColorTexture(0.3, 0.3, 0.3, 1)
+    historyBg:SetPoint("TOPLEFT", historyBorder, "TOPLEFT", 1, -1)
+    historyBg:SetPoint("BOTTOMRIGHT", historyBorder, "BOTTOMRIGHT", -1, 1)
+
+    local historyHeader = historyPanel:CreateFontString(nil, "OVERLAY")
+    historyHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    historyHeader:SetPoint("TOP", historyPanel, "TOP", 0, -8)
+    historyHeader:SetText("Session History")
+
+    -- Column headers background
+    local headerBg = historyPanel:CreateTexture(nil, "BORDER")
+    headerBg:SetPoint("TOPLEFT", historyPanel, "TOPLEFT", 5, -25)
+    headerBg:SetSize(390, 16)
+    headerBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
+
+    local timeHeader = historyPanel:CreateFontString(nil, "OVERLAY")
+    timeHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    timeHeader:SetPoint("LEFT", headerBg, "LEFT", 5, 0)
+    timeHeader:SetWidth(40)
+    timeHeader:SetJustifyH("LEFT")
+    timeHeader:SetText("Time")
+    timeHeader:SetTextColor(1, 1, 1, 1)
+
+    local durationHeader = historyPanel:CreateFontString(nil, "OVERLAY")
+    durationHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    durationHeader:SetPoint("LEFT", headerBg, "LEFT", 50, 0)
+    durationHeader:SetWidth(30)
+    durationHeader:SetJustifyH("LEFT")
+    durationHeader:SetText("Dur")
+    durationHeader:SetTextColor(1, 1, 1, 1)
+
+    local avgDpsHeader = historyPanel:CreateFontString(nil, "OVERLAY")
+    avgDpsHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    avgDpsHeader:SetPoint("LEFT", headerBg, "LEFT", 85, 0)
+    avgDpsHeader:SetWidth(50)
+    avgDpsHeader:SetJustifyH("LEFT")
+    avgDpsHeader:SetText("DPS")
+    avgDpsHeader:SetTextColor(1, 1, 1, 1)
+
+    local avgHpsHeader = historyPanel:CreateFontString(nil, "OVERLAY")
+    avgHpsHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    avgHpsHeader:SetPoint("LEFT", headerBg, "LEFT", 140, 0)
+    avgHpsHeader:SetWidth(50)
+    avgHpsHeader:SetJustifyH("LEFT")
+    avgHpsHeader:SetText("HPS")
+    avgHpsHeader:SetTextColor(1, 1, 1, 1)
+
+    local qualityHeader = historyPanel:CreateFontString(nil, "OVERLAY")
+    qualityHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    qualityHeader:SetPoint("LEFT", headerBg, "LEFT", 195, 0)
+    qualityHeader:SetWidth(25)
+    qualityHeader:SetJustifyH("CENTER")
+    qualityHeader:SetText("Q")
+    qualityHeader:SetTextColor(1, 1, 1, 1)
+
+    local locationHeader = historyPanel:CreateFontString(nil, "OVERLAY")
+    locationHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    locationHeader:SetPoint("LEFT", headerBg, "LEFT", 225, 0)
+    locationHeader:SetWidth(80)
+    locationHeader:SetJustifyH("LEFT")
+    locationHeader:SetText("Zone")
+    locationHeader:SetTextColor(1, 1, 1, 1)
+
+    -- Scrollable session list
+    local scrollFrame = CreateFrame("ScrollFrame", nil, historyPanel, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetSize(360, 130)                              -- Reduced from 360 to fit
+    scrollFrame:SetPoint("TOP", historyPanel, "TOP", -15, -45) -- Adjusted offset
+
+
+
+
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetSize(360, 140)
+    scrollFrame:SetScrollChild(scrollChild)
+    frame.scrollFrame = scrollFrame
+    frame.scrollChild = scrollChild
+
+    -- Session rows
+    frame.sessionRows = {}
+    for i = 1, 20 do
+        local row = CreateFrame("Button", nil, scrollChild)
+        row:SetSize(360, 16)
+        row:SetPoint("TOP", scrollChild, "TOP", 0, -(i - 1) * 16)
+
+        local rowBg = row:CreateTexture(nil, "BACKGROUND")
+        rowBg:SetAllPoints(row)
+        if i % 2 == 0 then
+            rowBg:SetColorTexture(0.1, 0.1, 0.1, 0.3)
+        else
+            rowBg:SetColorTexture(0.05, 0.05, 0.05, 0.3)
+        end
+
+        local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+        highlight:SetAllPoints(row)
+        highlight:SetColorTexture(0.3, 0.3, 0.3, 0.3)
+
+        row.time = row:CreateFontString(nil, "OVERLAY")
+        row.time:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.time:SetPoint("LEFT", row, "LEFT", 5, 0)
+        row.time:SetWidth(40)
+        row.time:SetJustifyH("LEFT")
+
+        row.duration = row:CreateFontString(nil, "OVERLAY")
+        row.duration:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.duration:SetPoint("LEFT", row, "LEFT", 50, 0)
+        row.duration:SetWidth(30)
+        row.duration:SetJustifyH("LEFT")
+
+        row.avgDps = row:CreateFontString(nil, "OVERLAY")
+        row.avgDps:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.avgDps:SetPoint("LEFT", row, "LEFT", 85, 0)
+        row.avgDps:SetWidth(50)
+        row.avgDps:SetJustifyH("LEFT")
+
+        row.avgHps = row:CreateFontString(nil, "OVERLAY")
+        row.avgHps:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.avgHps:SetPoint("LEFT", row, "LEFT", 140, 0)
+        row.avgHps:SetWidth(50)
+        row.avgHps:SetJustifyH("LEFT")
+
+        row.quality = row:CreateFontString(nil, "OVERLAY")
+        row.quality:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.quality:SetPoint("LEFT", row, "LEFT", 195, 0)
+        row.quality:SetWidth(25)
+        row.quality:SetJustifyH("CENTER")
+
+        row.location = row:CreateFontString(nil, "OVERLAY")
+        row.location:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.location:SetPoint("LEFT", row, "LEFT", 225, 0)
+        row.location:SetWidth(80)
+        row.location:SetJustifyH("LEFT")
+
+        -- Delete button
+        row.deleteBtn = CreateFrame("Button", nil, row)
+        row.deleteBtn:SetSize(12, 12)
+        row.deleteBtn:SetPoint("RIGHT", row, "RIGHT", -5, 0)
+        row.deleteBtn:SetText("×")
+        row.deleteBtn:SetNormalFontObject("GameFontNormalSmall")
+
+        local btnText = row.deleteBtn:GetFontString()
+        if btnText then
+            btnText:SetTextColor(0.8, 0.3, 0.3, 1)
+        end
+
+        row.deleteBtn:SetScript("OnEnter", function(self)
+            local text = self:GetFontString()
+            if text then text:SetTextColor(1, 0.5, 0.5, 1) end
+        end)
+        row.deleteBtn:SetScript("OnLeave", function(self)
+            local text = self:GetFontString()
+            if text then text:SetTextColor(0.8, 0.3, 0.3, 1) end
+        end)
+
+        frame.sessionRows[i] = row
+    end
+
+    -- === VERTICAL CHART PANEL ===
+    local chartPanel = CreateFrame("Frame", nil, frame)
+    chartPanel:SetSize(400, 120)
+    chartPanel:SetPoint("TOP", historyPanel, "BOTTOM", 0, -5)
+
+    local chartBg = chartPanel:CreateTexture(nil, "BACKGROUND")
+    chartBg:SetAllPoints(chartPanel)
+    chartBg:SetColorTexture(0, 0, 0, 0.7)
+
+    local chartBorder = chartPanel:CreateTexture(nil, "BORDER")
+    chartBorder:SetAllPoints(chartPanel)
+    chartBorder:SetColorTexture(0.3, 0.3, 0.3, 1)
+    chartBg:SetPoint("TOPLEFT", chartBorder, "TOPLEFT", 1, -1)
+    chartBg:SetPoint("BOTTOMRIGHT", chartBorder, "BOTTOMRIGHT", -1, 1)
+
+    local chartHeader = chartPanel:CreateFontString(nil, "OVERLAY")
+    chartHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    chartHeader:SetPoint("TOP", chartPanel, "TOP", 0, -8)
+    chartHeader:SetText("Performance Trend")
+
+    local chartArea = CreateFrame("Frame", nil, chartPanel)
+    chartArea:SetSize(360, 80)
+    chartArea:SetPoint("BOTTOM", chartPanel, "BOTTOM", 0, 8)
+
+    local gridBg = chartArea:CreateTexture(nil, "BACKGROUND")
+    gridBg:SetAllPoints(chartArea)
+    gridBg:SetColorTexture(0.02, 0.02, 0.02, 0.6)
+
+    -- Create 10 vertical bars
+    frame.chartBars = {}
+    for i = 1, 10 do
+        local bar = {}
+        local barWidth = 28
+        local barSpacing = 8
+        local xPos = (i - 1) * (barWidth + barSpacing) + 10
+
+        bar.bgBar = chartArea:CreateTexture(nil, "BORDER")
+        bar.bgBar:SetSize(barWidth, 80)
+        bar.bgBar:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", xPos, 0)
+        bar.bgBar:SetColorTexture(0.1, 0.1, 0.1, 0.8)
+
+        bar.dpsBar = chartArea:CreateTexture(nil, "ARTWORK")
+        bar.dpsBar:SetSize(barWidth / 2, 1)
+        bar.dpsBar:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", xPos, 0)
+        bar.dpsBar:SetColorTexture(0.8, 0.2, 0.2, 0.9)
+
+        bar.hpsBar = chartArea:CreateTexture(nil, "ARTWORK")
+        bar.hpsBar:SetSize(barWidth / 2, 1)
+        bar.hpsBar:SetPoint("BOTTOMRIGHT", chartArea, "BOTTOMLEFT", xPos + barWidth, 0)
+        bar.hpsBar:SetColorTexture(0.2, 0.8, 0.4, 0.9)
+
+        frame.chartBars[i] = bar
+    end
+
+    -- === CONTROL PANEL ===
+    local controlPanel = CreateFrame("Frame", nil, frame)
+    controlPanel:SetSize(400, 50)
+    controlPanel:SetPoint("TOP", chartPanel, "BOTTOM", 0, -5)
+
+    local controlBg = controlPanel:CreateTexture(nil, "BACKGROUND")
+    controlBg:SetAllPoints(controlPanel)
+    controlBg:SetColorTexture(0, 0, 0, 0.7)
+
+    local dpsBtn = CreateFrame("Button", nil, controlPanel, "GameMenuButtonTemplate")
+    dpsBtn:SetSize(70, 22)
+    dpsBtn:SetPoint("LEFT", controlPanel, "LEFT", 10, 8)
+    dpsBtn:SetText("DPS")
     dpsBtn:SetScript("OnClick", function()
-        if addon.DPSWindow then
-            addon.DPSWindow:Toggle()
-        end
+        if addon.DPSWindow then addon.DPSWindow:Toggle() end
     end)
 
-    -- HPS Window Toggle Button
-    local hpsBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    hpsBtn:SetSize(100, 30)
-    hpsBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -20, -80)
-    hpsBtn:SetText("Toggle HPS")
+    local hpsBtn = CreateFrame("Button", nil, controlPanel, "GameMenuButtonTemplate")
+    hpsBtn:SetSize(70, 22)
+    hpsBtn:SetPoint("LEFT", dpsBtn, "RIGHT", 5, 0)
+    hpsBtn:SetText("HPS")
     hpsBtn:SetScript("OnClick", function()
-        if addon.HPSWindow then
-            addon.HPSWindow:Toggle()
+        if addon.HPSWindow then addon.HPSWindow:Toggle() end
+    end)
+
+    local clearBtn = CreateFrame("Button", nil, controlPanel, "GameMenuButtonTemplate")
+    clearBtn:SetSize(70, 22)
+    clearBtn:SetPoint("LEFT", hpsBtn, "RIGHT", 5, 0)
+    clearBtn:SetText("Clear All")
+    clearBtn:SetScript("OnClick", function()
+        if addon.CombatTracker then
+            addon.CombatTracker:ClearHistory()
+            addon:UpdateMainWindow()
         end
     end)
 
-    -- Debug Toggle Button
-    local debugBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    debugBtn:SetSize(100, 30)
-    debugBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -120)
-    debugBtn:SetText("Toggle Debug")
+    local debugBtn = CreateFrame("Button", nil, controlPanel, "GameMenuButtonTemplate")
+    debugBtn:SetSize(70, 22)
+    debugBtn:SetPoint("LEFT", clearBtn, "RIGHT", 5, 0)
+    debugBtn:SetText("Debug")
     debugBtn:SetScript("OnClick", function()
         addon.DEBUG = not addon.DEBUG
         addon.db.debugMode = addon.DEBUG
-        print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
-        addon:UpdateStatusDisplay()
+        print(addonName .. " debug: " .. (addon.DEBUG and "ON" or "OFF"))
     end)
 
-    -- Start Combat Button
-    local startCombatBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    startCombatBtn:SetSize(100, 30)
-    startCombatBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -20, -120)
-    startCombatBtn:SetText("Start Combat")
-    startCombatBtn:SetScript("OnClick", function()
-        if addon.CombatTracker then
-            addon.CombatTracker:StartCombat()
-            print("Forced combat start")
-            addon:UpdateStatusDisplay()
-        end
-    end)
-
-    -- End Combat Button
-    local endCombatBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    endCombatBtn:SetSize(100, 30)
-    endCombatBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -160)
-    endCombatBtn:SetText("End Combat")
-    endCombatBtn:SetScript("OnClick", function()
-        if addon.CombatTracker then
-            addon.CombatTracker:EndCombat()
-            print("Forced combat end")
-            addon:UpdateStatusDisplay()
-        end
-    end)
-
-    -- Close button functionality - SAVE STATE WHEN CLOSED
-    frame.CloseButton:SetScript("OnClick", function()
-        frame:Hide()
-        addon.db.showMainWindow = false
-        print("Main window hidden")
-    end)
-
-    -- Make ESC key close the window and save state
-    table.insert(UISpecialFrames, frame:GetName())
-
-    -- Override Hide function to save state when closed by ESC
-    local originalHide = frame.Hide
-    frame.Hide = function(frame)
-        addon.db.showMainWindow = false
-        originalHide(frame)
-    end
+    local sessionCount = controlPanel:CreateFontString(nil, "OVERLAY")
+    sessionCount:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    sessionCount:SetPoint("BOTTOM", controlPanel, "BOTTOM", 0, 5)
+    sessionCount:SetText("0 sessions")
+    frame.sessionCount = sessionCount
 
     self.mainFrame = frame
-
-    -- Apply saved scale
     frame:SetScale(self.db.scale)
-
-    -- Start hidden unless explicitly saved as shown
     frame:Hide()
 
-    -- Initial status update
-    self:UpdateStatusDisplay()
+    if not self.mainWindowUpdateTimer then
+        self.mainWindowUpdateTimer = C_Timer.NewTicker(0.5, function()
+            addon:UpdateMainWindow()
+        end)
+    end
+end
 
-    -- Update status periodically
-    C_Timer.NewTicker(1.0, function()
-        addon:UpdateStatusDisplay()
-    end)
+function addon:UpdateMainWindow()
+    if not self.mainFrame or not self.mainFrame:IsShown() then return end
+
+    local inCombat = self.CombatTracker and self.CombatTracker:IsInCombat()
+
+    if inCombat then
+        self.mainFrame.combatHeader:SetText("Current Combat")
+        self.mainFrame.combatHeader:SetTextColor(1, 0.2, 0.2)
+    else
+        self.mainFrame.combatHeader:SetText("Last Combat")
+        self.mainFrame.combatHeader:SetTextColor(0.7, 0.7, 0.7)
+    end
+
+    if self.CombatTracker then
+        local dps = self.CombatTracker:GetDPS()
+        local hps = self.CombatTracker:GetHPS()
+        local damage = self.CombatTracker:GetTotalDamage()
+        local healing = self.CombatTracker:GetTotalHealing()
+        local duration = self.CombatTracker:GetCombatTime()
+
+        self.mainFrame.dpsText:SetText("DPS: " .. self.CombatTracker:FormatNumber(dps))
+        self.mainFrame.hpsText:SetText("HPS: " .. self.CombatTracker:FormatNumber(hps))
+        self.mainFrame.damageText:SetText("Damage: " .. self.CombatTracker:FormatNumber(damage))
+        self.mainFrame.healingText:SetText("Healing: " .. self.CombatTracker:FormatNumber(healing))
+
+        local durText = string.format("Duration: %dm %02ds", math.floor(duration / 60), duration % 60)
+        self.mainFrame.timeText:SetText(durText)
+    end
+
+    self:UpdateSessionTable()
+    self:UpdatePerformanceChart()
+end
+
+function addon:UpdateSessionTable()
+    if not self.mainFrame or not self.mainFrame.sessionRows then return end
+
+    local sessions = {}
+    if self.CombatTracker then
+        sessions = self.CombatTracker:GetSessionHistory()
+    end
+
+    if self.mainFrame.sessionCount then
+        self.mainFrame.sessionCount:SetText(string.format("%d sessions", #sessions))
+    end
+
+    local scrollHeight = math.max(140, #sessions * 16)
+    self.mainFrame.scrollChild:SetHeight(scrollHeight)
+
+    for i = 1, 20 do
+        local row = self.mainFrame.sessionRows[i]
+        if i <= #sessions then
+            row:Show()
+            local session = sessions[i]
+
+            -- Convert GetTime() to real time for display
+            local realTime = time() + (session.startTime - GetTime())
+            row.time:SetText(date("%H:%M", realTime))
+
+            local durStr = session.duration >= 60 and
+                string.format("%dm", math.floor(session.duration / 60)) or
+                string.format("%ds", session.duration)
+            row.duration:SetText(durStr)
+
+            row.avgDps:SetText(self.CombatTracker:FormatNumber(session.avgDPS))
+            row.avgHps:SetText(self.CombatTracker:FormatNumber(session.avgHPS))
+
+            local qualityText = tostring(session.qualityScore)
+            if session.userMarked == "representative" then
+                qualityText = "★" .. qualityText
+                row.quality:SetTextColor(1, 1, 0)
+            elseif session.qualityScore >= 80 then
+                row.quality:SetTextColor(0, 1, 0)
+            elseif session.qualityScore >= 60 then
+                row.quality:SetTextColor(1, 1, 0)
+            else
+                row.quality:SetTextColor(1, 0.5, 0.5)
+            end
+            row.quality:SetText(qualityText)
+
+            local location = session.location or "Unknown"
+            if string.len(location) > 12 then
+                location = string.sub(location, 1, 12) .. "..."
+            end
+            row.location:SetText(location)
+
+            row.deleteBtn:SetScript("OnClick", function()
+                if addon.CombatTracker then
+                    addon.CombatTracker:DeleteSession(session.sessionId)
+                    addon:UpdateMainWindow()
+                end
+            end)
+        else
+            row:Hide()
+        end
+    end
+end
+
+function addon:UpdatePerformanceChart()
+    if not self.mainFrame or not self.mainFrame.chartBars then return end
+
+    local sessions = {}
+    if self.CombatTracker then
+        sessions = self.CombatTracker:GetSessionHistory()
+    end
+
+    local maxDPS, maxHPS = 0, 0
+    for i = 1, math.min(10, #sessions) do
+        local session = sessions[i]
+        maxDPS = math.max(maxDPS, session.avgDPS or 0)
+        maxHPS = math.max(maxHPS, session.avgHPS or 0)
+    end
+
+    for i = 1, 10 do
+        local bar = self.mainFrame.chartBars[i]
+        if i <= #sessions then
+            local session = sessions[i]
+
+            local dpsHeight = maxDPS > 0 and math.max(2, (session.avgDPS / maxDPS) * 80) or 2
+            local hpsHeight = maxHPS > 0 and math.max(2, (session.avgHPS / maxHPS) * 80) or 2
+
+            bar.dpsBar:SetHeight(dpsHeight)
+            bar.hpsBar:SetHeight(hpsHeight)
+
+            local alpha = math.max(0.4, session.qualityScore / 100)
+            bar.dpsBar:SetAlpha(alpha)
+            bar.hpsBar:SetAlpha(alpha)
+        else
+            bar.dpsBar:SetHeight(1)
+            bar.hpsBar:SetHeight(1)
+            bar.dpsBar:SetAlpha(0.2)
+            bar.hpsBar:SetAlpha(0.2)
+        end
+    end
 end
 
 -- Main slash command handler
@@ -523,6 +897,21 @@ function SlashCmdList.MYUI(msg, editBox)
             addon.CombatTracker:ClearHistory()
         else
             print("CombatTracker not loaded")
+        end
+    elseif command == "timetest" then
+        local sessions = {}
+        if addon.CombatTracker then
+            sessions = addon.CombatTracker:GetSessionHistory()
+        end
+        if #sessions > 0 then
+            local s = sessions[1]
+            print("Session startTime:", s.startTime)
+            print("Formatted session:", date("%H:%M", s.startTime))
+            print("Current GetTime():", GetTime())
+            print("Current time():", time())
+            print("Current formatted:", date("%H:%M"))
+        else
+            print("No sessions found")
         end
     else
         print("Usage: /myui [TODO]")
