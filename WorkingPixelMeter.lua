@@ -44,7 +44,7 @@ function WorkingPixelMeter:Create()
     local frame = CreateFrame("Frame", nil, UIParent)
     frame:SetSize(220, totalHeight + 8)                  -- Match the 220px window width
     frame:SetPoint("CENTER", UIParent, "CENTER", 200, 0) -- Right of center
-    frame:SetFrameStrata("HIGH")
+    -- frame:SetFrameStrata("HIGH")
 
     -- Cleaner background to match existing meters
     local bg = frame:CreateTexture(nil, "BACKGROUND")
