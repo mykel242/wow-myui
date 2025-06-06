@@ -599,11 +599,18 @@ function CombatTracker:GetTotalAbsorb()
     return combatData.absorb
 end
 
--- Get combat duration
+-- Get combat duration (fixed to show final duration when combat ended)
 function CombatTracker:GetCombatTime()
     if not combatData.startTime then
         return 0
     end
+
+    -- If combat has ended, return the final duration
+    if not combatData.inCombat and combatData.endTime then
+        return combatData.endTime - combatData.startTime
+    end
+
+    -- If still in combat, return current elapsed time
     return GetTime() - combatData.startTime
 end
 
