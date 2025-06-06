@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-6f41118"
-addon.BUILD_DATE = "2025-06-04-17:22"
+addon.VERSION = "feature-meter-history-7856c8b"
+addon.BUILD_DATE = "2025-06-06-11:21"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -503,6 +503,24 @@ function SlashCmdList.MYUI(msg, editBox)
     elseif command == "checktiming" then
         if addon.CombatTracker then
             addon.CombatTracker:CheckUpdateTiming()
+        else
+            print("CombatTracker not loaded")
+        end
+    elseif command == "sessions" then
+        if addon.CombatTracker then
+            addon.CombatTracker:DebugSessionHistory()
+        else
+            print("CombatTracker not loaded")
+        end
+    elseif command == "testsession" then
+        if addon.CombatTracker then
+            addon.CombatTracker:TestSessionCreation()
+        else
+            print("CombatTracker not loaded")
+        end
+    elseif command == "clearsessions" then
+        if addon.CombatTracker then
+            addon.CombatTracker:ClearHistory()
         else
             print("CombatTracker not loaded")
         end
