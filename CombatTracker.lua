@@ -978,3 +978,375 @@ end
 function CombatTracker:GetLastCombatMaxHPS()
     return combatData.finalMaxHPS or 0
 end
+
+-- Session history configuration
+local SESSION_HISTORY_LIMIT = 50
+local sessionHistory = {} -- Will be per-character
+
+-- Quality scoring thresholds
+local qualityThresholds = {
+    minDuration = 10,   -- seconds
+    minDamage = 50000,  -- total damage
+    minHealing = 25000, -- total healing
+    minDPS = 5000,      -- average DPS
+    minHPS = 2500,      -- average HPS
+    minActions = 10,    -- combat log events counted
+}
+
+-- Combat action counter (add to existing combat data)
+local combatActionCount = 0
+
+-- === SESSION MANAGEMENT FUNCTIONS ===
+
+-- Generate unique session ID
+local function GenerateSessionId()
+    return string.format("session_%d_%d", GetServerTime(), math.random(1000, 9999))
+end
+
+-- Calculate combat quality score (0-100)
+local function CalculateQualityScore(sessionData)
+    local score = 50 -- Base score
+    local flags = {}
+
+    -- Duration check
+    if sessionData.duration < qualityThresholds.minDuration then
+        score = score - 20
+        flags.tooShort = true
+    else
+        score = score + 10
+    end
+
+    -- Damage threshold
+    if sessionData.totalDamage < qualityThresholds.minDamage then
+        score = score - 15
+        flags.lowDamage = true
+    else
+        score = score + 10
+    end
+
+    -- Healing threshold (if any healing occurred)
+    if sessionData.totalHealing > 0 then
+        if sessionData.totalHealing < qualityThresholds.minHealing then
+            score = score - 10
+        else
+            score = score + 5
+        end
+    end
+
+    -- DPS/HPS minimums
+    if sessionData.avgDPS < qualityThresholds.minDPS then
+        score = score - 10
+        flags.lowDPS = true
+    end
+
+    if sessionData.totalHealing > 0 and sessionData.avgHPS < qualityThresholds.minHPS then
+        score = score - 10
+        flags.lowHPS = true
+    end
+
+    -- Activity level (combat log events)
+    if combatActionCount < qualityThresholds.minActions then
+        score = score - 15
+        flags.lowActivity = true
+    else
+        score = score + 5
+    end
+
+    -- Cap score bounds
+    score = math.max(0, math.min(100, score))
+
+    return score, flags
+end
+
+-- Create session record from combat data
+local function CreateSessionRecord()
+    if not combatData.startTime or not combatData.endTime then
+        if addon.DEBUG then
+            print("Cannot create session: missing start/end time")
+        end
+        return nil
+    end
+
+    local duration = combatData.endTime - combatData.startTime
+    local avgDPS = duration > 0 and (combatData.finalDamage / duration) or 0
+    local avgHPS = duration > 0 and (combatData.finalHealing / duration) or 0
+
+    local sessionData = {
+        sessionId = GenerateSessionId(),
+        startTime = combatData.startTime,
+        endTime = combatData.endTime,
+        duration = duration,
+
+        -- Performance metrics
+        totalDamage = combatData.finalDamage,
+        totalHealing = combatData.finalHealing,
+        totalOverheal = combatData.finalOverheal,
+        totalAbsorb = combatData.finalAbsorb,
+        avgDPS = avgDPS,
+        avgHPS = avgHPS,
+        peakDPS = combatData.finalMaxDPS,
+        peakHPS = combatData.finalMaxHPS,
+
+        -- Metadata
+        location = GetZoneText() or "Unknown",
+        playerLevel = UnitLevel("player"),
+        actionCount = combatActionCount,
+
+        -- User management
+        userMarked = nil, -- "keep", "ignore", "representative"
+
+        -- Quality will be calculated
+        qualityScore = 0,
+        qualityFlags = {}
+    }
+
+    -- Calculate quality
+    sessionData.qualityScore, sessionData.qualityFlags = CalculateQualityScore(sessionData)
+
+    if addon.DEBUG then
+        print(string.format("Session created: %s, Quality: %d, Duration: %.1fs, DPS: %.0f",
+            sessionData.sessionId, sessionData.qualityScore, sessionData.duration, sessionData.avgDPS))
+    end
+
+    return sessionData
+end
+
+-- Get current character key
+local function GetCharacterKey()
+    return UnitName("player") .. "-" .. GetRealmName()
+end
+
+-- Add session to history with limit management
+local function AddSessionToHistory(session)
+    if not session then return end
+
+    -- Add to beginning of array (most recent first)
+    table.insert(sessionHistory, 1, session)
+
+    -- Trim to limit
+    while #sessionHistory > SESSION_HISTORY_LIMIT do
+        table.remove(sessionHistory)
+    end
+
+    -- Save to database per-character
+    if addon.db then
+        if not addon.db.sessionHistory then
+            addon.db.sessionHistory = {}
+        end
+        addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
+    end
+
+    if addon.DEBUG then
+        print(string.format("Session added to history for %s. Total sessions: %d", GetCharacterKey(), #sessionHistory))
+    end
+end
+
+-- === PUBLIC API FUNCTIONS ===
+
+-- Get session history array
+function CombatTracker:GetSessionHistory()
+    return sessionHistory
+end
+
+-- Get specific session by ID
+function CombatTracker:GetSession(sessionId)
+    for _, session in ipairs(sessionHistory) do
+        if session.sessionId == sessionId then
+            return session
+        end
+    end
+    return nil
+end
+
+-- Mark session with user preference
+function CombatTracker:MarkSession(sessionId, status)
+    local session = self:GetSession(sessionId)
+    if session then
+        session.userMarked = status
+        if status == "representative" then
+            session.qualityScore = 100 -- Override quality score
+        end
+
+        -- Save changes per-character
+        if addon.db then
+            if not addon.db.sessionHistory then
+                addon.db.sessionHistory = {}
+            end
+            addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
+        end
+
+        if addon.DEBUG then
+            print(string.format("Session %s marked as: %s", sessionId, status))
+        end
+        return true
+    end
+    return false
+end
+
+-- Delete specific session
+function CombatTracker:DeleteSession(sessionId)
+    for i, session in ipairs(sessionHistory) do
+        if session.sessionId == sessionId then
+            table.remove(sessionHistory, i)
+
+            -- Save changes per-character
+            if addon.db then
+                if not addon.db.sessionHistory then
+                    addon.db.sessionHistory = {}
+                end
+                addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
+            end
+
+            if addon.DEBUG then
+                print(string.format("Session %s deleted", sessionId))
+            end
+            return true
+        end
+    end
+    return false
+end
+
+-- Clear all session history
+function CombatTracker:ClearHistory()
+    sessionHistory = {}
+    if addon.db then
+        if not addon.db.sessionHistory then
+            addon.db.sessionHistory = {}
+        end
+        addon.db.sessionHistory[GetCharacterKey()] = {}
+    end
+
+    print(string.format("Session history cleared for %s", GetCharacterKey()))
+end
+
+-- Get quality sessions only (score >= 70 or user marked as representative)
+function CombatTracker:GetQualitySessions()
+    local qualitySessions = {}
+    for _, session in ipairs(sessionHistory) do
+        if session.userMarked == "representative" or
+            (session.userMarked ~= "ignore" and session.qualityScore >= 70) then
+            table.insert(qualitySessions, session)
+        end
+    end
+    return qualitySessions
+end
+
+-- Get sessions for auto-scaling calculation
+function CombatTracker:GetScalingSessions(maxCount)
+    local sessions = self:GetQualitySessions()
+    maxCount = maxCount or 10
+
+    -- Return most recent quality sessions up to maxCount
+    local result = {}
+    for i = 1, math.min(#sessions, maxCount) do
+        table.insert(result, sessions[i])
+    end
+
+    return result
+end
+
+-- Modify existing StartCombat function to reset action counter
+local originalStartCombat = CombatTracker.StartCombat
+function CombatTracker:StartCombat()
+    combatActionCount = 0
+    return originalStartCombat(self)
+end
+
+-- Modify existing ParseCombatLog to count actions
+local originalParseCombatLog = CombatTracker.ParseCombatLog
+function CombatTracker:ParseCombatLog(timestamp, subevent, ...)
+    -- Count relevant combat actions
+    if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or
+        subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_DAMAGE" or
+        subevent == "SPELL_PERIODIC_HEAL" then
+        combatActionCount = combatActionCount + 1
+    end
+
+    return originalParseCombatLog(self, timestamp, subevent, ...)
+end
+
+-- Modify existing EndCombat function to create session
+local originalEndCombat = CombatTracker.EndCombat
+function CombatTracker:EndCombat()
+    -- Call original end combat logic first
+    originalEndCombat(self)
+
+    -- Create and store session record
+    local session = CreateSessionRecord()
+    if session then
+        AddSessionToHistory(session)
+    end
+end
+
+-- Initialize session history from saved data
+function CombatTracker:InitializeSessionHistory()
+    local characterKey = GetCharacterKey()
+
+    if addon.db and addon.db.sessionHistory and addon.db.sessionHistory[characterKey] then
+        sessionHistory = addon.db.sessionHistory[characterKey]
+        if addon.DEBUG then
+            print(string.format("Loaded %d sessions for %s", #sessionHistory, characterKey))
+        end
+    else
+        sessionHistory = {}
+        if addon.DEBUG then
+            print(string.format("Initialized empty session history for %s", characterKey))
+        end
+    end
+end
+
+-- === DEBUG FUNCTIONS ===
+
+-- Debug session history
+function CombatTracker:DebugSessionHistory()
+    print("=== SESSION HISTORY DEBUG ===")
+    print(string.format("Total sessions: %d", #sessionHistory))
+    print(string.format("History limit: %d", SESSION_HISTORY_LIMIT))
+
+    if #sessionHistory > 0 then
+        print("Recent sessions:")
+        for i = 1, math.min(5, #sessionHistory) do
+            local s = sessionHistory[i]
+            print(string.format("[%d] %s: %.1fs, DPS:%.0f, HPS:%.0f, Q:%d%s",
+                i, s.sessionId:sub(-8), s.duration, s.avgDPS, s.avgHPS, s.qualityScore,
+                s.userMarked and (" (" .. s.userMarked .. ")") or ""
+            ))
+        end
+
+        if #sessionHistory > 5 then
+            print(string.format("... and %d more", #sessionHistory - 5))
+        end
+    else
+        print("No sessions recorded")
+    end
+
+    local qualitySessions = self:GetQualitySessions()
+    print(string.format("Quality sessions: %d", #qualitySessions))
+
+    print("=========================")
+end
+
+-- Test session creation with fake data
+function CombatTracker:TestSessionCreation()
+    print("Creating test session...")
+
+    -- Set up fake combat data
+    combatData.startTime = GetTime() - 30
+    combatData.endTime = GetTime()
+    combatData.finalDamage = 150000
+    combatData.finalHealing = 75000
+    combatData.finalOverheal = 25000
+    combatData.finalAbsorb = 10000
+    combatData.finalMaxDPS = 8500
+    combatData.finalMaxHPS = 4200
+    combatActionCount = 25
+
+    local session = CreateSessionRecord()
+    if session then
+        AddSessionToHistory(session)
+        print("Test session created successfully")
+        self:DebugSessionHistory()
+    else
+        print("Failed to create test session")
+    end
+end
