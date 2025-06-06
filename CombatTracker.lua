@@ -527,44 +527,36 @@ function CombatTracker:GetRollingData()
     return CalculateRollingAverages()
 end
 
--- Calculate DPS
+-- Calculate DPS (rolling during combat, final after)
 function CombatTracker:GetDPS()
-    -- Return final DPS if combat has ended and we have a final value
-    if not combatData.inCombat and combatData.finalDPS > 0 then
-        return combatData.finalDPS
+    if combatData.inCombat then
+        -- During combat: show rolling average
+        return self:GetRollingDPS()
+    else
+        -- After combat: show final value
+        return combatData.finalDPS or 0
     end
-
-    -- Otherwise calculate current DPS if in combat
-    if not combatData.inCombat or not combatData.startTime then
-        return 0
-    end
-
-    local elapsed = GetTime() - combatData.startTime
-    if elapsed <= 0 then
-        return 0
-    end
-
-    return combatData.damage / elapsed
 end
 
--- Calculate HPS
+-- Calculate HPS (rolling during combat, final after)
 function CombatTracker:GetHPS()
-    -- Return final HPS if combat has ended and we have a final value
-    if not combatData.inCombat and combatData.finalHPS > 0 then
-        return combatData.finalHPS
+    if combatData.inCombat then
+        -- During combat: show rolling average
+        return self:GetRollingHPS()
+    else
+        -- After combat: show final value
+        return combatData.finalHPS or 0
     end
+end
 
-    -- Otherwise calculate current HPS if in combat
-    if not combatData.inCombat or not combatData.startTime then
-        return 0
-    end
+-- Get displayed DPS for meters (always rolling)
+function CombatTracker:GetDisplayDPS()
+    return self:GetRollingDPS()
+end
 
-    local elapsed = GetTime() - combatData.startTime
-    if elapsed <= 0 then
-        return 0
-    end
-
-    return combatData.healing / elapsed
+-- Get displayed HPS for meters (always rolling)
+function CombatTracker:GetDisplayHPS()
+    return self:GetRollingHPS()
 end
 
 -- Get total damage (use final value if combat ended)
@@ -599,19 +591,16 @@ function CombatTracker:GetTotalAbsorb()
     return combatData.absorb
 end
 
--- Get combat duration (fixed to show final duration when combat ended)
 function CombatTracker:GetCombatTime()
     if not combatData.startTime then
         return 0
     end
 
-    -- If combat has ended, return the final duration
     if not combatData.inCombat and combatData.endTime then
         return combatData.endTime - combatData.startTime
     end
 
-    -- If still in combat, return current elapsed time
-    return GetTime() - combatData.startTime
+    return time() - combatData.startTime -- Change from GetTime()
 end
 
 -- Get max DPS recorded (use final value if combat ended)
@@ -1285,7 +1274,6 @@ function CombatTracker:EndCombat()
     end
 end
 
--- Initialize session history from saved data
 function CombatTracker:InitializeSessionHistory()
     local characterKey = GetCharacterKey()
 

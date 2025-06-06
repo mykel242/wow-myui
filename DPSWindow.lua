@@ -7,18 +7,18 @@ local addonName, addon = ...
 local dpsConfig = {
     frameName = "DPSWindow",
     label = "DPS",
-    labelColor = { r = 1, g = 0.2, b = 0.2 }, -- Red
+    labelColor = { r = 1, g = 0.2, b = 0.2 },
     positionKey = "dpsWindowPosition",
     visibilityKey = "showDPSWindow",
-    showAbsorb = false,   -- Hide absorb for DPS
-    showOverheal = false, -- Hide overheal for DPS
+    showAbsorb = false,
+    showOverheal = false,
     defaultPosition = {
         point = "RIGHT",
         relativePoint = "RIGHT",
         xOffset = -100,
         yOffset = 100
     },
-    getMainValue = function() return addon.CombatTracker:GetRollingDPS() end,
+    getMainValue = function() return addon.CombatTracker:GetDisplayDPS() end, -- Changed
     getMaxValue = function() return addon.CombatTracker:GetMaxDPS() end,
     getTotalValue = function() return addon.CombatTracker:GetTotalDamage() end
 }
@@ -41,24 +41,21 @@ end
 
 -- Override Show to also show pixel meter
 function addon.DPSWindow:Show()
-    -- Call parent Show method
     addon.BaseMeterWindow.Show(self)
 
-    -- Create and show pixel meter if it doesn't exist
     if not addon.dpsPixelMeter and addon.WorkingPixelMeter then
         addon.dpsPixelMeter = addon.WorkingPixelMeter:New({
             cols = 20,
             rows = 1,
             pixelSize = 10,
             gap = 1,
-            meterName = "DPS" -- For debug/commands
+            meterName = "DPS"
         })
         addon.dpsPixelMeter:SetValueSource(function()
-            return addon.CombatTracker:GetRollingDPS()
+            return addon.CombatTracker:GetDisplayDPS()     -- Changed
         end)
     end
 
-    -- Show and position pixel meter
     if addon.dpsPixelMeter then
         addon.dpsPixelMeter:Show()
         PositionPixelMeter()

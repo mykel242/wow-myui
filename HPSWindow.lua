@@ -7,22 +7,21 @@ local addonName, addon = ...
 local hpsConfig = {
     frameName = "HPSWindow",
     label = "HPS",
-    labelColor = { r = 0, g = 1, b = 0.5 }, -- Teal green
+    labelColor = { r = 0, g = 1, b = 0.5 },
     positionKey = "hpsWindowPosition",
     visibilityKey = "showHPSWindow",
-    showAbsorb = true,   -- Enable absorb counter
-    showOverheal = true, -- Show overheal for HPS
+    showAbsorb = true,
+    showOverheal = true,
     defaultPosition = {
         point = "RIGHT",
         relativePoint = "RIGHT",
         xOffset = -100,
         yOffset = 0
     },
-    -- Main value functions
-    getMainValue = function() return addon.CombatTracker:GetRollingHPS() end,
+    getMainValue = function() return addon.CombatTracker:GetDisplayHPS() end, -- Changed
     getMaxValue = function() return addon.CombatTracker:GetMaxHPS() end,
     getTotalValue = function() return addon.CombatTracker:GetTotalHealing() end,
-    getAbsorbValue = function() return addon.CombatTracker:GetTotalAbsorb() end -- Add absorb getter
+    getAbsorbValue = function() return addon.CombatTracker:GetTotalAbsorb() end
 }
 
 -- Create HPS Window instance
@@ -43,24 +42,21 @@ end
 
 -- Override Show to also show pixel meter
 function addon.HPSWindow:Show()
-    -- Call parent Show method
     addon.BaseMeterWindow.Show(self)
 
-    -- Create and show pixel meter if it doesn't exist
     if not addon.hpsPixelMeter and addon.WorkingPixelMeter then
         addon.hpsPixelMeter = addon.WorkingPixelMeter:New({
             cols = 20,
             rows = 1,
             pixelSize = 10,
             gap = 1,
-            meterName = "HPS" -- For debug/commands
+            meterName = "HPS"
         })
         addon.hpsPixelMeter:SetValueSource(function()
-            return addon.CombatTracker:GetRollingHPS()
+            return addon.CombatTracker:GetDisplayHPS()     -- Changed
         end)
     end
 
-    -- Show and position pixel meter
     if addon.hpsPixelMeter then
         addon.hpsPixelMeter:Show()
         PositionPixelMeter()
