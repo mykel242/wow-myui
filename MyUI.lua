@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-f72f5bd"
-addon.BUILD_DATE = "2025-06-07-10:18"
+addon.VERSION = "feature-content-detection-33bd464"
+addon.BUILD_DATE = "2025-06-07-12:50"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -912,6 +912,30 @@ function SlashCmdList.MYUI(msg, editBox)
             print("Current formatted:", date("%H:%M"))
         else
             print("No sessions found")
+        end
+    elseif command:match("^scaling%s+(.+)$") then
+        local scalingType = command:match("^scaling%s+(.+)$")
+        if scalingType == "normal" or scalingType == "scaled" or scalingType == "auto" then
+            if addon.CombatTracker then
+                addon.CombatTracker:SetContentOverride(scalingType)
+            else
+                print("CombatTracker not loaded")
+            end
+        else
+            print("Usage: /myui scaling [normal|scaled|auto]")
+        end
+    elseif command == "contentinfo" then
+        if addon.CombatTracker then
+            local baseline = addon.CombatTracker:GetNormalContentBaseline()
+            local currentType = addon.CombatTracker:GetCurrentContentType()
+            print("=== CONTENT DETECTION INFO ===")
+            print("Current content type:", currentType)
+            print("Baseline DPS:", addon.CombatTracker:FormatNumber(baseline.avgDPS))
+            print("Baseline HPS:", addon.CombatTracker:FormatNumber(baseline.avgHPS))
+            print("Baseline sample count:", baseline.sampleCount)
+            print("=============================")
+        else
+            print("CombatTracker not loaded")
         end
     else
         print("Usage: /myui [TODO]")
