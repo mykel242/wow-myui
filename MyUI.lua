@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "bugfix-pixel-meter-strata-6fea755"
-addon.BUILD_DATE = "2025-06-06-18:09"
+addon.VERSION = "main-f72f5bd"
+addon.BUILD_DATE = "2025-06-07-10:18"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
