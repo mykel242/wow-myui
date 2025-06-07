@@ -1,5 +1,5 @@
 -- CombatTracker.lua
--- Tracks DPS and HPS for the player with rolling averages and timeline data
+-- Tracks DPS and HPS for the player with rolling averages, timeline data, and session history
 
 local addonName, addon = ...
 
@@ -7,10 +7,21 @@ local addonName, addon = ...
 addon.CombatTracker = {}
 local CombatTracker = addon.CombatTracker
 
--- Configuration for data collection
+-- Track current spec for change detection
+local currentSpec = nil
+
+-- =============================================================================
+-- CONFIGURATION & CONSTANTS
+-- =============================================================================
+
 local SAMPLE_INTERVAL = 0.5       -- Sample every 0.5 seconds
 local ROLLING_WINDOW_SIZE = 5     -- 5 seconds for rolling average
 local MAX_TIMELINE_SAMPLES = 1200 -- Keep 10 minutes of history (1200 * 0.5s)
+local SESSION_HISTORY_LIMIT = 50  -- Maximum sessions to store
+
+-- =============================================================================
+-- DATA STRUCTURES
+-- =============================================================================
 
 -- Combat data storage
 local combatData = {
@@ -55,6 +66,591 @@ local timelineData = {
     samples = {}, -- Array of historical samples
     maxSamples = MAX_TIMELINE_SAMPLES
 }
+
+-- Session history
+local sessionHistory = {} -- Will be per-character
+
+-- Combat action counter
+local combatActionCount = 0
+
+-- Content detection system
+local contentDetection = {
+    manualOverride = nil, -- "scaled", "normal", nil
+    overrideExpiry = 0,
+    baselineStats = { avgDPS = 0, avgHPS = 0, sampleCount = 0 }
+}
+
+-- Quality scoring thresholds
+local qualityThresholds = {
+    minDuration = 15,  -- seconds (was 10, now 15 for more meaningful fights)
+    minDamage = 25000, -- total damage (was 50K, now 25K - more realistic)
+    minHealing = 5000, -- total healing (was 25K, now 5K - DPS do less healing)
+    minDPS = 2000,     -- average DPS (was 5K, now 2K - much more realistic)
+    minHPS = 500,      -- average HPS (was 2.5K, now 500 - DPS/tanks do minimal healing)
+    minActions = 8,    -- combat log events counted (was 10, now 8)
+}
+
+-- =============================================================================
+-- UTILITY FUNCTIONS
+-- =============================================================================
+
+-- Get current character+spec key for data segmentation
+local function GetCharacterSpecKey()
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local specIndex = GetSpecialization()
+    local specName = "Unknown"
+
+    if specIndex then
+        local _, specName_temp = GetSpecializationInfo(specIndex)
+        if specName_temp then
+            specName = specName_temp
+        end
+    end
+
+    return string.format("%s-%s-%s", name, realm, specName)
+end
+
+-- Get current character key (legacy - for backwards compatibility)
+local function GetCharacterKey()
+    return UnitName("player") .. "-" .. GetRealmName()
+end
+
+-- Generate unique session ID
+local function GenerateSessionId()
+    return string.format("%04d", math.random(1000, 9999))
+end
+
+-- Format numbers (like 1.5M, 2.3K, etc.)
+function CombatTracker:FormatNumber(num)
+    if num >= 1000000 then
+        return string.format("%.1fM", num / 1000000)
+    elseif num >= 1000 then
+        return string.format("%.1fK", num / 1000)
+    else
+        return tostring(math.floor(num))
+    end
+end
+
+-- =============================================================================
+-- CONTENT DETECTION SYSTEM
+-- =============================================================================
+
+-- Enhanced content detection with better session analysis
+function CombatTracker:DetectContentType(sessionData)
+    -- Check manual override first
+    if contentDetection.manualOverride and GetTime() < contentDetection.overrideExpiry then
+        if addon.DEBUG then
+            print(string.format("Using manual content override: %s", contentDetection.manualOverride))
+        end
+        return contentDetection.manualOverride
+    end
+
+    -- Get baseline for comparison (use more sessions for stability)
+    local normalBaseline = self:GetContentBaseline("normal", 20)
+
+    if normalBaseline.sampleCount >= 3 then
+        local dpsRatio = normalBaseline.avgDPS > 0 and (sessionData.avgDPS / normalBaseline.avgDPS) or 1
+        local hpsRatio = normalBaseline.avgHPS > 0 and (sessionData.avgHPS / normalBaseline.avgHPS) or 1
+
+        -- More nuanced detection thresholds
+        local scaledThreshold = 0.6  -- Below 60% of normal suggests scaling
+        local boostedThreshold = 2.5 -- Above 250% suggests boosted/scaled content
+
+        -- Check if either DPS or HPS indicates scaling
+        if dpsRatio < scaledThreshold or dpsRatio > boostedThreshold or
+            hpsRatio < scaledThreshold or hpsRatio > boostedThreshold then
+            if addon.DEBUG then
+                print(string.format(
+                    "Detected scaled content: DPS ratio %.2f, HPS ratio %.2f (baseline: %.0f DPS, %.0f HPS)",
+                    dpsRatio, hpsRatio, normalBaseline.avgDPS, normalBaseline.avgHPS))
+            end
+            return "scaled"
+        end
+    end
+
+    if addon.DEBUG then
+        print(string.format("Detected normal content (baseline: %d samples)", normalBaseline.sampleCount))
+    end
+    return "normal"
+end
+
+-- Calculate baseline stats from recent normal content (legacy method for compatibility)
+function CombatTracker:GetNormalContentBaseline()
+    return self:GetContentBaseline("normal", 10)
+end
+
+-- Set manual content type override
+function CombatTracker:SetContentOverride(contentType, durationHours)
+    durationHours = durationHours or 2 -- Default 2 hours
+
+    if contentType == "auto" then
+        contentDetection.manualOverride = nil
+        contentDetection.overrideExpiry = 0
+        print("Content detection set to automatic")
+    else
+        contentDetection.manualOverride = contentType
+        contentDetection.overrideExpiry = GetTime() + (durationHours * 3600)
+        print(string.format("Content type manually set to '%s' for %d hours", contentType, durationHours))
+    end
+end
+
+-- Get current content type (for meter scaling)
+function CombatTracker:GetCurrentContentType()
+    if contentDetection.manualOverride and GetTime() < contentDetection.overrideExpiry then
+        return contentDetection.manualOverride
+    end
+
+    -- Default to normal for meter scaling
+    return "normal"
+end
+
+-- =============================================================================
+-- SESSION MANAGEMENT
+-- =============================================================================
+
+-- Calculate combat quality score (0-100) - Relative scoring, no magic numbers
+local function CalculateQualityScore(sessionData)
+    local score = 70 -- Start with "good" baseline
+    local flags = {}
+
+    if addon.DEBUG then
+        print(string.format("Quality Debug: Duration=%.1f, Damage=%.0f, Healing=%.0f, DPS=%.0f, HPS=%.0f, Actions=%d",
+            sessionData.duration, sessionData.totalDamage, sessionData.totalHealing,
+            sessionData.avgDPS, sessionData.avgHPS, combatActionCount))
+    end
+
+    -- Duration check - the only reliable absolute metric
+    if sessionData.duration < 3 then
+        score = score - 40 -- Really short fights are questionable
+        flags.tooShort = true
+        if addon.DEBUG then print("Quality: Too short (-40)") end
+    elseif sessionData.duration < 6 then
+        score = score - 15 -- Short fights are less reliable
+        if addon.DEBUG then print("Quality: Short (-15)") end
+    elseif sessionData.duration > 30 then
+        score = score + 10 -- Long fights are high quality
+        if addon.DEBUG then print("Quality: Long fight (+10)") end
+    else
+        -- Normal duration 6-30s, no penalty
+        if addon.DEBUG then print("Quality: Normal duration (0)") end
+    end
+
+    -- Activity check - based on actions per second (relative to duration)
+    local actionsPerSecond = combatActionCount / sessionData.duration
+    if actionsPerSecond < 0.3 then -- Less than 1 action per 3 seconds
+        score = score - 25
+        flags.lowActivity = true
+        if addon.DEBUG then print(string.format("Quality: Low activity %.2f APS (-25)", actionsPerSecond)) end
+    elseif actionsPerSecond > 1.5 then -- More than 1.5 actions per second
+        score = score + 15             -- High activity bonus
+        if addon.DEBUG then print(string.format("Quality: High activity %.2f APS (+15)", actionsPerSecond)) end
+    else
+        score = score + 5 -- Normal activity
+        if addon.DEBUG then print(string.format("Quality: Normal activity %.2f APS (+5)", actionsPerSecond)) end
+    end
+
+    -- Performance consistency check - DPS should be reasonable relative to duration
+    local expectedMinDPS = 10 * sessionData.duration -- Very low baseline: 10 DPS per second of combat
+    if sessionData.avgDPS < expectedMinDPS then
+        score = score - 20
+        flags.lowDPS = true
+        if addon.DEBUG then
+            print(string.format("Quality: DPS too low %.0f < %.0f (-20)", sessionData.avgDPS,
+                expectedMinDPS))
+        end
+    else
+        score = score + 10 -- Meeting minimum performance
+        if addon.DEBUG then print("Quality: DPS acceptable (+10)") end
+    end
+
+    -- Healing appropriateness (only matters if they did substantial healing relative to damage)
+    if sessionData.totalHealing > 0 then
+        local healingRatio = sessionData.totalHealing / sessionData.totalDamage
+        if healingRatio > 0.5 then     -- Healing more than 50% of damage dealt (tank/healer)
+            score = score + 10         -- Bonus for hybrid/support role
+            if addon.DEBUG then print(string.format("Quality: High healing ratio %.2f (+10)", healingRatio)) end
+        elseif healingRatio > 0.1 then -- Some healing (tank/hybrid)
+            score = score + 5          -- Small bonus
+            if addon.DEBUG then print(string.format("Quality: Some healing ratio %.2f (+5)", healingRatio)) end
+        end
+        -- Pure DPS with minimal healing gets no penalty or bonus
+    end
+
+    -- Combat engagement check - did damage happen throughout the fight?
+    -- This catches "afk in combat" or "combat ended but still flagged" scenarios
+    if sessionData.totalDamage == 0 then
+        score = score - 50 -- No damage at all = not real combat
+        flags.noDamage = true
+        if addon.DEBUG then print("Quality: No damage (-50)") end
+    end
+
+    -- Cap score bounds
+    score = math.max(0, math.min(100, score))
+
+    if addon.DEBUG then
+        print(string.format("Quality Final: %d, Flags: %s", score,
+            next(flags) and table.concat(flags, ", ") or "none"))
+    end
+
+    return score, flags
+end
+
+-- Create session record from combat data
+local function CreateSessionRecord()
+    if not combatData.startTime or not combatData.endTime then
+        if addon.DEBUG then
+            print("Cannot create session: missing start/end time")
+        end
+        return nil
+    end
+
+    local duration = combatData.endTime - combatData.startTime
+    local avgDPS = duration > 0 and (combatData.finalDamage / duration) or 0
+    local avgHPS = duration > 0 and (combatData.finalHealing / duration) or 0
+
+    local sessionData = {
+        sessionId = GenerateSessionId(),
+        startTime = combatData.startTime,
+        endTime = combatData.endTime,
+        duration = duration,
+
+        -- Performance metrics
+        totalDamage = combatData.finalDamage,
+        totalHealing = combatData.finalHealing,
+        totalOverheal = combatData.finalOverheal,
+        totalAbsorb = combatData.finalAbsorb,
+        avgDPS = avgDPS,
+        avgHPS = avgHPS,
+        peakDPS = combatData.finalMaxDPS,
+        peakHPS = combatData.finalMaxHPS,
+
+        -- Metadata
+        location = GetZoneText() or "Unknown",
+        playerLevel = UnitLevel("player"),
+        actionCount = combatActionCount,
+
+        -- User management
+        userMarked = nil, -- "keep", "ignore", "representative"
+
+        -- Quality will be calculated
+        qualityScore = 0,
+        qualityFlags = {}
+    }
+
+    -- Calculate quality and content type
+    sessionData.qualityScore, sessionData.qualityFlags = CalculateQualityScore(sessionData)
+    sessionData.contentType = CombatTracker:DetectContentType(sessionData)
+    sessionData.detectionMethod = contentDetection.manualOverride and "manual" or "auto"
+
+    if addon.DEBUG then
+        print(string.format("Session created: %s, Quality: %d, Duration: %.1fs, DPS: %.0f, Type: %s",
+            sessionData.sessionId, sessionData.qualityScore, sessionData.duration, sessionData.avgDPS,
+            sessionData.contentType))
+    end
+
+    return sessionData
+end
+
+-- Add session to history with limit management
+local function AddSessionToHistory(session)
+    if not session then return end
+
+    -- Add to beginning of array (most recent first)
+    table.insert(sessionHistory, 1, session)
+
+    -- Trim to limit
+    while #sessionHistory > SESSION_HISTORY_LIMIT do
+        table.remove(sessionHistory)
+    end
+
+    -- Save to database per-character-spec
+    if addon.db then
+        if not addon.db.sessionHistoryBySpec then
+            addon.db.sessionHistoryBySpec = {}
+        end
+        addon.db.sessionHistoryBySpec[GetCharacterSpecKey()] = sessionHistory
+
+        -- Also save to legacy character-only key for backwards compatibility
+        if not addon.db.sessionHistory then
+            addon.db.sessionHistory = {}
+        end
+        addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
+    end
+
+    if addon.DEBUG then
+        print(string.format("Session added to history for %s. Total sessions: %d", GetCharacterSpecKey(), #
+            sessionHistory))
+    end
+end
+
+-- =============================================================================
+-- SESSION API FUNCTIONS
+-- =============================================================================
+
+-- Get session history array
+function CombatTracker:GetSessionHistory()
+    return sessionHistory
+end
+
+-- Get specific session by ID
+function CombatTracker:GetSession(sessionId)
+    for _, session in ipairs(sessionHistory) do
+        if session.sessionId == sessionId then
+            return session
+        end
+    end
+    return nil
+end
+
+-- Mark session with user preference
+function CombatTracker:MarkSession(sessionId, status)
+    -- Convert short status names to full names for internal storage
+    local fullStatus = status
+    if status == "rep" then
+        fullStatus = "representative"
+    end
+
+    -- First try exact match
+    for _, session in ipairs(sessionHistory) do
+        if session.sessionId == sessionId then
+            session.userMarked = fullStatus
+            if fullStatus == "representative" then
+                session.qualityScore = 100 -- Override quality score
+            end
+
+            -- Save changes per-character-spec
+            if addon.db then
+                if not addon.db.sessionHistoryBySpec then
+                    addon.db.sessionHistoryBySpec = {}
+                end
+                addon.db.sessionHistoryBySpec[GetCharacterSpecKey()] = sessionHistory
+
+                -- Also save to legacy key
+                if not addon.db.sessionHistory then
+                    addon.db.sessionHistory = {}
+                end
+                addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
+            end
+
+            if addon.DEBUG then
+                print(string.format("Session %s marked as: %s", sessionId, fullStatus))
+            end
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Delete specific session
+function CombatTracker:DeleteSession(sessionId)
+    for i, session in ipairs(sessionHistory) do
+        if session.sessionId == sessionId then
+            table.remove(sessionHistory, i)
+
+            -- Save changes per-character
+            if addon.db then
+                if not addon.db.sessionHistory then
+                    addon.db.sessionHistory = {}
+                end
+                addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
+            end
+
+            if addon.DEBUG then
+                print(string.format("Session %s deleted", sessionId))
+            end
+            return true
+        end
+    end
+    return false
+end
+
+-- Clear all session history
+function CombatTracker:ClearHistory()
+    sessionHistory = {}
+    if addon.db then
+        -- Clear spec-specific data
+        if not addon.db.sessionHistoryBySpec then
+            addon.db.sessionHistoryBySpec = {}
+        end
+        addon.db.sessionHistoryBySpec[GetCharacterSpecKey()] = {}
+
+        -- Also clear legacy data
+        if not addon.db.sessionHistory then
+            addon.db.sessionHistory = {}
+        end
+        addon.db.sessionHistory[GetCharacterKey()] = {}
+    end
+
+    print(string.format("Session history cleared for %s", GetCharacterSpecKey()))
+end
+
+-- Get quality sessions only (score >= 70 or user marked as representative)
+function CombatTracker:GetQualitySessions()
+    local qualitySessions = {}
+    for _, session in ipairs(sessionHistory) do
+        if session.userMarked == "representative" or
+            (session.userMarked ~= "ignore" and session.qualityScore >= 70) then
+            table.insert(qualitySessions, session)
+        end
+    end
+    return qualitySessions
+end
+
+-- Get sessions for specific content type with scaling focus
+function CombatTracker:GetScalingSessions(contentType, maxCount)
+    contentType = contentType or "normal"
+    maxCount = maxCount or 10
+
+    local filteredSessions = {}
+
+    -- Filter sessions by content type and quality
+    for _, session in ipairs(sessionHistory) do
+        -- Skip ignored sessions for scaling calculations
+        if session.userMarked ~= "ignore" then
+            -- Include if content type matches OR if it's a representative session
+            if session.contentType == contentType or session.userMarked == "representative" then
+                -- Quality threshold: use representative sessions regardless of quality
+                if session.userMarked == "representative" or session.qualityScore >= 60 then
+                    table.insert(filteredSessions, session)
+                end
+            end
+        end
+    end
+
+    -- Limit to maxCount most recent sessions
+    local result = {}
+    for i = 1, math.min(#filteredSessions, maxCount) do
+        table.insert(result, filteredSessions[i])
+    end
+
+    if addon.DEBUG then
+        print(string.format("GetScalingSessions(%s): Found %d sessions, returning %d",
+            contentType, #filteredSessions, #result))
+    end
+
+    return result
+end
+
+-- Get baseline statistics for specific content type
+function CombatTracker:GetContentBaseline(contentType, maxSessions)
+    contentType = contentType or "normal"
+    maxSessions = maxSessions or 15
+
+    local sessions = self:GetScalingSessions(contentType, maxSessions)
+
+    if #sessions == 0 then
+        return {
+            avgDPS = 0,
+            avgHPS = 0,
+            peakDPS = 0,
+            peakHPS = 0,
+            sampleCount = 0,
+            contentType = contentType
+        }
+    end
+
+    local totalDPS, totalHPS = 0, 0
+    local maxPeakDPS, maxPeakHPS = 0, 0
+    local validCount = 0
+
+    for _, session in ipairs(sessions) do
+        totalDPS = totalDPS + (session.avgDPS or 0)
+        totalHPS = totalHPS + (session.avgHPS or 0)
+        maxPeakDPS = math.max(maxPeakDPS, session.peakDPS or 0)
+        maxPeakHPS = math.max(maxPeakHPS, session.peakHPS or 0)
+        validCount = validCount + 1
+    end
+
+    return {
+        avgDPS = validCount > 0 and (totalDPS / validCount) or 0,
+        avgHPS = validCount > 0 and (totalHPS / validCount) or 0,
+        peakDPS = maxPeakDPS,
+        peakHPS = maxPeakHPS,
+        sampleCount = validCount,
+        contentType = contentType
+    }
+end
+
+-- Check for spec changes and reload data if needed
+function CombatTracker:CheckSpecChange()
+    local newSpec = GetSpecialization()
+
+    -- If spec changed, reload session data for new spec
+    if currentSpec ~= nil and currentSpec ~= newSpec then
+        if addon.DEBUG then
+            local oldSpecName = "Unknown"
+            local newSpecName = "Unknown"
+
+            if currentSpec then
+                local _, oldSpecName_temp = GetSpecializationInfo(currentSpec)
+                if oldSpecName_temp then oldSpecName = oldSpecName_temp end
+            end
+
+            if newSpec then
+                local _, newSpecName_temp = GetSpecializationInfo(newSpec)
+                if newSpecName_temp then newSpecName = newSpecName_temp end
+            end
+
+            print(string.format("Spec changed from %s to %s - reloading session data", oldSpecName, newSpecName))
+        end
+
+        -- Reload session history for new spec
+        self:InitializeSessionHistory()
+
+        -- Reset meter scaling to let it adapt to new spec
+        if addon.dpsPixelMeter then
+            addon.dpsPixelMeter:ResetMaxValue()
+        end
+        if addon.hpsPixelMeter then
+            addon.hpsPixelMeter:ResetMaxValue()
+        end
+
+        print(string.format("Switched to new spec - session data and meter scaling updated"))
+    end
+
+    currentSpec = newSpec
+end
+
+function CombatTracker:InitializeSessionHistory()
+    local characterSpecKey = GetCharacterSpecKey()
+    local characterKey = GetCharacterKey() -- Legacy fallback
+
+    sessionHistory = {}
+
+    -- Try to load spec-specific data first
+    if addon.db and addon.db.sessionHistoryBySpec and addon.db.sessionHistoryBySpec[characterSpecKey] then
+        sessionHistory = addon.db.sessionHistoryBySpec[characterSpecKey]
+        if addon.DEBUG then
+            print(string.format("Loaded %d sessions for %s", #sessionHistory, characterSpecKey))
+        end
+        -- Fallback to legacy character-only data
+    elseif addon.db and addon.db.sessionHistory and addon.db.sessionHistory[characterKey] then
+        sessionHistory = addon.db.sessionHistory[characterKey]
+        if addon.DEBUG then
+            print(string.format("Loaded %d legacy sessions for %s", #sessionHistory, characterKey))
+        end
+
+        -- Migrate to new spec-specific format
+        if not addon.db.sessionHistoryBySpec then
+            addon.db.sessionHistoryBySpec = {}
+        end
+        addon.db.sessionHistoryBySpec[characterSpecKey] = sessionHistory
+        if addon.DEBUG then
+            print(string.format("Migrated sessions to spec-specific storage: %s", characterSpecKey))
+        end
+    else
+        sessionHistory = {}
+        if addon.DEBUG then
+            print(string.format("Initialized empty session history for %s", characterSpecKey))
+        end
+    end
+end
+
+-- =============================================================================
+-- SAMPLING SYSTEM
+-- =============================================================================
 
 -- Sample data structure
 local function CreateSample(timestamp, deltaTime)
@@ -207,100 +803,164 @@ local function SampleCombatData()
         local rolling = CalculateRollingAverages()
         addon:DebugPrint(string.format("Sample: DPS=%.0f, HPS=%.0f (%.0f effective), OH=%.1f%%, Samples=%d",
             rolling.dps, rolling.hps, rolling.effectiveHPS, rolling.overhealPercent, rolling.sampleCount))
-
-        -- Auto-output rolling and timeline data every 5 seconds (10 samples)
-        local sampleCount = #timelineData.samples
-        if sampleCount > 0 and sampleCount % 10 == 0 then
-            -- Output rolling data
-            print("=== Auto Rolling Report (5-sec) ===")
-            print(string.format("DPS: %.1f | HPS: %.1f | Effective HPS: %.1f", rolling.dps, rolling.hps,
-                rolling.effectiveHPS))
-            print(string.format("Overheal: %.1f%% | Absorb Rate: %.1f | Samples: %d", rolling.overhealPercent,
-                rolling.absorbRate, rolling.sampleCount))
-
-            -- Output recent timeline samples (last 3)
-            local timeline = timelineData.samples
-            print("=== Auto Timeline Report (last 3 samples) ===")
-            local startIdx = math.max(1, #timeline - 2)
-            for i = startIdx, #timeline do
-                local s = timeline[i]
-                print(string.format("[%.1fs] DPS:%.0f HPS:%.0f OH:%.1f%% Abs:%.0f",
-                    s.elapsed, s.instantDPS, s.instantHPS, s.overhealPercent, s.instantAbsorbRate))
-            end
-            print("--- End Auto Report ---")
-        end
     end
 end
 
--- Initialize combat tracker
-function CombatTracker:Initialize()
-    self.frame = CreateFrame("Frame")
-    self.frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    self.frame:RegisterEvent("PLAYER_REGEN_DISABLED") -- Entering combat
-    self.frame:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Leaving combat
-    self.frame:SetScript("OnEvent", function(self, event, ...)
-        CombatTracker:OnEvent(event, ...)
-    end)
+-- =============================================================================
+-- ROLLING AVERAGE API
+-- =============================================================================
 
-    -- Update timer (for displays and max tracking)
-    self.updateTimer = C_Timer.NewTicker(0.1, function()
-        CombatTracker:UpdateDisplays()
-    end)
-
-    -- Sample timer (for rolling averages and timeline)
-    self.sampleTimer = C_Timer.NewTicker(SAMPLE_INTERVAL, function()
-        SampleCombatData()
-    end)
+function CombatTracker:GetRollingDPS()
+    local rolling = CalculateRollingAverages()
+    return rolling.dps
 end
 
--- Event handler
-function CombatTracker:OnEvent(event, ...)
-    if event == "PLAYER_REGEN_DISABLED" then
-        self:StartCombat()
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        -- Capture final values IMMEDIATELY when combat ends, before any other processing
-        if combatData.inCombat then
-            -- Calculate final DPS/HPS rates while still in combat
-            local elapsed = GetTime() - combatData.startTime
-            if addon.DEBUG then
-                print(string.format("Combat ending: elapsed=%.1f, damage=%d, healing=%d", elapsed, combatData.damage,
-                    combatData.healing))
-            end
+function CombatTracker:GetRollingHPS()
+    local rolling = CalculateRollingAverages()
+    return rolling.hps
+end
 
-            if elapsed > 0 then
-                combatData.finalDPS = combatData.damage / elapsed
-                combatData.finalHPS = combatData.healing / elapsed
-                if addon.DEBUG then
-                    print(string.format("Calculated finalDPS=%.1f, finalHPS=%.1f", combatData.finalDPS,
-                        combatData.finalHPS))
-                end
-            else
-                combatData.finalDPS = 0
-                combatData.finalHPS = 0
-                if addon.DEBUG then
-                    print("Elapsed time was 0, setting final values to 0")
-                end
-            end
+function CombatTracker:GetRollingEffectiveHPS()
+    local rolling = CalculateRollingAverages()
+    return rolling.effectiveHPS
+end
 
-            -- Capture other final values
-            combatData.finalDamage = combatData.damage
-            combatData.finalHealing = combatData.healing
-            combatData.finalOverheal = combatData.overheal
-            combatData.finalAbsorb = combatData.absorb
-            combatData.finalMaxDPS = combatData.maxDPS
-            combatData.finalMaxHPS = combatData.maxHPS
+function CombatTracker:GetRollingOverhealPercent()
+    local rolling = CalculateRollingAverages()
+    return rolling.overhealPercent
+end
 
-            -- Take one final sample
-            SampleCombatData()
-        end
-        self:EndCombat()
-    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        -- Only process combat events if we're still in combat
-        if combatData.inCombat then
-            self:ParseCombatLog(CombatLogGetCurrentEventInfo())
-        end
+function CombatTracker:GetRollingAbsorbRate()
+    local rolling = CalculateRollingAverages()
+    return rolling.absorbRate
+end
+
+function CombatTracker:GetTimelineData()
+    return timelineData.samples
+end
+
+function CombatTracker:GetRollingData()
+    return CalculateRollingAverages()
+end
+
+-- =============================================================================
+-- COMBAT TRACKING API
+-- =============================================================================
+
+-- Calculate DPS (rolling during combat, final after)
+function CombatTracker:GetDPS()
+    if combatData.inCombat then
+        return self:GetRollingDPS()
+    else
+        return combatData.finalDPS or 0
     end
 end
+
+-- Calculate HPS (rolling during combat, final after)
+function CombatTracker:GetHPS()
+    if combatData.inCombat then
+        return self:GetRollingHPS()
+    else
+        return combatData.finalHPS or 0
+    end
+end
+
+-- Get displayed DPS for meters (rolling during combat, final after)
+function CombatTracker:GetDisplayDPS()
+    if combatData.inCombat then
+        return self:GetRollingDPS()
+    else
+        return combatData.finalDPS or 0
+    end
+end
+
+-- Get displayed HPS for meters (rolling during combat, final after)
+function CombatTracker:GetDisplayHPS()
+    if combatData.inCombat then
+        return self:GetRollingHPS()
+    else
+        return combatData.finalHPS or 0
+    end
+end
+
+-- Get total damage (use final value if combat ended)
+function CombatTracker:GetTotalDamage()
+    if not combatData.inCombat and combatData.finalDamage > 0 then
+        return combatData.finalDamage
+    end
+    return combatData.damage
+end
+
+-- Get total healing (use final value if combat ended)
+function CombatTracker:GetTotalHealing()
+    if not combatData.inCombat and combatData.finalHealing > 0 then
+        return combatData.finalHealing
+    end
+    return combatData.healing
+end
+
+-- Get total overheal (use final value if combat ended)
+function CombatTracker:GetTotalOverheal()
+    if not combatData.inCombat and combatData.finalOverheal > 0 then
+        return combatData.finalOverheal
+    end
+    return combatData.overheal
+end
+
+-- Get total absorb shields (use final value if combat ended)
+function CombatTracker:GetTotalAbsorb()
+    if not combatData.inCombat and combatData.finalAbsorb > 0 then
+        return combatData.finalAbsorb
+    end
+    return combatData.absorb
+end
+
+-- Get combat duration
+function CombatTracker:GetCombatTime()
+    if not combatData.startTime then
+        return 0
+    end
+
+    if not combatData.inCombat and combatData.endTime then
+        return combatData.endTime - combatData.startTime
+    end
+
+    return GetTime() - combatData.startTime
+end
+
+-- Get max DPS recorded (use final value if combat ended)
+function CombatTracker:GetMaxDPS()
+    if not combatData.inCombat and combatData.finalMaxDPS > 0 then
+        return combatData.finalMaxDPS
+    end
+    return combatData.maxDPS
+end
+
+-- Get max HPS recorded (use final value if combat ended)
+function CombatTracker:GetMaxHPS()
+    if not combatData.inCombat and combatData.finalMaxHPS > 0 then
+        return combatData.finalMaxHPS
+    end
+    return combatData.maxHPS
+end
+
+-- Check if in combat
+function CombatTracker:IsInCombat()
+    return combatData.inCombat
+end
+
+-- Get the final peak values from the last completed combat
+function CombatTracker:GetLastCombatMaxDPS()
+    return combatData.finalMaxDPS or 0
+end
+
+function CombatTracker:GetLastCombatMaxHPS()
+    return combatData.finalMaxHPS or 0
+end
+
+-- =============================================================================
+-- COMBAT EVENT HANDLERS
+-- =============================================================================
 
 -- Start combat tracking
 function CombatTracker:StartCombat()
@@ -313,17 +973,6 @@ function CombatTracker:StartCombat()
     combatData.absorb = 0
     combatData.maxDPS = 0
     combatData.maxHPS = 0
-
-    -- DON'T RESET THESE - keep them for auto-scaling:
-    -- combatData.finalDamage = 0
-    -- combatData.finalHealing = 0
-    -- combatData.finalOverheal = 0
-    -- combatData.finalAbsorb = 0
-    -- combatData.finalMaxDPS = 0
-    -- combatData.finalMaxHPS = 0
-    -- combatData.finalDPS = 0
-    -- combatData.finalHPS = 0
-
     combatData.lastUpdate = GetTime()
 
     -- Reset sampling data
@@ -338,6 +987,9 @@ function CombatTracker:StartCombat()
     rollingData.currentIndex = 1
     rollingData.initialized = false
     timelineData.samples = {}
+
+    -- Reset action counter
+    combatActionCount = 0
 
     print("Combat started!")
 end
@@ -381,8 +1033,11 @@ function CombatTracker:EndCombat()
     print(string.format("Timeline Samples: %d", #timelineData.samples))
     print("--------------------")
 
-    -- Keep displaying the final numbers until manual reset or new combat
-    -- Removed automatic reset timer - numbers persist until refresh clicked or new combat starts
+    -- Create and store session record
+    local session = CreateSessionRecord()
+    if session then
+        AddSessionToHistory(session)
+    end
 end
 
 -- Parse combat log events with improved filtering
@@ -401,6 +1056,13 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
         return
     end
 
+    -- Count relevant combat actions
+    if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or
+        subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_DAMAGE" or
+        subevent == "SPELL_PERIODIC_HEAL" then
+        combatActionCount = combatActionCount + 1
+    end
+
     -- Damage events with reasonable limits
     if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or subevent == "RANGE_DAMAGE" then
         local amount
@@ -415,11 +1077,11 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
             combatData.damage = combatData.damage + amount
 
             if addon.DEBUG then
-                print(string.format("Damage: %s (%s)", addon.CombatTracker:FormatNumber(amount), subevent))
+                print(string.format("Damage: %s (%s)", self:FormatNumber(amount), subevent))
             end
         elseif amount and amount >= 10000000 then
             if addon.DEBUG then
-                print(string.format("REJECTED large damage: %s (%s)", addon.CombatTracker:FormatNumber(amount), subevent))
+                print(string.format("REJECTED large damage: %s (%s)", self:FormatNumber(amount), subevent))
             end
         end
 
@@ -432,11 +1094,11 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
             combatData.damage = combatData.damage + amount
 
             if addon.DEBUG then
-                print(string.format("DOT Damage: %s", addon.CombatTracker:FormatNumber(amount)))
+                print(string.format("DOT Damage: %s", self:FormatNumber(amount)))
             end
         elseif amount and amount >= 5000000 then
             if addon.DEBUG then
-                print(string.format("REJECTED large DOT: %s", addon.CombatTracker:FormatNumber(amount)))
+                print(string.format("REJECTED large DOT: %s", self:FormatNumber(amount)))
             end
         end
 
@@ -450,7 +1112,7 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
 
             if addon.DEBUG then
                 print(string.format("Heal: %s (%s%s)",
-                    addon.CombatTracker:FormatNumber(amount),
+                    self:FormatNumber(amount),
                     spellName or "Unknown",
                     critical and " CRIT" or ""
                 ))
@@ -458,7 +1120,7 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
         elseif amount and amount >= 5000000 then
             if addon.DEBUG then
                 print(string.format("REJECTED large heal: %s (%s)",
-                    addon.CombatTracker:FormatNumber(amount),
+                    self:FormatNumber(amount),
                     spellName or "Unknown"
                 ))
             end
@@ -477,147 +1139,118 @@ function CombatTracker:ParseCombatLog(timestamp, subevent, _, sourceGUID, source
             combatData.healing = combatData.healing + absorbAmount -- Count absorbs as healing
 
             if addon.DEBUG then
-                print(string.format("Absorb: %s", addon.CombatTracker:FormatNumber(absorbAmount)))
+                print(string.format("Absorb: %s", self:FormatNumber(absorbAmount)))
             end
         elseif absorbAmount and absorbAmount >= 5000000 then
             if addon.DEBUG then
-                print(string.format("REJECTED large absorb: %s", addon.CombatTracker:FormatNumber(absorbAmount)))
+                print(string.format("REJECTED large absorb: %s", self:FormatNumber(absorbAmount)))
             end
         end
     end
 end
 
--- Get rolling average DPS
-function CombatTracker:GetRollingDPS()
-    local rolling = CalculateRollingAverages()
-    return rolling.dps
+-- Event handler
+function CombatTracker:OnEvent(event, ...)
+    if event == "PLAYER_REGEN_DISABLED" then
+        self:StartCombat()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        -- Capture final values IMMEDIATELY when combat ends, before any other processing
+        if combatData.inCombat then
+            -- Calculate final DPS/HPS rates while still in combat
+            local elapsed = GetTime() - combatData.startTime
+            if addon.DEBUG then
+                print(string.format("Combat ending: elapsed=%.1f, damage=%d, healing=%d", elapsed, combatData.damage,
+                    combatData.healing))
+            end
+
+            if elapsed > 0 then
+                combatData.finalDPS = combatData.damage / elapsed
+                combatData.finalHPS = combatData.healing / elapsed
+                if addon.DEBUG then
+                    print(string.format("Calculated finalDPS=%.1f, finalHPS=%.1f", combatData.finalDPS,
+                        combatData.finalHPS))
+                end
+            else
+                combatData.finalDPS = 0
+                combatData.finalHPS = 0
+                if addon.DEBUG then
+                    print("Elapsed time was 0, setting final values to 0")
+                end
+            end
+
+            -- Capture other final values
+            combatData.finalDamage = combatData.damage
+            combatData.finalHealing = combatData.healing
+            combatData.finalOverheal = combatData.overheal
+            combatData.finalAbsorb = combatData.absorb
+            combatData.finalMaxDPS = combatData.maxDPS
+            combatData.finalMaxHPS = combatData.maxHPS
+
+            -- Take one final sample
+            SampleCombatData()
+        end
+        self:EndCombat()
+    elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
+        -- Handle spec change event
+        self:CheckSpecChange()
+    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        -- Only process combat events if we're still in combat
+        if combatData.inCombat then
+            self:ParseCombatLog(CombatLogGetCurrentEventInfo())
+        end
+    end
 end
 
--- Get rolling average HPS
-function CombatTracker:GetRollingHPS()
-    local rolling = CalculateRollingAverages()
-    return rolling.hps
-end
+-- =============================================================================
+-- UPDATE & DISPLAY SYSTEM
+-- =============================================================================
 
--- Get rolling average effective HPS (excluding overheal)
-function CombatTracker:GetRollingEffectiveHPS()
-    local rolling = CalculateRollingAverages()
-    return rolling.effectiveHPS
-end
-
--- Get rolling overheal percentage
-function CombatTracker:GetRollingOverhealPercent()
-    local rolling = CalculateRollingAverages()
-    return rolling.overhealPercent
-end
-
--- Get rolling absorb rate
-function CombatTracker:GetRollingAbsorbRate()
-    local rolling = CalculateRollingAverages()
-    return rolling.absorbRate
-end
-
--- Get timeline data (for visualization)
-function CombatTracker:GetTimelineData()
-    return timelineData.samples
-end
-
--- Get rolling data summary
-function CombatTracker:GetRollingData()
-    return CalculateRollingAverages()
-end
-
--- Calculate DPS (rolling during combat, final after)
-function CombatTracker:GetDPS()
+-- Update displays
+function CombatTracker:UpdateDisplays()
+    -- Track max DPS and HPS during combat
     if combatData.inCombat then
-        -- During combat: show rolling average
-        return self:GetRollingDPS()
-    else
-        -- After combat: show final value
-        return combatData.finalDPS or 0
+        local elapsed = GetTime() - combatData.startTime
+
+        -- TIMING PROTECTION: Don't track peaks for the first 1.5 seconds of combat
+        if elapsed >= 1.5 then
+            local rollingDPS = self:GetRollingDPS()
+            local rollingHPS = self:GetRollingHPS()
+
+            -- Track peaks of rolling averages (more stable than overall DPS)
+            if rollingDPS > combatData.maxDPS then
+                combatData.maxDPS = rollingDPS
+                if addon.DEBUG then
+                    addon:DebugPrint(string.format("NEW ROLLING DPS PEAK: %.0f", rollingDPS))
+                end
+            end
+
+            if rollingHPS > combatData.maxHPS then
+                combatData.maxHPS = rollingHPS
+                if addon.DEBUG then
+                    addon:DebugPrint(string.format("NEW ROLLING HPS PEAK: %.0f", rollingHPS))
+                end
+            end
+        else
+            if addon.DEBUG then
+                addon:DebugPrint(string.format("Peak tracking disabled: elapsed=%.2f < 1.5 seconds", elapsed))
+            end
+        end
+    end
+
+    -- Update DPS window
+    if addon.DPSWindow and addon.DPSWindow.frame and addon.DPSWindow.frame:IsShown() then
+        addon.DPSWindow:UpdateDisplay()
+    end
+
+    -- Update HPS window
+    if addon.HPSWindow and addon.HPSWindow.frame and addon.HPSWindow.frame:IsShown() then
+        addon.HPSWindow:UpdateDisplay()
     end
 end
 
--- Calculate HPS (rolling during combat, final after)
-function CombatTracker:GetHPS()
-    if combatData.inCombat then
-        -- During combat: show rolling average
-        return self:GetRollingHPS()
-    else
-        -- After combat: show final value
-        return combatData.finalHPS or 0
-    end
-end
-
--- Get displayed DPS for meters (always rolling)
-function CombatTracker:GetDisplayDPS()
-    return self:GetRollingDPS()
-end
-
--- Get displayed HPS for meters (always rolling)
-function CombatTracker:GetDisplayHPS()
-    return self:GetRollingHPS()
-end
-
--- Get total damage (use final value if combat ended)
-function CombatTracker:GetTotalDamage()
-    if not combatData.inCombat and combatData.finalDamage > 0 then
-        return combatData.finalDamage
-    end
-    return combatData.damage
-end
-
--- Get total healing (use final value if combat ended)
-function CombatTracker:GetTotalHealing()
-    if not combatData.inCombat and combatData.finalHealing > 0 then
-        return combatData.finalHealing
-    end
-    return combatData.healing
-end
-
--- Get total overheal (use final value if combat ended)
-function CombatTracker:GetTotalOverheal()
-    if not combatData.inCombat and combatData.finalOverheal > 0 then
-        return combatData.finalOverheal
-    end
-    return combatData.overheal
-end
-
--- Get total absorb shields (use final value if combat ended)
-function CombatTracker:GetTotalAbsorb()
-    if not combatData.inCombat and combatData.finalAbsorb > 0 then
-        return combatData.finalAbsorb
-    end
-    return combatData.absorb
-end
-
-function CombatTracker:GetCombatTime()
-    if not combatData.startTime then
-        return 0
-    end
-
-    if not combatData.inCombat and combatData.endTime then
-        return combatData.endTime - combatData.startTime
-    end
-
-    return time() - combatData.startTime -- Change from GetTime()
-end
-
--- Get max DPS recorded (use final value if combat ended)
-function CombatTracker:GetMaxDPS()
-    if not combatData.inCombat and combatData.finalMaxDPS > 0 then
-        return combatData.finalMaxDPS
-    end
-    return combatData.maxDPS
-end
-
--- Get max HPS recorded (use final value if combat ended)
-function CombatTracker:GetMaxHPS()
-    if not combatData.inCombat and combatData.finalMaxHPS > 0 then
-        return combatData.finalMaxHPS
-    end
-    return combatData.maxHPS
-end
+-- =============================================================================
+-- RESET FUNCTIONS
+-- =============================================================================
 
 -- Reset display stats (for refresh button)
 function CombatTracker:ResetDisplayStats()
@@ -703,67 +1336,231 @@ function CombatTracker:ResetHPSStats()
     end
 end
 
--- Check if in combat
-function CombatTracker:IsInCombat()
-    return combatData.inCombat
+-- =============================================================================
+-- INITIALIZATION
+-- =============================================================================
+
+-- Initialize combat tracker
+function CombatTracker:Initialize()
+    self.frame = CreateFrame("Frame")
+    self.frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    self.frame:RegisterEvent("PLAYER_REGEN_DISABLED")         -- Entering combat
+    self.frame:RegisterEvent("PLAYER_REGEN_ENABLED")          -- Leaving combat
+    self.frame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED") -- Spec changes
+    self.frame:SetScript("OnEvent", function(self, event, ...)
+        CombatTracker:OnEvent(event, ...)
+    end)
+
+    -- Update timer (for displays and max tracking)
+    self.updateTimer = C_Timer.NewTicker(0.1, function()
+        CombatTracker:UpdateDisplays()
+    end)
+
+    -- Sample timer (for rolling averages and timeline)
+    self.sampleTimer = C_Timer.NewTicker(SAMPLE_INTERVAL, function()
+        SampleCombatData()
+    end)
+
+    -- Spec change check timer (check every 2 seconds)
+    self.specCheckTimer = C_Timer.NewTicker(2.0, function()
+        CombatTracker:CheckSpecChange()
+    end)
 end
 
--- Simple UpdateDisplays fix - just replace this function in your CombatTracker.lua
+-- =============================================================================
+-- DEBUG FUNCTIONS
+-- =============================================================================
 
-function CombatTracker:UpdateDisplays()
-    -- Track max DPS and HPS during combat
-    if combatData.inCombat then
-        local elapsed = GetTime() - combatData.startTime
+-- Debug session history
+function CombatTracker:DebugSessionHistory()
+    print("=== SESSION HISTORY DEBUG ===")
+    print(string.format("Total sessions: %d", #sessionHistory))
+    print(string.format("History limit: %d", SESSION_HISTORY_LIMIT))
 
-        -- TIMING PROTECTION: Don't track peaks for the first 1.5 seconds of combat
-        if elapsed >= 1.5 then
-            local rollingDPS = self:GetRollingDPS()
-            local rollingHPS = self:GetRollingHPS()
+    if #sessionHistory > 0 then
+        print("Recent sessions:")
+        for i = 1, math.min(5, #sessionHistory) do
+            local s = sessionHistory[i]
+            print(string.format("[%d] %s: %.1fs, DPS:%.0f, HPS:%.0f, Q:%d, Type:%s%s",
+                i, s.sessionId:sub(-8), s.duration, s.avgDPS, s.avgHPS, s.qualityScore,
+                s.contentType or "unknown",
+                s.userMarked and (" (" .. s.userMarked .. ")") or ""
+            ))
+        end
 
-            -- Track peaks of rolling averages (more stable than overall DPS)
-            if rollingDPS > combatData.maxDPS then
-                combatData.maxDPS = rollingDPS
-                if addon.DEBUG then
-                    addon:DebugPrint(string.format("NEW ROLLING DPS PEAK: %.0f", rollingDPS))
-                end
-            end
+        if #sessionHistory > 5 then
+            print(string.format("... and %d more", #sessionHistory - 5))
+        end
+    else
+        print("No sessions recorded")
+    end
 
-            if rollingHPS > combatData.maxHPS then
-                combatData.maxHPS = rollingHPS
-                if addon.DEBUG then
-                    addon:DebugPrint(string.format("NEW ROLLING HPS PEAK: %.0f", rollingHPS))
-                end
-            end
-        else
-            if addon.DEBUG then
-                addon:DebugPrint(string.format("Peak tracking disabled: elapsed=%.2f < 1.5 seconds", elapsed))
-            end
+    local qualitySessions = self:GetQualitySessions()
+    print(string.format("Quality sessions: %d", #qualitySessions))
+
+    print("=========================")
+end
+
+-- Generate test session data for development
+function CombatTracker:GenerateTestData()
+    -- Clear existing data first
+    sessionHistory = {}
+
+    -- Get current character info for appropriate test data
+    local specIndex = GetSpecialization()
+    local specName = "Unknown"
+    local className = UnitClass("player")
+
+    if specIndex then
+        local _, specName_temp = GetSpecializationInfo(specIndex)
+        if specName_temp then
+            specName = specName_temp
         end
     end
 
-    -- Update DPS window
-    if addon.DPSWindow and addon.DPSWindow.frame and addon.DPSWindow.frame:IsShown() then
-        addon.DPSWindow:UpdateDisplay()
-    end
+    -- Adjust test data based on spec/class
+    local testSessions = {}
 
-    -- Update HPS window
-    if addon.HPSWindow and addon.HPSWindow.frame and addon.HPSWindow.frame:IsShown() then
-        addon.HPSWindow:UpdateDisplay()
-    end
-end
+    -- Determine appropriate DPS/HPS ranges based on role
+    local isDPS = specName:find("Shadow") or specName:find("Fire") or specName:find("Frost") or
+        specName:find("Arcane") or specName:find("Fury") or specName:find("Arms") or
+        specName:find("Retribution") or specName:find("Enhancement") or specName:find("Elemental") or
+        specName:find("Balance") or specName:find("Feral") or specName:find("Beast") or
+        specName:find("Marksmanship") or specName:find("Survival") or specName:find("Assassination") or
+        specName:find("Outlaw") or specName:find("Subtlety") or specName:find("Affliction") or
+        specName:find("Demonology") or specName:find("Destruction") or specName:find("Havoc") or
+        specName:find("Windwalker") or specName:find("Devastation") or specName:find("Augmentation")
 
--- Format numbers (like 1.5M, 2.3K, etc.)
-function CombatTracker:FormatNumber(num)
-    if num >= 1000000 then
-        return string.format("%.1fM", num / 1000000)
-    elseif num >= 1000 then
-        return string.format("%.1fK", num / 1000)
+    local isHealer = specName:find("Holy") or specName:find("Discipline") or specName:find("Restoration") or
+        specName:find("Mistweaver") or specName:find("Preservation")
+
+    local isTank = specName:find("Protection") or specName:find("Blood") or specName:find("Guardian") or
+        specName:find("Brewmaster") or specName:find("Vengeance")
+
+    if isDPS then
+        -- DPS spec test data - high damage, low healing
+        testSessions = {
+            { dps = 850000,  hps = 5000, duration = 45, quality = 85, location = "Mythic Keystone", type = "normal" },
+            { dps = 1200000, hps = 3000, duration = 38, quality = 90, location = "The Dawnbreaker", type = "normal" },
+            { dps = 750000,  hps = 8000, duration = 52, quality = 80, location = "Ara-Kara",        type = "normal" },
+            { dps = 950000,  hps = 4000, duration = 41, quality = 88, location = "City of Threads", type = "normal" },
+            { dps = 1350000, hps = 2000, duration = 35, quality = 92, location = "The Stonevault",  type = "normal" },
+            { dps = 180000,  hps = 2000, duration = 65, quality = 75, location = "Timewalking",     type = "scaled" },
+            { dps = 220000,  hps = 3000, duration = 58, quality = 78, location = "Black Temple",    type = "scaled" },
+            { dps = 1650000, hps = 5000, duration = 28, quality = 95, location = "Raid Finder",     type = "normal" },
+        }
+    elseif isHealer then
+        -- Healer spec test data - moderate damage, high healing
+        testSessions = {
+            { dps = 250000, hps = 450000, duration = 45, quality = 85, location = "Mythic Keystone", type = "normal" },
+            { dps = 180000, hps = 580000, duration = 38, quality = 90, location = "The Dawnbreaker", type = "normal" },
+            { dps = 220000, hps = 520000, duration = 52, quality = 80, location = "Ara-Kara",        type = "normal" },
+            { dps = 200000, hps = 495000, duration = 41, quality = 88, location = "City of Threads", type = "normal" },
+            { dps = 160000, hps = 620000, duration = 35, quality = 92, location = "The Stonevault",  type = "normal" },
+            { dps = 80000,  hps = 180000, duration = 65, quality = 75, location = "Timewalking",     type = "scaled" },
+            { dps = 90000,  hps = 200000, duration = 58, quality = 78, location = "Black Temple",    type = "scaled" },
+            { dps = 140000, hps = 750000, duration = 28, quality = 95, location = "Raid Finder",     type = "normal" },
+        }
+    elseif isTank then
+        -- Tank spec test data - moderate damage, moderate healing
+        testSessions = {
+            { dps = 450000, hps = 180000, duration = 45, quality = 85, location = "Mythic Keystone", type = "normal" },
+            { dps = 520000, hps = 150000, duration = 38, quality = 90, location = "The Dawnbreaker", type = "normal" },
+            { dps = 380000, hps = 220000, duration = 52, quality = 80, location = "Ara-Kara",        type = "normal" },
+            { dps = 490000, hps = 190000, duration = 41, quality = 88, location = "City of Threads", type = "normal" },
+            { dps = 550000, hps = 160000, duration = 35, quality = 92, location = "The Stonevault",  type = "normal" },
+            { dps = 120000, hps = 60000,  duration = 65, quality = 75, location = "Timewalking",     type = "scaled" },
+            { dps = 140000, hps = 70000,  duration = 58, quality = 78, location = "Black Temple",    type = "scaled" },
+            { dps = 480000, hps = 250000, duration = 28, quality = 95, location = "Raid Finder",     type = "normal" },
+        }
     else
-        return tostring(math.floor(num))
+        -- Unknown/hybrid spec - balanced data
+        testSessions = {
+            { dps = 600000, hps = 100000, duration = 45, quality = 85, location = "Mythic Keystone", type = "normal" },
+            { dps = 750000, hps = 80000,  duration = 38, quality = 90, location = "The Dawnbreaker", type = "normal" },
+            { dps = 550000, hps = 120000, duration = 52, quality = 80, location = "Ara-Kara",        type = "normal" },
+            { dps = 680000, hps = 90000,  duration = 41, quality = 88, location = "City of Threads", type = "normal" },
+            { dps = 800000, hps = 70000,  duration = 35, quality = 92, location = "The Stonevault",  type = "normal" },
+            { dps = 150000, hps = 30000,  duration = 65, quality = 75, location = "Timewalking",     type = "scaled" },
+            { dps = 180000, hps = 40000,  duration = 58, quality = 78, location = "Black Temple",    type = "scaled" },
+            { dps = 850000, hps = 110000, duration = 28, quality = 95, location = "Raid Finder",     type = "normal" },
+        }
+    end
+
+    -- Add some poor quality sessions regardless of spec
+    table.insert(testSessions,
+        { dps = 80000, hps = 5000, duration = 8, quality = 45, location = "Stormwind", type = "normal" })
+    table.insert(testSessions,
+        { dps = 120000, hps = 3000, duration = 12, quality = 38, location = "Valdrakken", type = "normal" })
+
+    local currentTime = GetTime()
+    local baseTime = currentTime - 3600 -- Start 1 hour ago
+
+    for i, data in ipairs(testSessions) do
+        local session = {
+            sessionId = GenerateSessionId(),
+            startTime = baseTime + (i * 180), -- 3 minutes apart
+            endTime = baseTime + (i * 180) + data.duration,
+            duration = data.duration,
+
+            -- Performance metrics
+            totalDamage = data.dps * data.duration,
+            totalHealing = data.hps * data.duration,
+            totalOverheal = math.floor(data.hps * data.duration * 0.25), -- 25% overheal
+            totalAbsorb = math.floor(data.hps * data.duration * 0.1),    -- 10% absorbs
+            avgDPS = data.dps,
+            avgHPS = data.hps,
+            peakDPS = math.floor(data.dps * 1.3), -- 30% higher peaks
+            peakHPS = math.floor(data.hps * 1.4), -- 40% higher peaks
+
+            -- Metadata
+            location = data.location,
+            playerLevel = 80,
+            actionCount = math.floor(data.duration * 2), -- 2 actions per second
+
+            -- Quality assessment
+            qualityScore = data.quality,
+            qualityFlags = {},
+            contentType = data.type,
+            detectionMethod = "manual",
+
+            -- User management
+            userMarked = nil
+        }
+
+        -- Add some representative sessions
+        if i == 2 then -- Mark one session as representative
+            session.userMarked = "representative"
+            session.qualityScore = 100
+        elseif i == #testSessions - 1 then -- Mark one poor session as ignore
+            session.userMarked = "ignore"
+        end
+
+        -- Insert at beginning to maintain "most recent first" order
+        table.insert(sessionHistory, 1, session)
+    end
+
+    -- Save to database with spec-specific key
+    if addon.db then
+        if not addon.db.sessionHistoryBySpec then
+            addon.db.sessionHistoryBySpec = {}
+        end
+        addon.db.sessionHistoryBySpec[GetCharacterSpecKey()] = sessionHistory
+
+        -- Also save to legacy key for compatibility
+        if not addon.db.sessionHistory then
+            addon.db.sessionHistory = {}
+        end
+        addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
+    end
+
+    if addon.DEBUG then
+        print(string.format("Generated %d %s test sessions for %s", #testSessions,
+            isDPS and "DPS" or (isHealer and "Healer" or (isTank and "Tank" or "Hybrid")),
+            GetCharacterSpecKey()))
+        self:DebugSessionHistory()
     end
 end
-
--- === DEBUG FUNCTIONS ===
 
 -- Debug peak tracking values
 function CombatTracker:DebugPeakTracking()
@@ -799,549 +1596,51 @@ function CombatTracker:DebugPeakTracking()
     print("========================")
 end
 
--- Debug DPS calculation in detail
-function CombatTracker:DebugDPSCalculation()
-    print("=== DPS CALCULATION DEBUG ===")
+-- Debug method for content scaling analysis
+function CombatTracker:DebugContentScaling()
+    print("=== CONTENT SCALING DEBUG ===")
 
-    if not combatData.inCombat and combatData.finalDPS > 0 then
-        print("Using FINAL DPS:", combatData.finalDPS)
-        print("Final damage:", combatData.finalDamage)
-        return
+    local currentType = self:GetCurrentContentType()
+    print(string.format("Current content type: %s", currentType))
+
+    -- Show baseline for each content type
+    for _, contentType in ipairs({ "normal", "scaled" }) do
+        local baseline = self:GetContentBaseline(contentType, 10)
+        local sessions = self:GetScalingSessions(contentType, 10)
+
+        print(string.format("\n%s Content:", string.upper(contentType)))
+        print(string.format("  Sessions: %d (baseline from %d)", #sessions, baseline.sampleCount))
+        print(string.format("  Avg DPS: %s", self:FormatNumber(baseline.avgDPS)))
+        print(string.format("  Avg HPS: %s", self:FormatNumber(baseline.avgHPS)))
+        print(string.format("  Peak DPS: %s", self:FormatNumber(baseline.peakDPS)))
+        print(string.format("  Peak HPS: %s", self:FormatNumber(baseline.peakHPS)))
+
+        if #sessions > 0 then
+            print("  Recent sessions:")
+            for i = 1, math.min(3, #sessions) do
+                local s = sessions[i]
+                print(string.format("    %s: DPS %.0f, HPS %.0f, Q:%d%s",
+                    s.sessionId:sub(-8), s.avgDPS, s.avgHPS, s.qualityScore,
+                    s.userMarked and (" (" .. s.userMarked .. ")") or ""))
+            end
+        end
     end
 
-    if not combatData.inCombat or not combatData.startTime then
-        print("Not in combat or no start time")
-        return
-    end
+    -- Show content detection ratios
+    if #sessionHistory > 0 then
+        local lastSession = sessionHistory[1]
+        local normalBaseline = self:GetContentBaseline("normal", 20)
 
-    local elapsed = GetTime() - combatData.startTime
-    local calculatedDPS = elapsed > 0 and (combatData.damage / elapsed) or 0
+        if normalBaseline.sampleCount > 0 then
+            local dpsRatio = normalBaseline.avgDPS > 0 and (lastSession.avgDPS / normalBaseline.avgDPS) or 1
+            local hpsRatio = normalBaseline.avgHPS > 0 and (lastSession.avgHPS / normalBaseline.avgHPS) or 1
 
-    print("Combat Start Time:", combatData.startTime)
-    print("Current Time:", GetTime())
-    print("Elapsed Time:", elapsed)
-    print("Total Damage:", combatData.damage)
-    print("Calculated DPS:", calculatedDPS)
-    print("Stored Max DPS:", combatData.maxDPS)
-
-    -- Check if elapsed time is too small
-    if elapsed < 0.1 then
-        print("WARNING: Very short elapsed time, DPS calculation may be inflated!")
-    end
-
-    -- Check for timing issues
-    if elapsed < 1.0 and combatData.damage > 100000 then
-        print("WARNING: High damage in short time - potential timing issue!")
-        print("This could cause artificially high peak DPS values")
+            print(string.format("\nLast Session Detection:"))
+            print(string.format("  DPS Ratio: %.2f (%.0f / %.0f)", dpsRatio, lastSession.avgDPS, normalBaseline.avgDPS))
+            print(string.format("  HPS Ratio: %.2f (%.0f / %.0f)", hpsRatio, lastSession.avgHPS, normalBaseline.avgHPS))
+            print(string.format("  Detected as: %s", lastSession.contentType))
+        end
     end
 
     print("========================")
-end
-
--- Compare rolling vs overall calculations
-function CombatTracker:CompareRollingVsOverall()
-    print("=== ROLLING VS OVERALL COMPARISON ===")
-    print("Overall DPS (from start):", math.floor(self:GetDPS()))
-    print("Rolling DPS (5-sec avg):", math.floor(self:GetRollingDPS()))
-    print("Overall HPS (from start):", math.floor(self:GetHPS()))
-    print("Rolling HPS (5-sec avg):", math.floor(self:GetRollingHPS()))
-
-    local rolling = CalculateRollingAverages()
-    print("Rolling sample count:", rolling.sampleCount)
-    print("Rolling window size:", ROLLING_WINDOW_SIZE, "seconds")
-    print("Sample interval:", SAMPLE_INTERVAL, "seconds")
-
-    -- Show timeline sample count
-    print("Timeline samples:", #timelineData.samples)
-    print("====================================")
-end
-
--- Check update timing and timers
-function CombatTracker:CheckUpdateTiming()
-    print("=== UPDATE TIMING CHECK ===")
-    print("Update timer interval: 0.1 seconds")
-    print("Sample timer interval:", SAMPLE_INTERVAL, "seconds")
-    print("Rolling window size:", ROLLING_WINDOW_SIZE, "seconds")
-    print("Max timeline samples:", MAX_TIMELINE_SAMPLES)
-
-    if self.updateTimer then
-        print("Update timer exists and running")
-    else
-        print("WARNING: Update timer not found!")
-    end
-
-    if self.sampleTimer then
-        print("Sample timer exists and running")
-    else
-        print("WARNING: Sample timer not found!")
-    end
-
-    -- Check combat data timestamps
-    if combatData.startTime then
-        print("Combat start time:", combatData.startTime)
-        print("Last sample time:", combatData.lastSampleTime)
-        print("Current time:", GetTime())
-    else
-        print("No combat start time recorded")
-    end
-    print("==========================")
-end
-
--- Debug what happens during peak detection
-function CombatTracker:DebugPeakDetection()
-    print("=== PEAK DETECTION DEBUG ===")
-
-    if not combatData.inCombat then
-        print("Not in combat - no peak detection active")
-        return
-    end
-
-    local currentDPS = self:GetDPS()
-    local currentHPS = self:GetHPS()
-    local rollingDPS = self:GetRollingDPS()
-    local rollingHPS = self:GetRollingHPS()
-    local elapsed = GetTime() - combatData.startTime
-
-    print("Time since combat start:", string.format("%.2f seconds", elapsed))
-    print("Total damage so far:", combatData.damage)
-    print("Total healing so far:", combatData.healing)
-    print("Current overall DPS:", math.floor(currentDPS))
-    print("Current overall HPS:", math.floor(currentHPS))
-    print("Current rolling DPS:", math.floor(rollingDPS))
-    print("Current rolling HPS:", math.floor(rollingHPS))
-    print("Current peak DPS:", math.floor(combatData.maxDPS))
-    print("Current peak HPS:", math.floor(combatData.maxHPS))
-
-    -- Predict if peaks will update
-    if currentDPS > combatData.maxDPS then
-        print(">>> DPS PEAK WILL UPDATE on next UpdateDisplays() call")
-    else
-        print("--- DPS peak will not update")
-    end
-
-    if currentHPS > combatData.maxHPS then
-        print(">>> HPS PEAK WILL UPDATE on next UpdateDisplays() call")
-    else
-        print("--- HPS peak will not update")
-    end
-
-    print("============================")
-end
-
--- Test peak tracking with artificial values
-function CombatTracker:TestPeakTracking()
-    print("=== TESTING PEAK TRACKING ===")
-
-    -- Save original values
-    local origMaxDPS = combatData.maxDPS
-    local origMaxHPS = combatData.maxHPS
-    local origFinalMaxDPS = combatData.finalMaxDPS
-    local origFinalMaxHPS = combatData.finalMaxHPS
-
-    -- Test with artificial peaks
-    print("Setting artificial peak values...")
-    combatData.maxDPS = 500000 -- 500K
-    combatData.maxHPS = 300000 -- 300K
-
-    -- Force display update
-    self:UpdateDisplays()
-    print("Updated displays with 500K DPS peak, 300K HPS peak")
-
-    -- Test with higher values
-    combatData.maxDPS = 1000000 -- 1M
-    combatData.maxHPS = 600000  -- 600K
-
-    -- Force display update
-    self:UpdateDisplays()
-    print("Updated displays with 1M DPS peak, 600K HPS peak")
-
-    -- Restore original values
-    combatData.maxDPS = origMaxDPS
-    combatData.maxHPS = origMaxHPS
-    combatData.finalMaxDPS = origFinalMaxDPS
-    combatData.finalMaxHPS = origFinalMaxHPS
-
-    self:UpdateDisplays()
-    print("Restored original peak values")
-    print("===========================")
-end
-
--- Get the final peak values from the last completed combat
-function CombatTracker:GetLastCombatMaxDPS()
-    return combatData.finalMaxDPS or 0
-end
-
-function CombatTracker:GetLastCombatMaxHPS()
-    return combatData.finalMaxHPS or 0
-end
-
--- Session history configuration
-local SESSION_HISTORY_LIMIT = 50
-local sessionHistory = {} -- Will be per-character
-
--- Quality scoring thresholds
-local qualityThresholds = {
-    minDuration = 10,   -- seconds
-    minDamage = 50000,  -- total damage
-    minHealing = 25000, -- total healing
-    minDPS = 5000,      -- average DPS
-    minHPS = 2500,      -- average HPS
-    minActions = 10,    -- combat log events counted
-}
-
--- Combat action counter (add to existing combat data)
-local combatActionCount = 0
-
--- === SESSION MANAGEMENT FUNCTIONS ===
-
--- Generate unique session ID
-local function GenerateSessionId()
-    return string.format("session_%d_%d", GetServerTime(), math.random(1000, 9999))
-end
-
--- Calculate combat quality score (0-100)
-local function CalculateQualityScore(sessionData)
-    local score = 50 -- Base score
-    local flags = {}
-
-    -- Duration check
-    if sessionData.duration < qualityThresholds.minDuration then
-        score = score - 20
-        flags.tooShort = true
-    else
-        score = score + 10
-    end
-
-    -- Damage threshold
-    if sessionData.totalDamage < qualityThresholds.minDamage then
-        score = score - 15
-        flags.lowDamage = true
-    else
-        score = score + 10
-    end
-
-    -- Healing threshold (if any healing occurred)
-    if sessionData.totalHealing > 0 then
-        if sessionData.totalHealing < qualityThresholds.minHealing then
-            score = score - 10
-        else
-            score = score + 5
-        end
-    end
-
-    -- DPS/HPS minimums
-    if sessionData.avgDPS < qualityThresholds.minDPS then
-        score = score - 10
-        flags.lowDPS = true
-    end
-
-    if sessionData.totalHealing > 0 and sessionData.avgHPS < qualityThresholds.minHPS then
-        score = score - 10
-        flags.lowHPS = true
-    end
-
-    -- Activity level (combat log events)
-    if combatActionCount < qualityThresholds.minActions then
-        score = score - 15
-        flags.lowActivity = true
-    else
-        score = score + 5
-    end
-
-    -- Cap score bounds
-    score = math.max(0, math.min(100, score))
-
-    return score, flags
-end
-
--- Create session record from combat data
-local function CreateSessionRecord()
-    if not combatData.startTime or not combatData.endTime then
-        if addon.DEBUG then
-            print("Cannot create session: missing start/end time")
-        end
-        return nil
-    end
-
-    local duration = combatData.endTime - combatData.startTime
-    local avgDPS = duration > 0 and (combatData.finalDamage / duration) or 0
-    local avgHPS = duration > 0 and (combatData.finalHealing / duration) or 0
-
-    local sessionData = {
-        sessionId = GenerateSessionId(),
-        startTime = combatData.startTime,
-        endTime = combatData.endTime,
-        duration = duration,
-
-        -- Performance metrics
-        totalDamage = combatData.finalDamage,
-        totalHealing = combatData.finalHealing,
-        totalOverheal = combatData.finalOverheal,
-        totalAbsorb = combatData.finalAbsorb,
-        avgDPS = avgDPS,
-        avgHPS = avgHPS,
-        peakDPS = combatData.finalMaxDPS,
-        peakHPS = combatData.finalMaxHPS,
-
-        -- Metadata
-        location = GetZoneText() or "Unknown",
-        playerLevel = UnitLevel("player"),
-        actionCount = combatActionCount,
-
-        -- User management
-        userMarked = nil, -- "keep", "ignore", "representative"
-
-        -- Quality will be calculated
-        qualityScore = 0,
-        qualityFlags = {}
-    }
-
-    -- Calculate quality
-    sessionData.qualityScore, sessionData.qualityFlags = CalculateQualityScore(sessionData)
-
-    if addon.DEBUG then
-        print(string.format("Session created: %s, Quality: %d, Duration: %.1fs, DPS: %.0f",
-            sessionData.sessionId, sessionData.qualityScore, sessionData.duration, sessionData.avgDPS))
-    end
-
-    return sessionData
-end
-
--- Get current character key
-local function GetCharacterKey()
-    return UnitName("player") .. "-" .. GetRealmName()
-end
-
--- Add session to history with limit management
-local function AddSessionToHistory(session)
-    if not session then return end
-
-    -- Add to beginning of array (most recent first)
-    table.insert(sessionHistory, 1, session)
-
-    -- Trim to limit
-    while #sessionHistory > SESSION_HISTORY_LIMIT do
-        table.remove(sessionHistory)
-    end
-
-    -- Save to database per-character
-    if addon.db then
-        if not addon.db.sessionHistory then
-            addon.db.sessionHistory = {}
-        end
-        addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
-    end
-
-    if addon.DEBUG then
-        print(string.format("Session added to history for %s. Total sessions: %d", GetCharacterKey(), #sessionHistory))
-    end
-end
-
--- === PUBLIC API FUNCTIONS ===
-
--- Get session history array
-function CombatTracker:GetSessionHistory()
-    return sessionHistory
-end
-
--- Get specific session by ID
-function CombatTracker:GetSession(sessionId)
-    for _, session in ipairs(sessionHistory) do
-        if session.sessionId == sessionId then
-            return session
-        end
-    end
-    return nil
-end
-
--- Mark session with user preference
-function CombatTracker:MarkSession(sessionId, status)
-    local session = self:GetSession(sessionId)
-    if session then
-        session.userMarked = status
-        if status == "representative" then
-            session.qualityScore = 100 -- Override quality score
-        end
-
-        -- Save changes per-character
-        if addon.db then
-            if not addon.db.sessionHistory then
-                addon.db.sessionHistory = {}
-            end
-            addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
-        end
-
-        if addon.DEBUG then
-            print(string.format("Session %s marked as: %s", sessionId, status))
-        end
-        return true
-    end
-    return false
-end
-
--- Delete specific session
-function CombatTracker:DeleteSession(sessionId)
-    for i, session in ipairs(sessionHistory) do
-        if session.sessionId == sessionId then
-            table.remove(sessionHistory, i)
-
-            -- Save changes per-character
-            if addon.db then
-                if not addon.db.sessionHistory then
-                    addon.db.sessionHistory = {}
-                end
-                addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
-            end
-
-            if addon.DEBUG then
-                print(string.format("Session %s deleted", sessionId))
-            end
-            return true
-        end
-    end
-    return false
-end
-
--- Clear all session history
-function CombatTracker:ClearHistory()
-    sessionHistory = {}
-    if addon.db then
-        if not addon.db.sessionHistory then
-            addon.db.sessionHistory = {}
-        end
-        addon.db.sessionHistory[GetCharacterKey()] = {}
-    end
-
-    print(string.format("Session history cleared for %s", GetCharacterKey()))
-end
-
--- Get quality sessions only (score >= 70 or user marked as representative)
-function CombatTracker:GetQualitySessions()
-    local qualitySessions = {}
-    for _, session in ipairs(sessionHistory) do
-        if session.userMarked == "representative" or
-            (session.userMarked ~= "ignore" and session.qualityScore >= 70) then
-            table.insert(qualitySessions, session)
-        end
-    end
-    return qualitySessions
-end
-
--- Get sessions for auto-scaling calculation
-function CombatTracker:GetScalingSessions(maxCount)
-    local sessions = self:GetQualitySessions()
-    maxCount = maxCount or 10
-
-    -- Return most recent quality sessions up to maxCount
-    local result = {}
-    for i = 1, math.min(#sessions, maxCount) do
-        table.insert(result, sessions[i])
-    end
-
-    return result
-end
-
--- Modify existing StartCombat function to reset action counter
-local originalStartCombat = CombatTracker.StartCombat
-function CombatTracker:StartCombat()
-    combatActionCount = 0
-    return originalStartCombat(self)
-end
-
--- Modify existing ParseCombatLog to count actions
-local originalParseCombatLog = CombatTracker.ParseCombatLog
-function CombatTracker:ParseCombatLog(timestamp, subevent, ...)
-    -- Count relevant combat actions
-    if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or
-        subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_DAMAGE" or
-        subevent == "SPELL_PERIODIC_HEAL" then
-        combatActionCount = combatActionCount + 1
-    end
-
-    return originalParseCombatLog(self, timestamp, subevent, ...)
-end
-
--- Modify existing EndCombat function to create session
-local originalEndCombat = CombatTracker.EndCombat
-function CombatTracker:EndCombat()
-    -- Call original end combat logic first
-    originalEndCombat(self)
-
-    -- Create and store session record
-    local session = CreateSessionRecord()
-    if session then
-        AddSessionToHistory(session)
-    end
-end
-
-function CombatTracker:InitializeSessionHistory()
-    local characterKey = GetCharacterKey()
-
-    if addon.db and addon.db.sessionHistory and addon.db.sessionHistory[characterKey] then
-        sessionHistory = addon.db.sessionHistory[characterKey]
-        if addon.DEBUG then
-            print(string.format("Loaded %d sessions for %s", #sessionHistory, characterKey))
-        end
-    else
-        sessionHistory = {}
-        if addon.DEBUG then
-            print(string.format("Initialized empty session history for %s", characterKey))
-        end
-    end
-end
-
--- === DEBUG FUNCTIONS ===
-
--- Debug session history
-function CombatTracker:DebugSessionHistory()
-    print("=== SESSION HISTORY DEBUG ===")
-    print(string.format("Total sessions: %d", #sessionHistory))
-    print(string.format("History limit: %d", SESSION_HISTORY_LIMIT))
-
-    if #sessionHistory > 0 then
-        print("Recent sessions:")
-        for i = 1, math.min(5, #sessionHistory) do
-            local s = sessionHistory[i]
-            print(string.format("[%d] %s: %.1fs, DPS:%.0f, HPS:%.0f, Q:%d%s",
-                i, s.sessionId:sub(-8), s.duration, s.avgDPS, s.avgHPS, s.qualityScore,
-                s.userMarked and (" (" .. s.userMarked .. ")") or ""
-            ))
-        end
-
-        if #sessionHistory > 5 then
-            print(string.format("... and %d more", #sessionHistory - 5))
-        end
-    else
-        print("No sessions recorded")
-    end
-
-    local qualitySessions = self:GetQualitySessions()
-    print(string.format("Quality sessions: %d", #qualitySessions))
-
-    print("=========================")
-end
-
--- Test session creation with fake data
-function CombatTracker:TestSessionCreation()
-    print("Creating test session...")
-
-    -- Set up fake combat data
-    combatData.startTime = GetTime() - 30
-    combatData.endTime = GetTime()
-    combatData.finalDamage = 150000
-    combatData.finalHealing = 75000
-    combatData.finalOverheal = 25000
-    combatData.finalAbsorb = 10000
-    combatData.finalMaxDPS = 8500
-    combatData.finalMaxHPS = 4200
-    combatActionCount = 25
-
-    local session = CreateSessionRecord()
-    if session then
-        AddSessionToHistory(session)
-        print("Test session created successfully")
-        self:DebugSessionHistory()
-    else
-        print("Failed to create test session")
-    end
 end

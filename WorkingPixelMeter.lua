@@ -14,7 +14,7 @@ function WorkingPixelMeter:New(config)
     instance.frame = nil
     instance.pixels = {}
     instance.getValue = nil
-    instance.maxValue = config.maxValue or 500000      -- CHANGED: 500K default instead of 15K
+    instance.maxValue = config.maxValue or 1000        -- CHANGED: 1K default for true beginners
     instance.originalMaxValue = instance.maxValue      -- Store original for reset
     instance.manualMaxValue = nil                      -- For manual override
     instance.meterName = config.meterName or "Unknown" -- For debug/commands
@@ -151,7 +151,7 @@ function WorkingPixelMeter:Update()
 
     -- Only auto-scale if no manual override is set
     if not self.manualMaxValue then
-        -- Simple approach: scale based on last combat's peak
+        -- Enhanced approach: use content-specific session pools
         local autoScale = self:GetAutoScale()
         self.maxValue = autoScale
         currentMax = autoScale
@@ -176,6 +176,142 @@ function WorkingPixelMeter:Update()
             end
         end
     end
+end
+
+-- Enhanced WorkingPixelMeter:GetAutoScale() with content-specific pools
+function WorkingPixelMeter:GetAutoScale()
+    if not addon.CombatTracker then
+        return self.originalMaxValue
+    end
+
+    -- Get current content type for scaling context
+    local contentType = addon.CombatTracker:GetCurrentContentType()
+
+    -- Get appropriate sessions for this content type
+    local sessions = addon.CombatTracker:GetScalingSessions(contentType, 10)
+
+    if #sessions == 0 then
+        -- No relevant sessions, fall back to last combat peak
+        local lastPeak = 0
+        if self.meterName == "DPS" then
+            lastPeak = addon.CombatTracker:GetLastCombatMaxDPS()
+        elseif self.meterName == "HPS" then
+            lastPeak = addon.CombatTracker:GetLastCombatMaxHPS()
+        end
+
+        if lastPeak > 0 then
+            local autoScale = lastPeak * 1.4 -- 40% headroom
+            autoScale = self:RoundToNiceNumber(autoScale)
+            autoScale = math.max(autoScale, self.originalMaxValue)
+            autoScale = math.min(autoScale, 20000000)
+
+            if addon.DEBUG then
+                print(string.format("%s: Using last combat peak %.0f -> %.0f (%s content)",
+                    self.meterName, lastPeak, autoScale, contentType))
+            end
+
+            return autoScale
+        else
+            return self.originalMaxValue
+        end
+    end
+
+    -- Calculate weighted average from session pool
+    local autoScale = self:CalculateWeightedScale(sessions, contentType)
+
+    if addon.DEBUG then
+        print(string.format("%s: Using %d %s sessions -> %.0f",
+            self.meterName, #sessions, contentType, autoScale))
+    end
+
+    return autoScale
+end
+
+-- New method: Calculate weighted scaling from session pool
+function WorkingPixelMeter:CalculateWeightedScale(sessions, contentType)
+    local values = {}
+    local weights = {}
+    local totalWeight = 0
+
+    -- Extract relevant values and calculate weights
+    for i, session in ipairs(sessions) do
+        local value = 0
+        if self.meterName == "DPS" then
+            value = session.peakDPS or session.avgDPS
+        elseif self.meterName == "HPS" then
+            value = session.peakHPS or session.avgHPS
+        end
+
+        if value and value > 0 then
+            table.insert(values, value)
+
+            -- Weight calculation: recent sessions and high quality count more
+            local recencyWeight = math.max(0.3, 1.0 - ((i - 1) * 0.1)) -- Decay: 1.0, 0.9, 0.8...
+            local qualityWeight = session.qualityScore / 100
+            local userWeight = 1.0
+
+            -- Boost representative sessions
+            if session.userMarked == "representative" then
+                userWeight = 1.5
+            elseif session.userMarked == "ignore" then
+                userWeight = 0.1 -- Still include but with minimal weight
+            end
+
+            local combinedWeight = recencyWeight * qualityWeight * userWeight
+            table.insert(weights, combinedWeight)
+            totalWeight = totalWeight + combinedWeight
+        end
+    end
+
+    if #values == 0 then
+        return self.originalMaxValue
+    end
+
+    -- Calculate weighted average
+    local weightedSum = 0
+    for i, value in ipairs(values) do
+        weightedSum = weightedSum + (value * weights[i])
+    end
+
+    local weightedAverage = weightedSum / totalWeight
+
+    -- Apply content-specific headroom
+    local headroomMultiplier = 1.4 -- Default 40%
+    if contentType == "scaled" then
+        headroomMultiplier = 1.6   -- More headroom for scaled content (60%)
+    end
+
+    local autoScale = weightedAverage * headroomMultiplier
+
+    -- Outlier protection: cap scaling changes
+    local currentMax = self:GetCurrentMaxValue()
+    local maxChange = 3.0 -- Don't change by more than 3x in one update
+
+    if autoScale > currentMax * maxChange then
+        autoScale = currentMax * maxChange
+        if addon.DEBUG then
+            print(string.format("%s: Capped scaling change to %.0f (was %.0f)",
+                self.meterName, autoScale, weightedAverage * headroomMultiplier))
+        end
+    elseif autoScale < currentMax / maxChange then
+        autoScale = currentMax / maxChange
+        if addon.DEBUG then
+            print(string.format("%s: Limited scaling reduction to %.0f (was %.0f)",
+                self.meterName, autoScale, weightedAverage * headroomMultiplier))
+        end
+    end
+
+    -- Round and bound
+    autoScale = self:RoundToNiceNumber(autoScale)
+    autoScale = math.max(autoScale, 500)      -- Don't go below 500 DPS
+    autoScale = math.min(autoScale, 50000000) -- 50M cap
+
+    if addon.DEBUG then
+        print(string.format("%s Auto-scale (%s): %.0f avg * %.1f headroom = %.0f (from %d sessions)",
+            self.meterName, contentType, weightedAverage, headroomMultiplier, autoScale, #values))
+    end
+
+    return autoScale
 end
 
 -- Color scheme: Green -> Yellow -> Orange -> Red
@@ -222,54 +358,38 @@ function WorkingPixelMeter:Toggle()
     end
 end
 
-function WorkingPixelMeter:GetAutoScale()
-    if not addon.CombatTracker then
-        return self.originalMaxValue
-    end
-
-    -- Get the last combat's peak for this meter type
-    local lastPeak = 0
-    if self.meterName == "DPS" then
-        lastPeak = addon.CombatTracker:GetLastCombatMaxDPS()
-    elseif self.meterName == "HPS" then
-        lastPeak = addon.CombatTracker:GetLastCombatMaxHPS()
-    end
-
-    -- If we have a previous peak, use it with some headroom
-    if lastPeak > 0 then
-        local autoScale = lastPeak * 1.4 -- 40% headroom
-
-        -- Round to nice number
-        autoScale = self:RoundToNiceNumber(autoScale)
-
-        -- Reasonable bounds
-        autoScale = math.max(autoScale, self.originalMaxValue) -- Don't go below 500K
-        autoScale = math.min(autoScale, 20000000)              -- 20M cap
-
-        return autoScale
-    else
-        -- No previous data, use default (500K)
-        return self.originalMaxValue
-    end
-end
-
 function WorkingPixelMeter:RoundToNiceNumber(value)
-    -- Round to nice round numbers: 100K, 200K, 500K, 1M, 2M, 5M, 10M, etc.
+    -- Round to nice round numbers across the full DPS spectrum
 
-    if value < 100000 then
-        -- Below 100K: round to nearest 50K
-        return math.ceil(value / 50000) * 50000
+    if value < 1000 then
+        -- Below 1K: round to nearest 100 (for level 1-15 players)
+        return math.ceil(value / 100) * 100
+    elseif value < 5000 then
+        -- 1K to 5K: round to nearest 500 (low level)
+        return math.ceil(value / 500) * 500
+    elseif value < 10000 then
+        -- 5K to 10K: round to nearest 1K
+        return math.ceil(value / 1000) * 1000
+    elseif value < 50000 then
+        -- 10K to 50K: round to nearest 5K
+        return math.ceil(value / 5000) * 5000
+    elseif value < 100000 then
+        -- 50K to 100K: round to nearest 10K
+        return math.ceil(value / 10000) * 10000
+    elseif value < 500000 then
+        -- 100K to 500K: round to nearest 25K
+        return math.ceil(value / 25000) * 25000
     elseif value < 1000000 then
-        -- 100K to 1M: round to nearest 100K
-        return math.ceil(value / 100000) * 100000
+        -- 500K to 1M: round to nearest 50K
+        return math.ceil(value / 50000) * 50000
     elseif value < 5000000 then
-        -- 1M to 5M: round to nearest 500K
-        return math.ceil(value / 500000) * 500000
+        -- 1M to 5M: round to nearest 250K
+        return math.ceil(value / 250000) * 250000
     elseif value < 10000000 then
-        -- 5M to 10M: round to nearest 1M
-        return math.ceil(value / 1000000) * 1000000
+        -- 5M to 10M: round to nearest 500K
+        return math.ceil(value / 500000) * 500000
     else
-        -- Above 10M: round to nearest 2M
-        return math.ceil(value / 2000000) * 2000000
+        -- Above 10M: round to nearest 1M
+        return math.ceil(value / 1000000) * 1000000
     end
 end
