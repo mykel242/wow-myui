@@ -7,6 +7,9 @@ local addonName, addon = ...
 addon.CombatTracker = {}
 local CombatTracker = addon.CombatTracker
 
+-- Track current spec for change detection
+local currentSpec = nil
+
 -- =============================================================================
 -- CONFIGURATION & CONSTANTS
 -- =============================================================================
@@ -79,26 +82,43 @@ local contentDetection = {
 
 -- Quality scoring thresholds
 local qualityThresholds = {
-    minDuration = 10,   -- seconds
-    minDamage = 50000,  -- total damage
-    minHealing = 25000, -- total healing
-    minDPS = 5000,      -- average DPS
-    minHPS = 2500,      -- average HPS
-    minActions = 10,    -- combat log events counted
+    minDuration = 15,  -- seconds (was 10, now 15 for more meaningful fights)
+    minDamage = 25000, -- total damage (was 50K, now 25K - more realistic)
+    minHealing = 5000, -- total healing (was 25K, now 5K - DPS do less healing)
+    minDPS = 2000,     -- average DPS (was 5K, now 2K - much more realistic)
+    minHPS = 500,      -- average HPS (was 2.5K, now 500 - DPS/tanks do minimal healing)
+    minActions = 8,    -- combat log events counted (was 10, now 8)
 }
 
 -- =============================================================================
 -- UTILITY FUNCTIONS
 -- =============================================================================
 
--- Get current character key
+-- Get current character+spec key for data segmentation
+local function GetCharacterSpecKey()
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local specIndex = GetSpecialization()
+    local specName = "Unknown"
+
+    if specIndex then
+        local _, specName_temp = GetSpecializationInfo(specIndex)
+        if specName_temp then
+            specName = specName_temp
+        end
+    end
+
+    return string.format("%s-%s-%s", name, realm, specName)
+end
+
+-- Get current character key (legacy - for backwards compatibility)
 local function GetCharacterKey()
     return UnitName("player") .. "-" .. GetRealmName()
 end
 
 -- Generate unique session ID
 local function GenerateSessionId()
-    return string.format("session_%d_%d", GetServerTime(), math.random(1000, 9999))
+    return string.format("%04d", math.random(1000, 9999))
 end
 
 -- Format numbers (like 1.5M, 2.3K, etc.)
@@ -116,7 +136,7 @@ end
 -- CONTENT DETECTION SYSTEM
 -- =============================================================================
 
--- Detect if content is scaled based on performance ratios
+-- Enhanced content detection with better session analysis
 function CombatTracker:DetectContentType(sessionData)
     -- Check manual override first
     if contentDetection.manualOverride and GetTime() < contentDetection.overrideExpiry then
@@ -126,56 +146,38 @@ function CombatTracker:DetectContentType(sessionData)
         return contentDetection.manualOverride
     end
 
-    -- Auto-detect based on performance ratio
-    local baseline = self:GetNormalContentBaseline()
-    if baseline.sampleCount >= 3 then
-        local dpsRatio = baseline.avgDPS > 0 and (sessionData.avgDPS / baseline.avgDPS) or 1
-        local hpsRatio = baseline.avgHPS > 0 and (sessionData.avgHPS / baseline.avgHPS) or 1
+    -- Get baseline for comparison (use more sessions for stability)
+    local normalBaseline = self:GetContentBaseline("normal", 20)
+
+    if normalBaseline.sampleCount >= 3 then
+        local dpsRatio = normalBaseline.avgDPS > 0 and (sessionData.avgDPS / normalBaseline.avgDPS) or 1
+        local hpsRatio = normalBaseline.avgHPS > 0 and (sessionData.avgHPS / normalBaseline.avgHPS) or 1
+
+        -- More nuanced detection thresholds
+        local scaledThreshold = 0.6  -- Below 60% of normal suggests scaling
+        local boostedThreshold = 2.5 -- Above 250% suggests boosted/scaled content
 
         -- Check if either DPS or HPS indicates scaling
-        if dpsRatio < 0.4 or dpsRatio > 3.0 or hpsRatio < 0.4 or hpsRatio > 3.0 then
+        if dpsRatio < scaledThreshold or dpsRatio > boostedThreshold or
+            hpsRatio < scaledThreshold or hpsRatio > boostedThreshold then
             if addon.DEBUG then
-                print(string.format("Detected scaled content: DPS ratio %.2f, HPS ratio %.2f", dpsRatio, hpsRatio))
+                print(string.format(
+                    "Detected scaled content: DPS ratio %.2f, HPS ratio %.2f (baseline: %.0f DPS, %.0f HPS)",
+                    dpsRatio, hpsRatio, normalBaseline.avgDPS, normalBaseline.avgHPS))
             end
             return "scaled"
         end
     end
 
     if addon.DEBUG then
-        print("Detected normal content")
+        print(string.format("Detected normal content (baseline: %d samples)", normalBaseline.sampleCount))
     end
     return "normal"
 end
 
--- Calculate baseline stats from recent normal content
+-- Calculate baseline stats from recent normal content (legacy method for compatibility)
 function CombatTracker:GetNormalContentBaseline()
-    local normalSessions = {}
-    local totalDPS, totalHPS = 0, 0
-
-    -- Look at last 10 sessions marked as normal
-    for _, session in ipairs(sessionHistory) do
-        if session.contentType == "normal" and session.qualityScore >= 70 then
-            table.insert(normalSessions, session)
-            if #normalSessions >= 10 then break end
-        end
-    end
-
-    -- Calculate averages
-    for _, session in ipairs(normalSessions) do
-        totalDPS = totalDPS + session.avgDPS
-        totalHPS = totalHPS + session.avgHPS
-    end
-
-    local count = #normalSessions
-    if count > 0 then
-        contentDetection.baselineStats = {
-            avgDPS = totalDPS / count,
-            avgHPS = totalHPS / count,
-            sampleCount = count
-        }
-    end
-
-    return contentDetection.baselineStats
+    return self:GetContentBaseline("normal", 10)
 end
 
 -- Set manual content type override
@@ -207,57 +209,89 @@ end
 -- SESSION MANAGEMENT
 -- =============================================================================
 
--- Calculate combat quality score (0-100)
+-- Calculate combat quality score (0-100) - Relative scoring, no magic numbers
 local function CalculateQualityScore(sessionData)
-    local score = 50 -- Base score
+    local score = 70 -- Start with "good" baseline
     local flags = {}
 
-    -- Duration check
-    if sessionData.duration < qualityThresholds.minDuration then
-        score = score - 20
+    if addon.DEBUG then
+        print(string.format("Quality Debug: Duration=%.1f, Damage=%.0f, Healing=%.0f, DPS=%.0f, HPS=%.0f, Actions=%d",
+            sessionData.duration, sessionData.totalDamage, sessionData.totalHealing,
+            sessionData.avgDPS, sessionData.avgHPS, combatActionCount))
+    end
+
+    -- Duration check - the only reliable absolute metric
+    if sessionData.duration < 3 then
+        score = score - 40 -- Really short fights are questionable
         flags.tooShort = true
+        if addon.DEBUG then print("Quality: Too short (-40)") end
+    elseif sessionData.duration < 6 then
+        score = score - 15 -- Short fights are less reliable
+        if addon.DEBUG then print("Quality: Short (-15)") end
+    elseif sessionData.duration > 30 then
+        score = score + 10 -- Long fights are high quality
+        if addon.DEBUG then print("Quality: Long fight (+10)") end
     else
-        score = score + 10
+        -- Normal duration 6-30s, no penalty
+        if addon.DEBUG then print("Quality: Normal duration (0)") end
     end
 
-    -- Damage threshold
-    if sessionData.totalDamage < qualityThresholds.minDamage then
-        score = score - 15
-        flags.lowDamage = true
-    else
-        score = score + 10
-    end
-
-    -- Healing threshold (if any healing occurred)
-    if sessionData.totalHealing > 0 then
-        if sessionData.totalHealing < qualityThresholds.minHealing then
-            score = score - 10
-        else
-            score = score + 5
-        end
-    end
-
-    -- DPS/HPS minimums
-    if sessionData.avgDPS < qualityThresholds.minDPS then
-        score = score - 10
-        flags.lowDPS = true
-    end
-
-    if sessionData.totalHealing > 0 and sessionData.avgHPS < qualityThresholds.minHPS then
-        score = score - 10
-        flags.lowHPS = true
-    end
-
-    -- Activity level (combat log events)
-    if combatActionCount < qualityThresholds.minActions then
-        score = score - 15
+    -- Activity check - based on actions per second (relative to duration)
+    local actionsPerSecond = combatActionCount / sessionData.duration
+    if actionsPerSecond < 0.3 then -- Less than 1 action per 3 seconds
+        score = score - 25
         flags.lowActivity = true
+        if addon.DEBUG then print(string.format("Quality: Low activity %.2f APS (-25)", actionsPerSecond)) end
+    elseif actionsPerSecond > 1.5 then -- More than 1.5 actions per second
+        score = score + 15             -- High activity bonus
+        if addon.DEBUG then print(string.format("Quality: High activity %.2f APS (+15)", actionsPerSecond)) end
     else
-        score = score + 5
+        score = score + 5 -- Normal activity
+        if addon.DEBUG then print(string.format("Quality: Normal activity %.2f APS (+5)", actionsPerSecond)) end
+    end
+
+    -- Performance consistency check - DPS should be reasonable relative to duration
+    local expectedMinDPS = 10 * sessionData.duration -- Very low baseline: 10 DPS per second of combat
+    if sessionData.avgDPS < expectedMinDPS then
+        score = score - 20
+        flags.lowDPS = true
+        if addon.DEBUG then
+            print(string.format("Quality: DPS too low %.0f < %.0f (-20)", sessionData.avgDPS,
+                expectedMinDPS))
+        end
+    else
+        score = score + 10 -- Meeting minimum performance
+        if addon.DEBUG then print("Quality: DPS acceptable (+10)") end
+    end
+
+    -- Healing appropriateness (only matters if they did substantial healing relative to damage)
+    if sessionData.totalHealing > 0 then
+        local healingRatio = sessionData.totalHealing / sessionData.totalDamage
+        if healingRatio > 0.5 then     -- Healing more than 50% of damage dealt (tank/healer)
+            score = score + 10         -- Bonus for hybrid/support role
+            if addon.DEBUG then print(string.format("Quality: High healing ratio %.2f (+10)", healingRatio)) end
+        elseif healingRatio > 0.1 then -- Some healing (tank/hybrid)
+            score = score + 5          -- Small bonus
+            if addon.DEBUG then print(string.format("Quality: Some healing ratio %.2f (+5)", healingRatio)) end
+        end
+        -- Pure DPS with minimal healing gets no penalty or bonus
+    end
+
+    -- Combat engagement check - did damage happen throughout the fight?
+    -- This catches "afk in combat" or "combat ended but still flagged" scenarios
+    if sessionData.totalDamage == 0 then
+        score = score - 50 -- No damage at all = not real combat
+        flags.noDamage = true
+        if addon.DEBUG then print("Quality: No damage (-50)") end
     end
 
     -- Cap score bounds
     score = math.max(0, math.min(100, score))
+
+    if addon.DEBUG then
+        print(string.format("Quality Final: %d, Flags: %s", score,
+            next(flags) and table.concat(flags, ", ") or "none"))
+    end
 
     return score, flags
 end
@@ -330,8 +364,14 @@ local function AddSessionToHistory(session)
         table.remove(sessionHistory)
     end
 
-    -- Save to database per-character
+    -- Save to database per-character-spec
     if addon.db then
+        if not addon.db.sessionHistoryBySpec then
+            addon.db.sessionHistoryBySpec = {}
+        end
+        addon.db.sessionHistoryBySpec[GetCharacterSpecKey()] = sessionHistory
+
+        -- Also save to legacy character-only key for backwards compatibility
         if not addon.db.sessionHistory then
             addon.db.sessionHistory = {}
         end
@@ -339,7 +379,8 @@ local function AddSessionToHistory(session)
     end
 
     if addon.DEBUG then
-        print(string.format("Session added to history for %s. Total sessions: %d", GetCharacterKey(), #sessionHistory))
+        print(string.format("Session added to history for %s. Total sessions: %d", GetCharacterSpecKey(), #
+            sessionHistory))
     end
 end
 
@@ -364,26 +405,41 @@ end
 
 -- Mark session with user preference
 function CombatTracker:MarkSession(sessionId, status)
-    local session = self:GetSession(sessionId)
-    if session then
-        session.userMarked = status
-        if status == "representative" then
-            session.qualityScore = 100 -- Override quality score
-        end
-
-        -- Save changes per-character
-        if addon.db then
-            if not addon.db.sessionHistory then
-                addon.db.sessionHistory = {}
-            end
-            addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
-        end
-
-        if addon.DEBUG then
-            print(string.format("Session %s marked as: %s", sessionId, status))
-        end
-        return true
+    -- Convert short status names to full names for internal storage
+    local fullStatus = status
+    if status == "rep" then
+        fullStatus = "representative"
     end
+
+    -- First try exact match
+    for _, session in ipairs(sessionHistory) do
+        if session.sessionId == sessionId then
+            session.userMarked = fullStatus
+            if fullStatus == "representative" then
+                session.qualityScore = 100 -- Override quality score
+            end
+
+            -- Save changes per-character-spec
+            if addon.db then
+                if not addon.db.sessionHistoryBySpec then
+                    addon.db.sessionHistoryBySpec = {}
+                end
+                addon.db.sessionHistoryBySpec[GetCharacterSpecKey()] = sessionHistory
+
+                -- Also save to legacy key
+                if not addon.db.sessionHistory then
+                    addon.db.sessionHistory = {}
+                end
+                addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
+            end
+
+            if addon.DEBUG then
+                print(string.format("Session %s marked as: %s", sessionId, fullStatus))
+            end
+            return true
+        end
+    end
+
     return false
 end
 
@@ -414,13 +470,20 @@ end
 function CombatTracker:ClearHistory()
     sessionHistory = {}
     if addon.db then
+        -- Clear spec-specific data
+        if not addon.db.sessionHistoryBySpec then
+            addon.db.sessionHistoryBySpec = {}
+        end
+        addon.db.sessionHistoryBySpec[GetCharacterSpecKey()] = {}
+
+        -- Also clear legacy data
         if not addon.db.sessionHistory then
             addon.db.sessionHistory = {}
         end
         addon.db.sessionHistory[GetCharacterKey()] = {}
     end
 
-    print(string.format("Session history cleared for %s", GetCharacterKey()))
+    print(string.format("Session history cleared for %s", GetCharacterSpecKey()))
 end
 
 -- Get quality sessions only (score >= 70 or user marked as representative)
@@ -435,33 +498,152 @@ function CombatTracker:GetQualitySessions()
     return qualitySessions
 end
 
--- Get sessions for auto-scaling calculation
-function CombatTracker:GetScalingSessions(maxCount)
-    local sessions = self:GetQualitySessions()
+-- Get sessions for specific content type with scaling focus
+function CombatTracker:GetScalingSessions(contentType, maxCount)
+    contentType = contentType or "normal"
     maxCount = maxCount or 10
 
-    -- Return most recent quality sessions up to maxCount
+    local filteredSessions = {}
+
+    -- Filter sessions by content type and quality
+    for _, session in ipairs(sessionHistory) do
+        -- Skip ignored sessions for scaling calculations
+        if session.userMarked ~= "ignore" then
+            -- Include if content type matches OR if it's a representative session
+            if session.contentType == contentType or session.userMarked == "representative" then
+                -- Quality threshold: use representative sessions regardless of quality
+                if session.userMarked == "representative" or session.qualityScore >= 60 then
+                    table.insert(filteredSessions, session)
+                end
+            end
+        end
+    end
+
+    -- Limit to maxCount most recent sessions
     local result = {}
-    for i = 1, math.min(#sessions, maxCount) do
-        table.insert(result, sessions[i])
+    for i = 1, math.min(#filteredSessions, maxCount) do
+        table.insert(result, filteredSessions[i])
+    end
+
+    if addon.DEBUG then
+        print(string.format("GetScalingSessions(%s): Found %d sessions, returning %d",
+            contentType, #filteredSessions, #result))
     end
 
     return result
 end
 
--- Initialize session history from saved data
-function CombatTracker:InitializeSessionHistory()
-    local characterKey = GetCharacterKey()
+-- Get baseline statistics for specific content type
+function CombatTracker:GetContentBaseline(contentType, maxSessions)
+    contentType = contentType or "normal"
+    maxSessions = maxSessions or 15
 
-    if addon.db and addon.db.sessionHistory and addon.db.sessionHistory[characterKey] then
+    local sessions = self:GetScalingSessions(contentType, maxSessions)
+
+    if #sessions == 0 then
+        return {
+            avgDPS = 0,
+            avgHPS = 0,
+            peakDPS = 0,
+            peakHPS = 0,
+            sampleCount = 0,
+            contentType = contentType
+        }
+    end
+
+    local totalDPS, totalHPS = 0, 0
+    local maxPeakDPS, maxPeakHPS = 0, 0
+    local validCount = 0
+
+    for _, session in ipairs(sessions) do
+        totalDPS = totalDPS + (session.avgDPS or 0)
+        totalHPS = totalHPS + (session.avgHPS or 0)
+        maxPeakDPS = math.max(maxPeakDPS, session.peakDPS or 0)
+        maxPeakHPS = math.max(maxPeakHPS, session.peakHPS or 0)
+        validCount = validCount + 1
+    end
+
+    return {
+        avgDPS = validCount > 0 and (totalDPS / validCount) or 0,
+        avgHPS = validCount > 0 and (totalHPS / validCount) or 0,
+        peakDPS = maxPeakDPS,
+        peakHPS = maxPeakHPS,
+        sampleCount = validCount,
+        contentType = contentType
+    }
+end
+
+-- Check for spec changes and reload data if needed
+function CombatTracker:CheckSpecChange()
+    local newSpec = GetSpecialization()
+
+    -- If spec changed, reload session data for new spec
+    if currentSpec ~= nil and currentSpec ~= newSpec then
+        if addon.DEBUG then
+            local oldSpecName = "Unknown"
+            local newSpecName = "Unknown"
+
+            if currentSpec then
+                local _, oldSpecName_temp = GetSpecializationInfo(currentSpec)
+                if oldSpecName_temp then oldSpecName = oldSpecName_temp end
+            end
+
+            if newSpec then
+                local _, newSpecName_temp = GetSpecializationInfo(newSpec)
+                if newSpecName_temp then newSpecName = newSpecName_temp end
+            end
+
+            print(string.format("Spec changed from %s to %s - reloading session data", oldSpecName, newSpecName))
+        end
+
+        -- Reload session history for new spec
+        self:InitializeSessionHistory()
+
+        -- Reset meter scaling to let it adapt to new spec
+        if addon.dpsPixelMeter then
+            addon.dpsPixelMeter:ResetMaxValue()
+        end
+        if addon.hpsPixelMeter then
+            addon.hpsPixelMeter:ResetMaxValue()
+        end
+
+        print(string.format("Switched to new spec - session data and meter scaling updated"))
+    end
+
+    currentSpec = newSpec
+end
+
+function CombatTracker:InitializeSessionHistory()
+    local characterSpecKey = GetCharacterSpecKey()
+    local characterKey = GetCharacterKey() -- Legacy fallback
+
+    sessionHistory = {}
+
+    -- Try to load spec-specific data first
+    if addon.db and addon.db.sessionHistoryBySpec and addon.db.sessionHistoryBySpec[characterSpecKey] then
+        sessionHistory = addon.db.sessionHistoryBySpec[characterSpecKey]
+        if addon.DEBUG then
+            print(string.format("Loaded %d sessions for %s", #sessionHistory, characterSpecKey))
+        end
+        -- Fallback to legacy character-only data
+    elseif addon.db and addon.db.sessionHistory and addon.db.sessionHistory[characterKey] then
         sessionHistory = addon.db.sessionHistory[characterKey]
         if addon.DEBUG then
-            print(string.format("Loaded %d sessions for %s", #sessionHistory, characterKey))
+            print(string.format("Loaded %d legacy sessions for %s", #sessionHistory, characterKey))
+        end
+
+        -- Migrate to new spec-specific format
+        if not addon.db.sessionHistoryBySpec then
+            addon.db.sessionHistoryBySpec = {}
+        end
+        addon.db.sessionHistoryBySpec[characterSpecKey] = sessionHistory
+        if addon.DEBUG then
+            print(string.format("Migrated sessions to spec-specific storage: %s", characterSpecKey))
         end
     else
         sessionHistory = {}
         if addon.DEBUG then
-            print(string.format("Initialized empty session history for %s", characterKey))
+            print(string.format("Initialized empty session history for %s", characterSpecKey))
         end
     end
 end
@@ -683,14 +865,22 @@ function CombatTracker:GetHPS()
     end
 end
 
--- Get displayed DPS for meters (always rolling)
+-- Get displayed DPS for meters (rolling during combat, final after)
 function CombatTracker:GetDisplayDPS()
-    return self:GetRollingDPS()
+    if combatData.inCombat then
+        return self:GetRollingDPS()
+    else
+        return combatData.finalDPS or 0
+    end
 end
 
--- Get displayed HPS for meters (always rolling)
+-- Get displayed HPS for meters (rolling during combat, final after)
 function CombatTracker:GetDisplayHPS()
-    return self:GetRollingHPS()
+    if combatData.inCombat then
+        return self:GetRollingHPS()
+    else
+        return combatData.finalHPS or 0
+    end
 end
 
 -- Get total damage (use final value if combat ended)
@@ -1000,6 +1190,9 @@ function CombatTracker:OnEvent(event, ...)
             SampleCombatData()
         end
         self:EndCombat()
+    elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
+        -- Handle spec change event
+        self:CheckSpecChange()
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
         -- Only process combat events if we're still in combat
         if combatData.inCombat then
@@ -1151,8 +1344,9 @@ end
 function CombatTracker:Initialize()
     self.frame = CreateFrame("Frame")
     self.frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    self.frame:RegisterEvent("PLAYER_REGEN_DISABLED") -- Entering combat
-    self.frame:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Leaving combat
+    self.frame:RegisterEvent("PLAYER_REGEN_DISABLED")         -- Entering combat
+    self.frame:RegisterEvent("PLAYER_REGEN_ENABLED")          -- Leaving combat
+    self.frame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED") -- Spec changes
     self.frame:SetScript("OnEvent", function(self, event, ...)
         CombatTracker:OnEvent(event, ...)
     end)
@@ -1165,6 +1359,11 @@ function CombatTracker:Initialize()
     -- Sample timer (for rolling averages and timeline)
     self.sampleTimer = C_Timer.NewTicker(SAMPLE_INTERVAL, function()
         SampleCombatData()
+    end)
+
+    -- Spec change check timer (check every 2 seconds)
+    self.specCheckTimer = C_Timer.NewTicker(2.0, function()
+        CombatTracker:CheckSpecChange()
     end)
 end
 
@@ -1202,28 +1401,164 @@ function CombatTracker:DebugSessionHistory()
     print("=========================")
 end
 
--- Test session creation with fake data
-function CombatTracker:TestSessionCreation()
-    print("Creating test session...")
+-- Generate test session data for development
+function CombatTracker:GenerateTestData()
+    -- Clear existing data first
+    sessionHistory = {}
 
-    -- Set up fake combat data
-    combatData.startTime = GetTime() - 30
-    combatData.endTime = GetTime()
-    combatData.finalDamage = 150000
-    combatData.finalHealing = 75000
-    combatData.finalOverheal = 25000
-    combatData.finalAbsorb = 10000
-    combatData.finalMaxDPS = 8500
-    combatData.finalMaxHPS = 4200
-    combatActionCount = 25
+    -- Get current character info for appropriate test data
+    local specIndex = GetSpecialization()
+    local specName = "Unknown"
+    local className = UnitClass("player")
 
-    local session = CreateSessionRecord()
-    if session then
-        AddSessionToHistory(session)
-        print("Test session created successfully")
-        self:DebugSessionHistory()
+    if specIndex then
+        local _, specName_temp = GetSpecializationInfo(specIndex)
+        if specName_temp then
+            specName = specName_temp
+        end
+    end
+
+    -- Adjust test data based on spec/class
+    local testSessions = {}
+
+    -- Determine appropriate DPS/HPS ranges based on role
+    local isDPS = specName:find("Shadow") or specName:find("Fire") or specName:find("Frost") or
+        specName:find("Arcane") or specName:find("Fury") or specName:find("Arms") or
+        specName:find("Retribution") or specName:find("Enhancement") or specName:find("Elemental") or
+        specName:find("Balance") or specName:find("Feral") or specName:find("Beast") or
+        specName:find("Marksmanship") or specName:find("Survival") or specName:find("Assassination") or
+        specName:find("Outlaw") or specName:find("Subtlety") or specName:find("Affliction") or
+        specName:find("Demonology") or specName:find("Destruction") or specName:find("Havoc") or
+        specName:find("Windwalker") or specName:find("Devastation") or specName:find("Augmentation")
+
+    local isHealer = specName:find("Holy") or specName:find("Discipline") or specName:find("Restoration") or
+        specName:find("Mistweaver") or specName:find("Preservation")
+
+    local isTank = specName:find("Protection") or specName:find("Blood") or specName:find("Guardian") or
+        specName:find("Brewmaster") or specName:find("Vengeance")
+
+    if isDPS then
+        -- DPS spec test data - high damage, low healing
+        testSessions = {
+            { dps = 850000,  hps = 5000, duration = 45, quality = 85, location = "Mythic Keystone", type = "normal" },
+            { dps = 1200000, hps = 3000, duration = 38, quality = 90, location = "The Dawnbreaker", type = "normal" },
+            { dps = 750000,  hps = 8000, duration = 52, quality = 80, location = "Ara-Kara",        type = "normal" },
+            { dps = 950000,  hps = 4000, duration = 41, quality = 88, location = "City of Threads", type = "normal" },
+            { dps = 1350000, hps = 2000, duration = 35, quality = 92, location = "The Stonevault",  type = "normal" },
+            { dps = 180000,  hps = 2000, duration = 65, quality = 75, location = "Timewalking",     type = "scaled" },
+            { dps = 220000,  hps = 3000, duration = 58, quality = 78, location = "Black Temple",    type = "scaled" },
+            { dps = 1650000, hps = 5000, duration = 28, quality = 95, location = "Raid Finder",     type = "normal" },
+        }
+    elseif isHealer then
+        -- Healer spec test data - moderate damage, high healing
+        testSessions = {
+            { dps = 250000, hps = 450000, duration = 45, quality = 85, location = "Mythic Keystone", type = "normal" },
+            { dps = 180000, hps = 580000, duration = 38, quality = 90, location = "The Dawnbreaker", type = "normal" },
+            { dps = 220000, hps = 520000, duration = 52, quality = 80, location = "Ara-Kara",        type = "normal" },
+            { dps = 200000, hps = 495000, duration = 41, quality = 88, location = "City of Threads", type = "normal" },
+            { dps = 160000, hps = 620000, duration = 35, quality = 92, location = "The Stonevault",  type = "normal" },
+            { dps = 80000,  hps = 180000, duration = 65, quality = 75, location = "Timewalking",     type = "scaled" },
+            { dps = 90000,  hps = 200000, duration = 58, quality = 78, location = "Black Temple",    type = "scaled" },
+            { dps = 140000, hps = 750000, duration = 28, quality = 95, location = "Raid Finder",     type = "normal" },
+        }
+    elseif isTank then
+        -- Tank spec test data - moderate damage, moderate healing
+        testSessions = {
+            { dps = 450000, hps = 180000, duration = 45, quality = 85, location = "Mythic Keystone", type = "normal" },
+            { dps = 520000, hps = 150000, duration = 38, quality = 90, location = "The Dawnbreaker", type = "normal" },
+            { dps = 380000, hps = 220000, duration = 52, quality = 80, location = "Ara-Kara",        type = "normal" },
+            { dps = 490000, hps = 190000, duration = 41, quality = 88, location = "City of Threads", type = "normal" },
+            { dps = 550000, hps = 160000, duration = 35, quality = 92, location = "The Stonevault",  type = "normal" },
+            { dps = 120000, hps = 60000,  duration = 65, quality = 75, location = "Timewalking",     type = "scaled" },
+            { dps = 140000, hps = 70000,  duration = 58, quality = 78, location = "Black Temple",    type = "scaled" },
+            { dps = 480000, hps = 250000, duration = 28, quality = 95, location = "Raid Finder",     type = "normal" },
+        }
     else
-        print("Failed to create test session")
+        -- Unknown/hybrid spec - balanced data
+        testSessions = {
+            { dps = 600000, hps = 100000, duration = 45, quality = 85, location = "Mythic Keystone", type = "normal" },
+            { dps = 750000, hps = 80000,  duration = 38, quality = 90, location = "The Dawnbreaker", type = "normal" },
+            { dps = 550000, hps = 120000, duration = 52, quality = 80, location = "Ara-Kara",        type = "normal" },
+            { dps = 680000, hps = 90000,  duration = 41, quality = 88, location = "City of Threads", type = "normal" },
+            { dps = 800000, hps = 70000,  duration = 35, quality = 92, location = "The Stonevault",  type = "normal" },
+            { dps = 150000, hps = 30000,  duration = 65, quality = 75, location = "Timewalking",     type = "scaled" },
+            { dps = 180000, hps = 40000,  duration = 58, quality = 78, location = "Black Temple",    type = "scaled" },
+            { dps = 850000, hps = 110000, duration = 28, quality = 95, location = "Raid Finder",     type = "normal" },
+        }
+    end
+
+    -- Add some poor quality sessions regardless of spec
+    table.insert(testSessions,
+        { dps = 80000, hps = 5000, duration = 8, quality = 45, location = "Stormwind", type = "normal" })
+    table.insert(testSessions,
+        { dps = 120000, hps = 3000, duration = 12, quality = 38, location = "Valdrakken", type = "normal" })
+
+    local currentTime = GetTime()
+    local baseTime = currentTime - 3600 -- Start 1 hour ago
+
+    for i, data in ipairs(testSessions) do
+        local session = {
+            sessionId = GenerateSessionId(),
+            startTime = baseTime + (i * 180), -- 3 minutes apart
+            endTime = baseTime + (i * 180) + data.duration,
+            duration = data.duration,
+
+            -- Performance metrics
+            totalDamage = data.dps * data.duration,
+            totalHealing = data.hps * data.duration,
+            totalOverheal = math.floor(data.hps * data.duration * 0.25), -- 25% overheal
+            totalAbsorb = math.floor(data.hps * data.duration * 0.1),    -- 10% absorbs
+            avgDPS = data.dps,
+            avgHPS = data.hps,
+            peakDPS = math.floor(data.dps * 1.3), -- 30% higher peaks
+            peakHPS = math.floor(data.hps * 1.4), -- 40% higher peaks
+
+            -- Metadata
+            location = data.location,
+            playerLevel = 80,
+            actionCount = math.floor(data.duration * 2), -- 2 actions per second
+
+            -- Quality assessment
+            qualityScore = data.quality,
+            qualityFlags = {},
+            contentType = data.type,
+            detectionMethod = "manual",
+
+            -- User management
+            userMarked = nil
+        }
+
+        -- Add some representative sessions
+        if i == 2 then -- Mark one session as representative
+            session.userMarked = "representative"
+            session.qualityScore = 100
+        elseif i == #testSessions - 1 then -- Mark one poor session as ignore
+            session.userMarked = "ignore"
+        end
+
+        -- Insert at beginning to maintain "most recent first" order
+        table.insert(sessionHistory, 1, session)
+    end
+
+    -- Save to database with spec-specific key
+    if addon.db then
+        if not addon.db.sessionHistoryBySpec then
+            addon.db.sessionHistoryBySpec = {}
+        end
+        addon.db.sessionHistoryBySpec[GetCharacterSpecKey()] = sessionHistory
+
+        -- Also save to legacy key for compatibility
+        if not addon.db.sessionHistory then
+            addon.db.sessionHistory = {}
+        end
+        addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
+    end
+
+    if addon.DEBUG then
+        print(string.format("Generated %d %s test sessions for %s", #testSessions,
+            isDPS and "DPS" or (isHealer and "Healer" or (isTank and "Tank" or "Hybrid")),
+            GetCharacterSpecKey()))
+        self:DebugSessionHistory()
     end
 end
 
@@ -1258,5 +1593,54 @@ function CombatTracker:DebugPeakTracking()
             print("Expected Average HPS:", math.floor(combatData.healing / elapsed))
         end
     end
+    print("========================")
+end
+
+-- Debug method for content scaling analysis
+function CombatTracker:DebugContentScaling()
+    print("=== CONTENT SCALING DEBUG ===")
+
+    local currentType = self:GetCurrentContentType()
+    print(string.format("Current content type: %s", currentType))
+
+    -- Show baseline for each content type
+    for _, contentType in ipairs({ "normal", "scaled" }) do
+        local baseline = self:GetContentBaseline(contentType, 10)
+        local sessions = self:GetScalingSessions(contentType, 10)
+
+        print(string.format("\n%s Content:", string.upper(contentType)))
+        print(string.format("  Sessions: %d (baseline from %d)", #sessions, baseline.sampleCount))
+        print(string.format("  Avg DPS: %s", self:FormatNumber(baseline.avgDPS)))
+        print(string.format("  Avg HPS: %s", self:FormatNumber(baseline.avgHPS)))
+        print(string.format("  Peak DPS: %s", self:FormatNumber(baseline.peakDPS)))
+        print(string.format("  Peak HPS: %s", self:FormatNumber(baseline.peakHPS)))
+
+        if #sessions > 0 then
+            print("  Recent sessions:")
+            for i = 1, math.min(3, #sessions) do
+                local s = sessions[i]
+                print(string.format("    %s: DPS %.0f, HPS %.0f, Q:%d%s",
+                    s.sessionId:sub(-8), s.avgDPS, s.avgHPS, s.qualityScore,
+                    s.userMarked and (" (" .. s.userMarked .. ")") or ""))
+            end
+        end
+    end
+
+    -- Show content detection ratios
+    if #sessionHistory > 0 then
+        local lastSession = sessionHistory[1]
+        local normalBaseline = self:GetContentBaseline("normal", 20)
+
+        if normalBaseline.sampleCount > 0 then
+            local dpsRatio = normalBaseline.avgDPS > 0 and (lastSession.avgDPS / normalBaseline.avgDPS) or 1
+            local hpsRatio = normalBaseline.avgHPS > 0 and (lastSession.avgHPS / normalBaseline.avgHPS) or 1
+
+            print(string.format("\nLast Session Detection:"))
+            print(string.format("  DPS Ratio: %.2f (%.0f / %.0f)", dpsRatio, lastSession.avgDPS, normalBaseline.avgDPS))
+            print(string.format("  HPS Ratio: %.2f (%.0f / %.0f)", hpsRatio, lastSession.avgHPS, normalBaseline.avgHPS))
+            print(string.format("  Detected as: %s", lastSession.contentType))
+        end
+    end
+
     print("========================")
 end

@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-content-detection-33bd464"
-addon.BUILD_DATE = "2025-06-07-12:50"
+addon.VERSION = "feature-content-detection-9a146c1"
+addon.BUILD_DATE = "2025-06-07-16:25"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -145,7 +145,6 @@ function addon:OnEnable()
             print("Not showing main window")
         end
 
-
         -- Restore other windows...
         if self.db.showDPSWindow and self.DPSWindow then
             self.DPSWindow:Show()
@@ -253,11 +252,6 @@ function addon:CreateMainFrame()
             yOffset = yOfs
         }
     end)
-
-    -- Frame title
-    -- frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    -- frame.title:SetPoint("LEFT", frame.TitleBg, "LEFT", 5, 0)
-    -- frame.title:SetText("MyUI v" .. addon.VERSION)
 
     -- === CURRENT COMBAT PANEL ===
     local combatPanel = CreateFrame("Frame", nil, frame)
@@ -386,11 +380,8 @@ function addon:CreateMainFrame()
 
     -- Scrollable session list
     local scrollFrame = CreateFrame("ScrollFrame", nil, historyPanel, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetSize(360, 130)                              -- Reduced from 360 to fit
-    scrollFrame:SetPoint("TOP", historyPanel, "TOP", -15, -45) -- Adjusted offset
-
-
-
+    scrollFrame:SetSize(360, 130)
+    scrollFrame:SetPoint("TOP", historyPanel, "TOP", -15, -45)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetSize(360, 140)
@@ -731,6 +722,8 @@ end
 
 -- Main slash command handler
 SLASH_MYUI1 = "/myui"
+SLASH_MYUI2 = "/m"
+
 function SlashCmdList.MYUI(msg, editBox)
     local command = string.lower(msg)
 
@@ -892,9 +885,17 @@ function SlashCmdList.MYUI(msg, editBox)
         else
             print("CombatTracker not loaded")
         end
-    elseif command == "clearsessions" then
+    elseif command == "clear" then
         if addon.CombatTracker then
             addon.CombatTracker:ClearHistory()
+            print("All session data cleared")
+        else
+            print("CombatTracker not loaded")
+        end
+    elseif command == "testdata" then
+        if addon.CombatTracker then
+            addon.CombatTracker:GenerateTestData()
+            print("Test session data generated")
         else
             print("CombatTracker not loaded")
         end
@@ -937,7 +938,198 @@ function SlashCmdList.MYUI(msg, editBox)
         else
             print("CombatTracker not loaded")
         end
+    elseif command == "contentscaling" then
+        if addon.CombatTracker then
+            addon.CombatTracker:DebugContentScaling()
+        else
+            print("CombatTracker not loaded")
+        end
+    elseif command:match("^baseline%s+(.+)$") then
+        local contentType = command:match("^baseline%s+(.+)$")
+        if contentType == "normal" or contentType == "scaled" then
+            if addon.CombatTracker then
+                local baseline = addon.CombatTracker:GetContentBaseline(contentType, 15)
+                print(string.format("=== %s CONTENT BASELINE ===", string.upper(contentType)))
+                print(string.format("Sample sessions: %d", baseline.sampleCount))
+                print(string.format("Average DPS: %s", addon.CombatTracker:FormatNumber(baseline.avgDPS)))
+                print(string.format("Average HPS: %s", addon.CombatTracker:FormatNumber(baseline.avgHPS)))
+                print(string.format("Peak DPS: %s", addon.CombatTracker:FormatNumber(baseline.peakDPS)))
+                print(string.format("Peak HPS: %s", addon.CombatTracker:FormatNumber(baseline.peakHPS)))
+                print("===========================")
+            else
+                print("CombatTracker not loaded")
+            end
+        else
+            print("Usage: /myui baseline [normal|scaled]")
+        end
+    elseif command == "scale" then
+        if addon.CombatTracker and (addon.dpsPixelMeter or addon.hpsPixelMeter) then
+            local currentType = addon.CombatTracker:GetCurrentContentType()
+            print(string.format("=== SCALING (%s) ===", currentType))
+
+            if addon.dpsPixelMeter then
+                local dpsScale = addon.dpsPixelMeter:GetAutoScale()
+                local dpsInfo = addon.dpsPixelMeter:GetDebugInfo()
+                print(string.format("DPS: %s -> %s (%s)",
+                    addon.CombatTracker:FormatNumber(dpsInfo.currentMax),
+                    addon.CombatTracker:FormatNumber(dpsScale),
+                    dpsInfo.isManual and "manual" or "auto"))
+            end
+
+            if addon.hpsPixelMeter then
+                local hpsScale = addon.hpsPixelMeter:GetAutoScale()
+                local hpsInfo = addon.hpsPixelMeter:GetDebugInfo()
+                print(string.format("HPS: %s -> %s (%s)",
+                    addon.CombatTracker:FormatNumber(hpsInfo.currentMax),
+                    addon.CombatTracker:FormatNumber(hpsScale),
+                    hpsInfo.isManual and "manual" or "auto"))
+            end
+        else
+            print("Meters not active")
+        end
+    elseif command == "rescale" then
+        if addon.dpsPixelMeter and not addon.dpsPixelMeter.manualMaxValue then
+            local oldMax = addon.dpsPixelMeter:GetCurrentMaxValue()
+            local newScale = addon.dpsPixelMeter:GetAutoScale()
+            addon.dpsPixelMeter.maxValue = newScale
+            print(string.format("DPS: %s -> %s",
+                addon.CombatTracker:FormatNumber(oldMax),
+                addon.CombatTracker:FormatNumber(newScale)))
+        end
+
+        if addon.hpsPixelMeter and not addon.hpsPixelMeter.manualMaxValue then
+            local oldMax = addon.hpsPixelMeter:GetCurrentMaxValue()
+            local newScale = addon.hpsPixelMeter:GetAutoScale()
+            addon.hpsPixelMeter.maxValue = newScale
+            print(string.format("HPS: %s -> %s",
+                addon.CombatTracker:FormatNumber(oldMax),
+                addon.CombatTracker:FormatNumber(newScale)))
+        end
+
+        if addon.dpsPixelMeter and addon.dpsPixelMeter.manualMaxValue then
+            print("DPS has manual override - use '/myui dpsreset' first")
+        end
+        if addon.hpsPixelMeter and addon.hpsPixelMeter.manualMaxValue then
+            print("HPS has manual override - use '/myui hpsreset' first")
+        end
+    elseif command:match("^mark%s+(%w+)%s+(.+)$") then
+        local sessionId, status = command:match("^mark%s+(%w+)%s+(.+)$")
+        if status == "rep" or status == "ignore" or status == "keep" then
+            if addon.CombatTracker then
+                if addon.CombatTracker:MarkSession(sessionId, status) then
+                    print(string.format("Session %s marked as '%s'", sessionId, status))
+                    if not (addon.dpsPixelMeter and addon.dpsPixelMeter.manualMaxValue) or
+                        not (addon.hpsPixelMeter and addon.hpsPixelMeter.manualMaxValue) then
+                        print("Auto-scaling will update on next combat")
+                    end
+                else
+                    print(string.format("Session %s not found", sessionId))
+                    local sessions = addon.CombatTracker:GetSessionHistory()
+                    if #sessions > 0 then
+                        print("Recent sessions:")
+                        for i = 1, math.min(3, #sessions) do
+                            local s = sessions[i]
+                            print(string.format("  %s - DPS:%.0f HPS:%.0f", s.sessionId, s.avgDPS, s.avgHPS))
+                        end
+                    end
+                end
+            else
+                print("CombatTracker not loaded")
+            end
+        else
+            print("Usage: /myui mark <id> [rep|ignore|keep]")
+        end
+    elseif command:match("^list%s+(.+)$") then
+        local contentType = command:match("^list%s+(.+)$")
+        if contentType == "normal" or contentType == "scaled" or contentType == "all" then
+            if addon.CombatTracker then
+                local sessions = {}
+                if contentType == "all" then
+                    sessions = addon.CombatTracker:GetSessionHistory()
+                else
+                    sessions = addon.CombatTracker:GetScalingSessions(contentType, 20)
+                end
+
+                print(string.format("=== %s SESSIONS ===", string.upper(contentType)))
+                if #sessions == 0 then
+                    print("No sessions found")
+                else
+                    print("ID   Time  Dur  DPS     HPS     Q  Zone")
+                    print("---- ----- ---- ------- ------- -- --------")
+                    for i = 1, math.min(15, #sessions) do
+                        local s = sessions[i]
+                        local realTime = time() + (s.startTime - GetTime())
+                        local durStr = s.duration >= 60 and
+                            string.format("%dm", math.floor(s.duration / 60)) or
+                            string.format("%ds", s.duration)
+
+                        print(string.format("%-4s %s %-4s %-7s %-7s %2d %s%s",
+                            s.sessionId,
+                            date("%H:%M", realTime),
+                            durStr,
+                            addon.CombatTracker:FormatNumber(s.avgDPS),
+                            addon.CombatTracker:FormatNumber(s.avgHPS),
+                            s.qualityScore,
+                            (s.location or "Unknown"):sub(1, 12),
+                            s.userMarked and (" (" .. s.userMarked .. ")") or ""
+                        ))
+                    end
+                    if #sessions > 15 then
+                        print(string.format("... and %d more sessions", #sessions - 15))
+                    end
+                end
+                print("================")
+            else
+                print("CombatTracker not loaded")
+            end
+        else
+            print("Usage: /myui list [normal|scaled|all]")
+        end
+    elseif command == "ids" then
+        if addon.CombatTracker then
+            local sessions = addon.CombatTracker:GetSessionHistory()
+            print("=== RECENT SESSIONS ===")
+            if #sessions == 0 then
+                print("No sessions found")
+            else
+                for i = 1, math.min(10, #sessions) do
+                    local s = sessions[i]
+                    local realTime = time() + (s.startTime - GetTime())
+                    local durStr = s.duration >= 60 and
+                        string.format("%dm", math.floor(s.duration / 60)) or
+                        string.format("%ds", s.duration)
+
+                    print(string.format("%s - %s %s DPS:%.0f HPS:%.0f Q:%d%s",
+                        s.sessionId,
+                        date("%H:%M", realTime),
+                        durStr,
+                        s.avgDPS,
+                        s.avgHPS,
+                        s.qualityScore,
+                        s.userMarked and (" (" .. s.userMarked .. ")") or ""
+                    ))
+                end
+                print("Example: /myui mark " .. sessions[1].sessionId .. " rep")
+            end
+        else
+            print("CombatTracker not loaded")
+        end
     else
-        print("Usage: /myui [TODO]")
+        print("MyUI Commands:")
+        print("  /myui [ show | hide | toggle ] - Main window")
+        print("  /myui [ dps | hps ] - Toggle meters")
+        print("  /myui [ dpsmax | hpsmax ] <value> - Set manual scaling")
+        print("  /myui [ dpsreset | hpsreset ] - Reset to auto scaling")
+        print("  /myui scaling [ normal | scaled | auto ] - Set content type")
+        print("  /myui contentscaling - Debug content-based scaling")
+        print("  /myui baseline [ normal | scaled ] - Show content baseline")
+        print("  /myui scalingsim - Simulate current scaling")
+        print("  /myui forceautoscale - Recalculate auto scaling")
+        print("  /myui listsessions [ normal | scaled | all ] - List sessions")
+        print("  /myui sessionids - Show recent session IDs")
+        print("  /myui marksession <id> [ representative | ignore | keep ]")
+        print("  /myui [ sessions | clearsessions ] - Session management")
+        print("  /myui resetcombat - Reset all combat data")
+        print("  /myui meterinfo - Show current meter status")
     end
 end
