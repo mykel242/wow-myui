@@ -639,17 +639,17 @@ end
 -- Set up participant filter functionality
 function EnhancedSessionDetailWindow:SetupParticipantFilters()
     local filters = self.participantFilters
+    local window = self  -- Store reference to avoid context issues
     
     -- Search box functionality
-    filters.searchBox:SetScript("OnTextChanged", function(self, userInput)
+    filters.searchBox:SetScript("OnTextChanged", function(editBox, userInput)
         if userInput then
-            local parent = self:GetParent():GetParent()
-            parent:FilterParticipants()
+            window:FilterParticipants()
         end
     end)
     
     -- Type filter dropdown
-    UIDropDownMenu_Initialize(filters.typeFilter, function(self, level)
+    UIDropDownMenu_Initialize(filters.typeFilter, function(frame, level)
         local info = UIDropDownMenu_CreateInfo()
         
         info.text = "All Types"
@@ -657,7 +657,7 @@ function EnhancedSessionDetailWindow:SetupParticipantFilters()
         info.func = function() 
             UIDropDownMenu_SetSelectedValue(filters.typeFilter, "all")
             UIDropDownMenu_SetText(filters.typeFilter, "All Types")
-            self:GetParent():FilterParticipants()
+            window:FilterParticipants()
         end
         info.checked = UIDropDownMenu_GetSelectedValue(filters.typeFilter) == "all"
         UIDropDownMenu_AddButton(info)
@@ -667,7 +667,7 @@ function EnhancedSessionDetailWindow:SetupParticipantFilters()
         info.func = function() 
             UIDropDownMenu_SetSelectedValue(filters.typeFilter, "player")
             UIDropDownMenu_SetText(filters.typeFilter, "Players")
-            self:GetParent():FilterParticipants()
+            window:FilterParticipants()
         end
         info.checked = UIDropDownMenu_GetSelectedValue(filters.typeFilter) == "player"
         UIDropDownMenu_AddButton(info)
@@ -677,7 +677,7 @@ function EnhancedSessionDetailWindow:SetupParticipantFilters()
         info.func = function() 
             UIDropDownMenu_SetSelectedValue(filters.typeFilter, "pet")
             UIDropDownMenu_SetText(filters.typeFilter, "Pets")
-            self:GetParent():FilterParticipants()
+            window:FilterParticipants()
         end
         info.checked = UIDropDownMenu_GetSelectedValue(filters.typeFilter) == "pet"
         UIDropDownMenu_AddButton(info)
@@ -687,7 +687,7 @@ function EnhancedSessionDetailWindow:SetupParticipantFilters()
         info.func = function() 
             UIDropDownMenu_SetSelectedValue(filters.typeFilter, "npc")
             UIDropDownMenu_SetText(filters.typeFilter, "NPCs")
-            self:GetParent():FilterParticipants()
+            window:FilterParticipants()
         end
         info.checked = UIDropDownMenu_GetSelectedValue(filters.typeFilter) == "npc"
         UIDropDownMenu_AddButton(info)
@@ -700,7 +700,7 @@ function EnhancedSessionDetailWindow:SetupParticipantFilters()
         filters.searchBox:SetText("")
         UIDropDownMenu_SetSelectedValue(filters.typeFilter, "all")
         UIDropDownMenu_SetText(filters.typeFilter, "All Types")
-        self:FilterParticipants()
+        window:FilterParticipants()
     end)
     
     -- Initial stats update
@@ -816,9 +816,8 @@ function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
     end
     
     -- Set up scroll handling
-    scrollFrame:SetScript("OnVerticalScroll", function(self, delta)
-        local parent = self:GetParent()
-        parent:UpdateVisibleParticipants()
+    scrollFrame:SetScript("OnVerticalScroll", function(frame, delta)
+        self:UpdateVisibleParticipants()
     end)
     
     -- Initial population
