@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "bug-claude-debugging-sessions-not-created-623e9bf"
-addon.BUILD_DATE = "2025-06-12-18:16"
+addon.VERSION = "bug-claude-debugging-sessions-not-created-39a8626"
+addon.BUILD_DATE = "2025-06-12-18:26"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -863,22 +863,6 @@ function SlashCmdList.MYUI(msg, editBox)
         addon.db.debugMode = addon.DEBUG
         print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
         addon:UpdateStatusDisplay()
-    elseif command == "cstart" then
-        if not addon.CombatTracker then
-            print("CombatTracker not loaded!")
-            return
-        end
-        addon.CombatTracker:StartCombat()
-        print("Forced combat start")
-        addon:UpdateStatusDisplay()
-    elseif command == "cend" then
-        if not addon.CombatTracker then
-            print("CombatTracker not loaded!")
-            return
-        end
-        addon.CombatTracker:EndCombat()
-        print("Forced combat end")
-        addon:UpdateStatusDisplay()
     elseif command:match("^hpsmax%s+(%d+)$") then
         local maxValue = tonumber(command:match("^hpsmax%s+(%d+)$"))
         if addon.hpsPixelMeter then
@@ -957,39 +941,9 @@ function SlashCmdList.MYUI(msg, editBox)
         end
         print("Meter scaling reset to defaults")
         print("=== RESET COMPLETE ===")
-    elseif command == "debugpeaks" then
-        if addon.CombatTracker then
-            addon.CombatTracker:DebugPeakTracking()
-        else
-            print("CombatTracker not loaded")
-        end
-    elseif command == "debugdps" then
-        if addon.CombatTracker then
-            addon.CombatTracker:DebugDPSCalculation()
-        else
-            print("CombatTracker not loaded")
-        end
-    elseif command == "comparerolling" then
-        if addon.CombatTracker then
-            addon.CombatTracker:CompareRollingVsOverall()
-        else
-            print("CombatTracker not loaded")
-        end
-    elseif command == "checktiming" then
-        if addon.CombatTracker then
-            addon.CombatTracker:CheckUpdateTiming()
-        else
-            print("CombatTracker not loaded")
-        end
     elseif command == "sessions" then
         if addon.CombatTracker then
             addon.CombatTracker:DebugSessionHistory()
-        else
-            print("CombatTracker not loaded")
-        end
-    elseif command == "testsession" then
-        if addon.CombatTracker then
-            addon.CombatTracker:TestSessionCreation()
         else
             print("CombatTracker not loaded")
         end
@@ -999,28 +953,6 @@ function SlashCmdList.MYUI(msg, editBox)
             print("All session data cleared")
         else
             print("CombatTracker not loaded")
-        end
-    elseif command == "testdata" then
-        if addon.CombatTracker then
-            addon.CombatTracker:GenerateTestData()
-            print("Test session data generated")
-        else
-            print("CombatTracker not loaded")
-        end
-    elseif command == "timetest" then
-        local sessions = {}
-        if addon.CombatTracker then
-            sessions = addon.CombatTracker:GetSessionHistory()
-        end
-        if #sessions > 0 then
-            local s = sessions[1]
-            print("Session startTime:", s.startTime)
-            print("Formatted session:", date("%H:%M", s.startTime))
-            print("Current GetTime():", GetTime())
-            print("Current time():", time())
-            print("Current formatted:", date("%H:%M"))
-        else
-            print("No sessions found")
         end
     elseif command:match("^scaling%s+(.+)$") then
         local scalingType = command:match("^scaling%s+(.+)$")
@@ -1032,93 +964,6 @@ function SlashCmdList.MYUI(msg, editBox)
             end
         else
             print("Usage: /myui scaling [normal|scaled|auto]")
-        end
-    elseif command == "contentinfo" then
-        if addon.CombatTracker then
-            local baseline = addon.CombatTracker:GetNormalContentBaseline()
-            local currentType = addon.CombatTracker:GetCurrentContentType()
-            print("=== CONTENT DETECTION INFO ===")
-            print("Current content type:", currentType)
-            print("Baseline DPS:", addon.CombatTracker:FormatNumber(baseline.avgDPS))
-            print("Baseline HPS:", addon.CombatTracker:FormatNumber(baseline.avgHPS))
-            print("Baseline sample count:", baseline.sampleCount)
-            print("=============================")
-        else
-            print("CombatTracker not loaded")
-        end
-    elseif command == "contentscaling" then
-        if addon.CombatTracker then
-            addon.CombatTracker:DebugContentScaling()
-        else
-            print("CombatTracker not loaded")
-        end
-    elseif command:match("^baseline%s+(.+)$") then
-        local contentType = command:match("^baseline%s+(.+)$")
-        if contentType == "normal" or contentType == "scaled" then
-            if addon.CombatTracker then
-                local baseline = addon.CombatTracker:GetContentBaseline(contentType, 15)
-                print(string.format("=== %s CONTENT BASELINE ===", string.upper(contentType)))
-                print(string.format("Sample sessions: %d", baseline.sampleCount))
-                print(string.format("Average DPS: %s", addon.CombatTracker:FormatNumber(baseline.avgDPS)))
-                print(string.format("Average HPS: %s", addon.CombatTracker:FormatNumber(baseline.avgHPS)))
-                print(string.format("Peak DPS: %s", addon.CombatTracker:FormatNumber(baseline.peakDPS)))
-                print(string.format("Peak HPS: %s", addon.CombatTracker:FormatNumber(baseline.peakHPS)))
-                print("===========================")
-            else
-                print("CombatTracker not loaded")
-            end
-        else
-            print("Usage: /myui baseline [normal|scaled]")
-        end
-    elseif command == "scale" then
-        if addon.CombatTracker and (addon.dpsPixelMeter or addon.hpsPixelMeter) then
-            local currentType = addon.CombatTracker:GetCurrentContentType()
-            print(string.format("=== SCALING (%s) ===", currentType))
-
-            if addon.dpsPixelMeter then
-                local dpsScale = addon.dpsPixelMeter:GetAutoScale()
-                local dpsInfo = addon.dpsPixelMeter:GetDebugInfo()
-                print(string.format("DPS: %s -> %s (%s)",
-                    addon.CombatTracker:FormatNumber(dpsInfo.currentMax),
-                    addon.CombatTracker:FormatNumber(dpsScale),
-                    dpsInfo.isManual and "manual" or "auto"))
-            end
-
-            if addon.hpsPixelMeter then
-                local hpsScale = addon.hpsPixelMeter:GetAutoScale()
-                local hpsInfo = addon.hpsPixelMeter:GetDebugInfo()
-                print(string.format("HPS: %s -> %s (%s)",
-                    addon.CombatTracker:FormatNumber(hpsInfo.currentMax),
-                    addon.CombatTracker:FormatNumber(hpsScale),
-                    hpsInfo.isManual and "manual" or "auto"))
-            end
-        else
-            print("Meters not active")
-        end
-    elseif command == "rescale" then
-        if addon.dpsPixelMeter and not addon.dpsPixelMeter.manualMaxValue then
-            local oldMax = addon.dpsPixelMeter:GetCurrentMaxValue()
-            local newScale = addon.dpsPixelMeter:GetAutoScale()
-            addon.dpsPixelMeter.maxValue = newScale
-            print(string.format("DPS: %s -> %s",
-                addon.CombatTracker:FormatNumber(oldMax),
-                addon.CombatTracker:FormatNumber(newScale)))
-        end
-
-        if addon.hpsPixelMeter and not addon.hpsPixelMeter.manualMaxValue then
-            local oldMax = addon.hpsPixelMeter:GetCurrentMaxValue()
-            local newScale = addon.hpsPixelMeter:GetAutoScale()
-            addon.hpsPixelMeter.maxValue = newScale
-            print(string.format("HPS: %s -> %s",
-                addon.CombatTracker:FormatNumber(oldMax),
-                addon.CombatTracker:FormatNumber(newScale)))
-        end
-
-        if addon.dpsPixelMeter and addon.dpsPixelMeter.manualMaxValue then
-            print("DPS has manual override - use '/myui dpsreset' first")
-        end
-        if addon.hpsPixelMeter and addon.hpsPixelMeter.manualMaxValue then
-            print("HPS has manual override - use '/myui hpsreset' first")
         end
     elseif command:match("^mark%s+(%w+)%s+(.+)$") then
         local sessionId, status = command:match("^mark%s+(%w+)%s+(.+)$")
@@ -1251,72 +1096,6 @@ function SlashCmdList.MYUI(msg, editBox)
         else
             print("Enhanced Combat Logger not loaded")
         end
-    elseif command == "resetenhanced" then
-        if addon.EnhancedCombatLogger then
-            addon.EnhancedCombatLogger:Reset()
-            print("Enhanced combat data reset")
-        else
-            print("Enhanced Combat Logger not loaded")
-        end
-    elseif command == "testenhanced" then
-        if addon.EnhancedSessionDetailWindow then
-            -- Get the most recent session for testing
-            local sessions = addon.CombatTracker:GetSessionHistory()
-            if #sessions > 0 then
-                -- Add some mock enhanced data for testing
-                local session = sessions[1]
-                session.enhancedData = {
-                    participants = {
-                        ["Player-123"] = {
-                            name = "TestPlayer",
-                            isPlayer = true,
-                            damageDealt = 150000,
-                            healingDealt = 25000,
-                            damageTaken = 45000
-                        },
-                        ["Creature-456"] = {
-                            name = "Training Dummy",
-                            isNPC = true,
-                            damageDealt = 0,
-                            healingDealt = 0,
-                            damageTaken = 150000
-                        }
-                    },
-                    cooldownUsage = {
-                        {
-                            elapsed = 15.5,
-                            sourceName = "TestPlayer",
-                            spellName = "Bloodlust",
-                            cooldownType = "major_cooldown",
-                            color = { 1, 0.2, 0.2 }
-                        },
-                        {
-                            elapsed = 32.1,
-                            sourceName = "TestPlayer",
-                            spellName = "Icy Veins",
-                            cooldownType = "offensive",
-                            color = { 0.4, 0.8, 1 }
-                        }
-                    },
-                    deaths = {},
-                    damageTaken = {
-                        {
-                            elapsed = 8.2,
-                            sourceName = "Training Dummy",
-                            spellName = "Melee",
-                            amount = 2500
-                        }
-                    },
-                    groupDamage = {}
-                }
-                addon.EnhancedSessionDetailWindow:Show(session)
-                print("Enhanced session detail window opened with test data")
-            else
-                print("No sessions available for testing")
-            end
-        else
-            print("Enhanced Session Detail Window not loaded")
-        end
     elseif command:match("^enhancedconfig%s+(.+)$") then
         local setting = command:match("^enhancedconfig%s+(.+)$")
         if setting == "all" then
@@ -1344,16 +1123,16 @@ function SlashCmdList.MYUI(msg, editBox)
         print("  /myui [ dps | hps ] - Toggle meters")
         print("  /myui [ dpsmax | hpsmax ] <value> - Set manual scaling")
         print("  /myui [ dpsreset | hpsreset ] - Reset to auto scaling")
+        print("  /myui resetmeters - Reset both meters")
         print("  /myui scaling [ normal | scaled | auto ] - Set content type")
-        print("  /myui contentscaling - Debug content-based scaling")
-        print("  /myui baseline [ normal | scaled ] - Show content baseline")
-        print("  /myui scalingsim - Simulate current scaling")
-        print("  /myui forceautoscale - Recalculate auto scaling")
-        print("  /myui listsessions [ normal | scaled | all ] - List sessions")
-        print("  /myui sessionids - Show recent session IDs")
-        print("  /myui marksession <id> [ representative | ignore | keep ]")
-        print("  /myui [ sessions | clearsessions ] - Session management")
+        print("  /myui list [ normal | scaled | all ] - List sessions")
+        print("  /myui ids - Show recent session IDs")
+        print("  /myui mark <id> [ rep | ignore | keep ] - Mark sessions")
+        print("  /myui clear - Clear all session data")
         print("  /myui resetcombat - Reset all combat data")
         print("  /myui meterinfo - Show current meter status")
+        print("  /myui enhancedlog - Enhanced logging status")
+        print("  /myui enhancedconfig <all|damage|group> - Enhanced config")
+        print("  /myui debug - Toggle debug mode")
     end
 end
