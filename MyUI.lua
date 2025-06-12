@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-content-detection-9a146c1"
-addon.BUILD_DATE = "2025-06-07-16:25"
+addon.VERSION = "feature-session-detail-918df4b"
+addon.BUILD_DATE = "2025-06-12-12:34"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -24,8 +24,8 @@ addon.DEBUG = false
 addon.db = {}
 addon.defaults = {
     enabled = true,
-    showMinimap = false,
-    minimapButtonAngle = 225, -- Default bottom-left position
+    -- showMinimap = false,
+    -- minimapButtonAngle = 225, -- Default bottom-left position
     scale = 1.0,
     framePosition = nil,
     dpsWindowPosition = nil,
@@ -33,7 +33,12 @@ addon.defaults = {
     hpsWindowPosition = nil,
     showHPSWindow = false,
     debugMode = false,
-    showMainWindow = false
+    showMainWindow = false,
+    enhancedLogging = true,
+    trackAllParticipants = true,
+    trackDamageTaken = true,
+    trackGroupDamage = false, -- Disabled by default for performance
+    maxEnhancedEvents = 1000,
 }
 
 -- Debug print function
@@ -115,20 +120,70 @@ function addon:OnInitialize()
     -- Load debug state from saved variables
     self.DEBUG = self.db.debugMode
 
-    -- Initialize all modules
+    -- Initialize all modules IN THE CORRECT ORDER
+    -- 1. Core combat tracking first
+    if self.CombatData then
+        self.CombatData:Initialize()
+        print("✓ CombatData initialized")
+    end
+
+    -- 2. Timeline tracker (depends on CombatData)
+    if self.TimelineTracker then
+        self.TimelineTracker:Initialize()
+        print("✓ TimelineTracker initialized")
+    end
+
+    -- 3. Enhanced logger (depends on CombatData)
+    if self.EnhancedCombatLogger then
+        self.EnhancedCombatLogger:Initialize()
+        print("✓ EnhancedCombatLogger initialized")
+    else
+        print("✗ EnhancedCombatLogger not found!")
+    end
+
+    -- 4. Content detection
+    if self.ContentDetection then
+        self.ContentDetection:Initialize()
+        print("✓ ContentDetection initialized")
+    end
+
+    -- 5. Session manager (depends on others)
+    if self.SessionManager then
+        self.SessionManager:Initialize()
+        print("✓ SessionManager initialized")
+    end
+
+    -- 6. Main combat tracker (coordinator)
     if self.CombatTracker then
         self.CombatTracker:Initialize()
-        self.CombatTracker:InitializeSessionHistory()
+        print("✓ CombatTracker initialized")
     end
+
+    -- 7. UI windows
     if self.DPSWindow then
         self.DPSWindow:Initialize()
+        print("✓ DPSWindow initialized")
     end
     if self.HPSWindow then
         self.HPSWindow:Initialize()
+        print("✓ HPSWindow initialized")
+    end
+
+    -- Load session history for current character/spec
+    if self.SessionManager then
+        self.SessionManager:InitializeSessionHistory()
+        print("✓ Session history loaded")
     end
 
     print(addonName .. " loaded successfully!")
     print("Use /myui to toggle the main configuration window")
+
+    -- Debug enhanced logging status
+    if self.DEBUG and self.EnhancedCombatLogger then
+        local status = self.EnhancedCombatLogger:GetStatus()
+        print(string.format("Enhanced logging status: initialized=%s, tracking=%s, participants=%d",
+            tostring(status.isInitialized), tostring(status.isTracking), status.participantCount))
+    end
 end
 
 function addon:OnEnable()
@@ -404,9 +459,12 @@ function addon:CreateMainFrame()
             rowBg:SetColorTexture(0.05, 0.05, 0.05, 0.3)
         end
 
+        -- CREATE the highlight texture that was missing
         local highlight = row:CreateTexture(nil, "HIGHLIGHT")
         highlight:SetAllPoints(row)
         highlight:SetColorTexture(0.3, 0.3, 0.3, 0.3)
+        highlight:SetAlpha(0)     -- Start invisible
+        row.highlight = highlight -- Store reference for easy access
 
         row.time = row:CreateFontString(nil, "OVERLAY")
         row.time:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
@@ -670,7 +728,46 @@ function addon:UpdateSessionTable()
             end
             row.location:SetText(location)
 
-            row.deleteBtn:SetScript("OnClick", function()
+            -- Clear any existing scripts to avoid duplicates
+            row:SetScript("OnClick", nil)
+            row:SetScript("OnEnter", nil)
+            row:SetScript("OnLeave", nil)
+
+            -- Click handler for showing session details
+            row:SetScript("OnClick", function()
+                -- Try enhanced detail window first, fallback to original
+                if addon.EnhancedSessionDetailWindow then
+                    addon.EnhancedSessionDetailWindow:Show(session)
+                elseif addon.SessionDetailWindow then
+                    addon.SessionDetailWindow:Show(session)
+                else
+                    print("Session detail window not available")
+                end
+            end)
+
+            -- Hover effects using our stored highlight reference
+            row:SetScript("OnEnter", function(self)
+                if self.highlight then
+                    self.highlight:SetAlpha(0.6)
+                end
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Session " .. session.sessionId)
+                GameTooltip:AddLine("Click to view details", 1, 1, 1, true)
+                GameTooltip:AddLine(string.format("%.1fs combat in %s", session.duration, session.location), 0.8, 0.8,
+                    0.8, true)
+                GameTooltip:Show()
+            end)
+
+            row:SetScript("OnLeave", function(self)
+                if self.highlight then
+                    self.highlight:SetAlpha(0)
+                end
+                GameTooltip:Hide()
+            end)
+
+            -- Delete button (prevent event bubbling to row click)
+            row.deleteBtn:SetScript("OnClick", function(self, button)
+                -- Stop the click from bubbling up to the row
                 if addon.CombatTracker then
                     addon.CombatTracker:DeleteSession(session.sessionId)
                     addon:UpdateMainWindow()
@@ -1113,6 +1210,122 @@ function SlashCmdList.MYUI(msg, editBox)
             end
         else
             print("CombatTracker not loaded")
+        end
+    elseif command == "enhancedlog" then
+        if addon.EnhancedCombatLogger then
+            print("=== Enhanced Combat Logging Status ===")
+            local summary = addon.EnhancedCombatLogger:GetParticipantsSummary()
+            if summary then
+                print(string.format("Active Session - Players: %d, NPCs: %d, Pets: %d",
+                    #summary.players, #summary.npcs, #summary.pets))
+                local cooldowns = addon.EnhancedCombatLogger:GetCooldownTimeline()
+                local deaths = addon.EnhancedCombatLogger:GetDamageTakenTimeline()
+                print(string.format("Events - Cooldowns: %d, Damage Events: %d",
+                    #(cooldowns or {}), #(deaths or {})))
+            else
+                print("No active enhanced session data")
+            end
+
+            -- Show session history stats
+            if addon.SessionManager then
+                local stats = addon.SessionManager:GetEnhancedDataStats()
+                print(string.format("History - Total Sessions: %d, Enhanced: %d",
+                    stats.totalSessions, stats.enhancedSessions))
+                if stats.enhancedSessions > 0 then
+                    print(string.format("Averages - Participants: %.1f, Cooldowns: %.1f, Deaths: %.1f",
+                        stats.avgParticipants, stats.avgCooldowns, stats.avgDeaths))
+                end
+            end
+            print("===================================")
+        else
+            print("Enhanced Combat Logger not loaded")
+        end
+    elseif command == "resetenhanced" then
+        if addon.EnhancedCombatLogger then
+            addon.EnhancedCombatLogger:Reset()
+            print("Enhanced combat data reset")
+        else
+            print("Enhanced Combat Logger not loaded")
+        end
+    elseif command == "testenhanced" then
+        if addon.EnhancedSessionDetailWindow then
+            -- Get the most recent session for testing
+            local sessions = addon.CombatTracker:GetSessionHistory()
+            if #sessions > 0 then
+                -- Add some mock enhanced data for testing
+                local session = sessions[1]
+                session.enhancedData = {
+                    participants = {
+                        ["Player-123"] = {
+                            name = "TestPlayer",
+                            isPlayer = true,
+                            damageDealt = 150000,
+                            healingDealt = 25000,
+                            damageTaken = 45000
+                        },
+                        ["Creature-456"] = {
+                            name = "Training Dummy",
+                            isNPC = true,
+                            damageDealt = 0,
+                            healingDealt = 0,
+                            damageTaken = 150000
+                        }
+                    },
+                    cooldownUsage = {
+                        {
+                            elapsed = 15.5,
+                            sourceName = "TestPlayer",
+                            spellName = "Bloodlust",
+                            cooldownType = "major_cooldown",
+                            color = { 1, 0.2, 0.2 }
+                        },
+                        {
+                            elapsed = 32.1,
+                            sourceName = "TestPlayer",
+                            spellName = "Icy Veins",
+                            cooldownType = "offensive",
+                            color = { 0.4, 0.8, 1 }
+                        }
+                    },
+                    deaths = {},
+                    damageTaken = {
+                        {
+                            elapsed = 8.2,
+                            sourceName = "Training Dummy",
+                            spellName = "Melee",
+                            amount = 2500
+                        }
+                    },
+                    groupDamage = {}
+                }
+                addon.EnhancedSessionDetailWindow:Show(session)
+                print("Enhanced session detail window opened with test data")
+            else
+                print("No sessions available for testing")
+            end
+        else
+            print("Enhanced Session Detail Window not loaded")
+        end
+    elseif command:match("^enhancedconfig%s+(.+)$") then
+        local setting = command:match("^enhancedconfig%s+(.+)$")
+        if setting == "all" then
+            addon.db.trackAllParticipants = not addon.db.trackAllParticipants
+            print("Track all participants:", addon.db.trackAllParticipants and "ON" or "OFF")
+        elseif setting == "damage" then
+            addon.db.trackDamageTaken = not addon.db.trackDamageTaken
+            print("Track damage taken:", addon.db.trackDamageTaken and "ON" or "OFF")
+        elseif setting == "group" then
+            addon.db.trackGroupDamage = not addon.db.trackGroupDamage
+            print("Track group damage:", addon.db.trackGroupDamage and "ON" or "OFF")
+        else
+            print("Enhanced Config Options:")
+            print("  /myui enhancedconfig all - Toggle participant tracking")
+            print("  /myui enhancedconfig damage - Toggle damage taken tracking")
+            print("  /myui enhancedconfig group - Toggle group damage tracking")
+            print("Current settings:")
+            print("  All Participants:", addon.db.trackAllParticipants and "ON" or "OFF")
+            print("  Damage Taken:", addon.db.trackDamageTaken and "ON" or "OFF")
+            print("  Group Damage:", addon.db.trackGroupDamage and "ON" or "OFF")
         end
     else
         print("MyUI Commands:")
