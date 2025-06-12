@@ -154,7 +154,7 @@ local function CalculateQualityScore(sessionData)
 end
 
 -- Create session record from combat data
-function SessionManager:CreateSessionFromCombatData()
+function SessionManager:CreateSessionFromCombatData(enhancedData)
     local combatData = addon.CombatData:GetRawCombatData()
 
     if not combatData.startTime or not combatData.endTime then
@@ -197,12 +197,13 @@ function SessionManager:CreateSessionFromCombatData()
         qualityFlags = {},
 
         -- Store actual timeline data
-        timelineData = {}
+        timelineData = {},
+        enhancedData = enhancedData
     }
 
     -- Get timeline data from TimelineTracker
     if addon.TimelineTracker then
-        sessionData.timelineData = addon.TimelineTracker:GetTimelineForSession(duration)
+        sessionData.timelineData = addon.TimelineTracker:GetTimelineForSession(duration, enhancedData)
     end
 
     -- Calculate quality and content type
@@ -217,10 +218,31 @@ function SessionManager:CreateSessionFromCombatData()
     end
 
     if addon.DEBUG then
+        local enhancedInfo = ""
+        if enhancedData then
+            local participants = 0
+            local cooldowns = 0
+            local deaths = 0
+
+            if enhancedData.participants then
+                for _ in pairs(enhancedData.participants) do
+                    participants = participants + 1
+                end
+            end
+            if enhancedData.cooldownUsage then
+                cooldowns = #enhancedData.cooldownUsage
+            end
+            if enhancedData.deaths then
+                deaths = #enhancedData.deaths
+            end
+
+            enhancedInfo = string.format(", Enhanced: %dP/%dC/%dD", participants, cooldowns, deaths)
+        end
+
         print(string.format(
-            "Session created: %s, Quality: %d, Duration: %.1fs, DPS: %.0f, Type: %s, Timeline points: %d",
+            "Session created: %s, Quality: %d, Duration: %.1fs, DPS: %.0f, Type: %s, Timeline points: %d%s",
             sessionData.sessionId, sessionData.qualityScore, sessionData.duration, sessionData.avgDPS,
-            sessionData.contentType, #sessionData.timelineData))
+            sessionData.contentType, #sessionData.timelineData, enhancedInfo))
     end
 
     return sessionData
@@ -254,7 +276,7 @@ function SessionManager:AddSessionToHistory(session)
 
     if addon.DEBUG then
         print(string.format("Session added to history for %s. Total sessions: %d", GetCharacterSpecKey(), #
-        sessionHistory))
+            sessionHistory))
     end
 end
 
@@ -689,4 +711,77 @@ function SessionManager:GenerateTestData()
             GetCharacterSpecKey()))
         self:DebugSessionHistory()
     end
+end
+
+-- =============================================================================
+-- Enhanced session analysis methods
+-- =============================================================================
+
+-- Get sessions with enhanced data
+function SessionManager:GetEnhancedSessions(maxCount)
+    maxCount = maxCount or 10
+    local enhancedSessions = {}
+
+    for _, session in ipairs(sessionHistory) do
+        if session.enhancedData then
+            table.insert(enhancedSessions, session)
+            if #enhancedSessions >= maxCount then
+                break
+            end
+        end
+    end
+
+    return enhancedSessions
+end
+
+-- Get enhanced data statistics
+function SessionManager:GetEnhancedDataStats()
+    local stats = {
+        totalSessions = #sessionHistory,
+        enhancedSessions = 0,
+        avgParticipants = 0,
+        avgCooldowns = 0,
+        avgDeaths = 0
+    }
+
+    local totalParticipants = 0
+    local totalCooldowns = 0
+    local totalDeaths = 0
+
+    for _, session in ipairs(sessionHistory) do
+        if session.enhancedData then
+            stats.enhancedSessions = stats.enhancedSessions + 1
+
+            -- Count participants
+            if session.enhancedData.participants then
+                for _ in pairs(session.enhancedData.participants) do
+                    totalParticipants = totalParticipants + 1
+                end
+            end
+
+            -- Count cooldowns
+            if session.enhancedData.cooldownUsage then
+                totalCooldowns = totalCooldowns + #session.enhancedData.cooldownUsage
+            end
+
+            -- Count deaths
+            if session.enhancedData.deaths then
+                totalDeaths = totalDeaths + #session.enhancedData.deaths
+            end
+        end
+    end
+
+    if stats.enhancedSessions > 0 then
+        stats.avgParticipants = totalParticipants / stats.enhancedSessions
+        stats.avgCooldowns = totalCooldowns / stats.enhancedSessions
+        stats.avgDeaths = totalDeaths / stats.enhancedSessions
+    end
+
+    return stats
+end
+
+-- Check if session has enhanced data
+function SessionManager:HasEnhancedData(sessionId)
+    local session = self:GetSession(sessionId)
+    return session and session.enhancedData ~= nil
 end

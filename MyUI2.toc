@@ -1,6 +1,6 @@
 ## Interface: 110002
 ## Title: My UI Too.
-## Notes: A custom World of Warcraft UI addon with DPS/HPS tracking
+## Notes: A custom World of Warcraft UI addon with DPS/HPS tracking and enhanced combat analysis
 ## Author: YourName
 ## Version: 1.0.0
 ## SavedVariables: MyUIDB
@@ -12,8 +12,10 @@ TimelineTracker.lua
 ContentDetection.lua
 SessionManager.lua
 CombatTracker.lua
+EnhancedCombatLogger.lua
 BaseMeterWindow.lua
 DPSWindow.lua
 HPSWindow.lua
 WorkingPixelMeter.lua
 SessionDetailWindow.lua
+EnhancedSessionDetailWindow.lua

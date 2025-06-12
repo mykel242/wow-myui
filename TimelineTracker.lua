@@ -1,5 +1,5 @@
 -- TimelineTracker.lua
--- Timeline data sampling and rolling averages
+-- Timeline data sampling and rolling averages with enhanced combat integration
 
 local addonName, addon = ...
 
@@ -284,11 +284,11 @@ function TimelineTracker:Reset()
 end
 
 -- =============================================================================
--- TIMELINE DATA FOR SESSIONS
+-- ENHANCED TIMELINE DATA FOR SESSIONS
 -- =============================================================================
 
--- Get timeline data for session storage
-function TimelineTracker:GetTimelineForSession(duration)
+-- Get timeline data for session storage with enhanced data integration
+function TimelineTracker:GetTimelineForSession(duration, enhancedData)
     local sessionTimeline = {}
 
     -- Dynamic: 2 points per second, min 120 points (1 min), max 1200 points (10 min)
@@ -298,20 +298,295 @@ function TimelineTracker:GetTimelineForSession(duration)
     for i = 1, #timelineData.samples, step do
         local sample = timelineData.samples[i]
         if sample then
-            table.insert(sessionTimeline, {
+            local timelinePoint = {
                 elapsed = sample.elapsed,
-                instantDPS = sample.averageDPS or 0, -- Use average instead of instant
-                instantHPS = sample.averageHPS or 0, -- Use average instead of instant
+                instantDPS = sample.averageDPS or 0, -- Use average instead of instant for stability
+                instantHPS = sample.averageHPS or 0, -- Use average instead of instant for stability
                 averageDPS = sample.averageDPS or 0,
                 averageHPS = sample.averageHPS or 0,
                 totalDamage = sample.totalDamage,
                 totalHealing = sample.totalHealing,
                 overhealPercent = sample.overhealPercent
-            })
+            }
+
+            -- Enhanced data integration - add damage taken data if available
+            if enhancedData and enhancedData.damageTaken then
+                local damageTakenAtTime = 0
+                local damageTakenCount = 0
+
+                -- Find damage events near this timeline point (within 0.5 seconds)
+                for _, dmg in ipairs(enhancedData.damageTaken) do
+                    if math.abs(dmg.elapsed - sample.elapsed) < 0.5 then
+                        damageTakenAtTime = damageTakenAtTime + dmg.amount
+                        damageTakenCount = damageTakenCount + 1
+                    end
+                end
+
+                timelinePoint.damageTaken = damageTakenAtTime
+                timelinePoint.damageTakenEvents = damageTakenCount
+            end
+
+            -- Add group damage data if available
+            if enhancedData and enhancedData.groupDamage then
+                local groupDamageAtTime = 0
+
+                for _, dmg in ipairs(enhancedData.groupDamage) do
+                    if math.abs(dmg.elapsed - sample.elapsed) < 0.5 then
+                        groupDamageAtTime = groupDamageAtTime + dmg.amount
+                    end
+                end
+
+                timelinePoint.groupDamageTaken = groupDamageAtTime
+            end
+
+            -- Add enhanced healing events data if available
+            if enhancedData and enhancedData.healingEvents then
+                local healingAtTime = 0
+
+                for _, heal in ipairs(enhancedData.healingEvents) do
+                    if math.abs(heal.elapsed - sample.elapsed) < 0.5 then
+                        healingAtTime = healingAtTime + heal.amount
+                    end
+                end
+
+                timelinePoint.enhancedHealing = healingAtTime
+            end
+
+            table.insert(sessionTimeline, timelinePoint)
         end
     end
 
+    -- Debug information for enhanced data integration
+    if addon.DEBUG and enhancedData then
+        local enhancedPoints = 0
+        for _, point in ipairs(sessionTimeline) do
+            if point.damageTaken or point.groupDamageTaken or point.enhancedHealing then
+                enhancedPoints = enhancedPoints + 1
+            end
+        end
+        print(string.format("Timeline enhanced: %d/%d points have enhanced data",
+            enhancedPoints, #sessionTimeline))
+    end
+
     return sessionTimeline
+end
+
+-- =============================================================================
+-- ENHANCED DATA ACCESS METHODS
+-- =============================================================================
+
+-- Get timeline data with enhanced filtering
+function TimelineTracker:GetEnhancedTimelineData(filterType)
+    local filteredData = {}
+
+    for _, sample in ipairs(timelineData.samples) do
+        local includePoint = true
+
+        if filterType == "high_activity" then
+            -- Only include points with significant activity
+            includePoint = (sample.instantDPS > 1000 or sample.instantHPS > 500)
+        elseif filterType == "damage_taken" then
+            -- Only include points where damage was taken (requires enhanced data)
+            includePoint = sample.damageTaken and sample.damageTaken > 0
+        elseif filterType == "healing_intensive" then
+            -- Only include points with high healing activity
+            includePoint = sample.instantHPS > sample.averageHPS * 1.5
+        elseif filterType == "performance_peaks" then
+            -- Only include points with above-average performance
+            includePoint = (sample.instantDPS > sample.averageDPS * 1.2 or sample.instantHPS > sample.averageHPS * 1.2)
+        elseif filterType == "combat_events" then
+            -- Only include points with significant combat activity
+            includePoint = (sample.damageDelta > 0 or sample.healingDelta > 0)
+        end
+
+        if includePoint then
+            table.insert(filteredData, sample)
+        end
+    end
+
+    return filteredData
+end
+
+-- Get timeline statistics
+function TimelineTracker:GetTimelineStats()
+    if #timelineData.samples == 0 then
+        return {
+            totalSamples = 0,
+            duration = 0,
+            avgDPS = 0,
+            avgHPS = 0,
+            peakDPS = 0,
+            peakHPS = 0,
+            enhancedDataPoints = 0,
+            samplingRate = 0
+        }
+    end
+
+    local stats = {
+        totalSamples = #timelineData.samples,
+        duration = 0,
+        avgDPS = 0,
+        avgHPS = 0,
+        peakDPS = 0,
+        peakHPS = 0,
+        enhancedDataPoints = 0,
+        samplingRate = 0
+    }
+
+    local totalDPS = 0
+    local totalHPS = 0
+
+    for _, sample in ipairs(timelineData.samples) do
+        totalDPS = totalDPS + (sample.instantDPS or sample.averageDPS or 0)
+        totalHPS = totalHPS + (sample.instantHPS or sample.averageHPS or 0)
+
+        stats.peakDPS = math.max(stats.peakDPS, sample.instantDPS or sample.averageDPS or 0)
+        stats.peakHPS = math.max(stats.peakHPS, sample.instantHPS or sample.averageHPS or 0)
+
+        -- Count enhanced data points
+        if sample.damageTaken or sample.groupDamageTaken or sample.enhancedHealing then
+            stats.enhancedDataPoints = stats.enhancedDataPoints + 1
+        end
+    end
+
+    stats.avgDPS = totalDPS / #timelineData.samples
+    stats.avgHPS = totalHPS / #timelineData.samples
+
+    -- Calculate duration and sampling rate
+    if #timelineData.samples > 1 then
+        local firstSample = timelineData.samples[1]
+        local lastSample = timelineData.samples[#timelineData.samples]
+        stats.duration = lastSample.elapsed - firstSample.elapsed
+
+        if stats.duration > 0 then
+            stats.samplingRate = #timelineData.samples / stats.duration
+        end
+    end
+
+    return stats
+end
+
+-- Get timeline data for specific time range
+function TimelineTracker:GetTimelineRange(startTime, endTime)
+    local rangeData = {}
+
+    for _, sample in ipairs(timelineData.samples) do
+        if sample.elapsed >= startTime and sample.elapsed <= endTime then
+            table.insert(rangeData, sample)
+        end
+    end
+
+    return rangeData
+end
+
+-- Find timeline points near specific events
+function TimelineTracker:FindTimelinePointsNearEvents(events, tolerance)
+    tolerance = tolerance or 1.0 -- Default 1 second tolerance
+    local matchedPoints = {}
+
+    for _, event in ipairs(events) do
+        for _, sample in ipairs(timelineData.samples) do
+            if math.abs(sample.elapsed - event.elapsed) <= tolerance then
+                table.insert(matchedPoints, {
+                    timelinePoint = sample,
+                    event = event,
+                    timeDelta = sample.elapsed - event.elapsed
+                })
+            end
+        end
+    end
+
+    return matchedPoints
+end
+
+-- Clear enhanced timeline data
+function TimelineTracker:ClearEnhancedData()
+    for _, sample in ipairs(timelineData.samples) do
+        sample.damageTaken = nil
+        sample.damageTakenEvents = nil
+        sample.groupDamageTaken = nil
+        sample.enhancedHealing = nil
+    end
+
+    if addon.DEBUG then
+        print("Timeline enhanced data cleared")
+    end
+end
+
+-- Get performance metrics for timeline
+function TimelineTracker:GetPerformanceMetrics()
+    if #timelineData.samples == 0 then
+        return {
+            consistency = 0,
+            peakDuration = 0,
+            activityRatio = 0,
+            efficiencyRatio = 0
+        }
+    end
+
+    local metrics = {
+        consistency = 0,
+        peakDuration = 0,
+        activityRatio = 0,
+        efficiencyRatio = 0
+    }
+
+    -- Calculate DPS consistency (lower standard deviation = more consistent)
+    local dpsSamples = {}
+    local activeSamples = 0
+    local totalEffectiveHealing = 0
+    local totalOverhealing = 0
+
+    for _, sample in ipairs(timelineData.samples) do
+        if sample.instantDPS > 0 then
+            table.insert(dpsSamples, sample.instantDPS)
+            activeSamples = activeSamples + 1
+        end
+
+        totalEffectiveHealing = totalEffectiveHealing + (sample.instantEffectiveHPS or 0)
+        totalOverhealing = totalOverhealing + (sample.instantHPS - (sample.instantEffectiveHPS or 0))
+    end
+
+    -- Calculate consistency (coefficient of variation)
+    if #dpsSamples > 1 then
+        local mean = 0
+        for _, dps in ipairs(dpsSamples) do
+            mean = mean + dps
+        end
+        mean = mean / #dpsSamples
+
+        local variance = 0
+        for _, dps in ipairs(dpsSamples) do
+            variance = variance + (dps - mean) ^ 2
+        end
+        variance = variance / (#dpsSamples - 1)
+
+        local stdDev = math.sqrt(variance)
+        metrics.consistency = mean > 0 and (1 - (stdDev / mean)) or 0
+        metrics.consistency = math.max(0, math.min(1, metrics.consistency)) -- Clamp to 0-1
+    end
+
+    -- Calculate activity ratio
+    metrics.activityRatio = #timelineData.samples > 0 and (activeSamples / #timelineData.samples) or 0
+
+    -- Calculate healing efficiency ratio
+    local totalHealing = totalEffectiveHealing + totalOverhealing
+    metrics.efficiencyRatio = totalHealing > 0 and (totalEffectiveHealing / totalHealing) or 1
+
+    -- Calculate peak duration (how long performance stayed above average)
+    local stats = self:GetTimelineStats()
+    local peakSamples = 0
+
+    for _, sample in ipairs(timelineData.samples) do
+        local dps = sample.instantDPS or sample.averageDPS or 0
+        if dps > stats.avgDPS * 1.2 then -- 20% above average
+            peakSamples = peakSamples + 1
+        end
+    end
+
+    metrics.peakDuration = #timelineData.samples > 0 and (peakSamples / #timelineData.samples) or 0
+
+    return metrics
 end
 
 -- =============================================================================
@@ -326,6 +601,6 @@ function TimelineTracker:Initialize()
     end)
 
     if addon.DEBUG then
-        print("TimelineTracker module initialized")
+        print("TimelineTracker module initialized with enhanced data integration")
     end
 end

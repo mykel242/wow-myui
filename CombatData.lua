@@ -201,6 +201,11 @@ function CombatData:StartCombat()
         addon.TimelineTracker:StartCombat()
     end
 
+    -- === ADD THIS: Start enhanced logging ===
+    if addon.EnhancedCombatLogger then
+        addon.EnhancedCombatLogger:StartEnhancedTracking()
+    end
+
     print("Combat started!")
 end
 
@@ -240,6 +245,11 @@ function CombatData:EndCombat()
     combatData.finalAbsorb = combatData.absorb
     combatData.finalMaxDPS = combatData.maxDPS
     combatData.finalMaxHPS = combatData.maxHPS
+    local enhancedData = nil
+    if addon.EnhancedCombatLogger then
+        enhancedData = addon.EnhancedCombatLogger:GetEnhancedSessionData()
+        addon.EnhancedCombatLogger:EndEnhancedTracking()
+    end
 
     combatData.inCombat = false
 
@@ -269,7 +279,7 @@ function CombatData:EndCombat()
 
     -- Create and store session record
     if addon.SessionManager then
-        local session = addon.SessionManager:CreateSessionFromCombatData()
+        local session = addon.SessionManager:CreateSessionFromCombatData(enhancedData)
         if session then
             addon.SessionManager:AddSessionToHistory(session)
         end
@@ -593,4 +603,21 @@ function CombatData:DebugPeakTracking()
         end
     end
     print("========================")
+end
+
+-- =============================================================================
+-- Enhanced data access methods
+-- =============================================================================
+
+-- Get enhanced combat data if available
+function CombatData:GetEnhancedData()
+    if addon.EnhancedCombatLogger then
+        return addon.EnhancedCombatLogger:GetEnhancedSessionData()
+    end
+    return nil
+end
+
+-- Check if enhanced logging is active
+function CombatData:IsEnhancedLoggingActive()
+    return addon.EnhancedCombatLogger ~= nil
 end
