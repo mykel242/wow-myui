@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-0d5f70e"
-addon.BUILD_DATE = "2025-06-12-17:57"
+addon.VERSION = "bug-claude-debugging-sessions-not-created-623e9bf"
+addon.BUILD_DATE = "2025-06-12-18:16"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -46,6 +46,17 @@ function addon:DebugPrint(...)
     if self.DEBUG then
         print("[" .. addonName .. " DEBUG]", ...)
     end
+end
+
+-- Utility function to get table keys
+function addon:GetTableKeys(tbl)
+    local keys = {}
+    if tbl then
+        for k, _ in pairs(tbl) do
+            table.insert(keys, tostring(k))
+        end
+    end
+    return keys
 end
 
 -- Function to dump table contents (useful for debugging)
