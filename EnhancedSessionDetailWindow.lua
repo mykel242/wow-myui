@@ -545,7 +545,7 @@ function EnhancedSessionDetailWindow:CreateParticipantsTab()
     -- Store reference for filtering
     self.participantsContent = content
     
-    -- Convert participants table to array and sort
+    -- Convert participants table to array (keep all for filtering)
     local participants = {}
     for guid, participant in pairs(self.sessionData.enhancedData.participants) do
         table.insert(participants, participant)
@@ -612,10 +612,22 @@ function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
     statsText:SetJustifyH("RIGHT")
     statsText:SetTextColor(0.8, 0.8, 0.6, 1)
     
+    -- Show zero contributors toggle
+    local showZeroBtn = CreateFrame("CheckButton", nil, filterFrame, "UICheckButtonTemplate")
+    showZeroBtn:SetSize(16, 16)
+    showZeroBtn:SetPoint("RIGHT", statsText, "LEFT", -120, 0)
+    showZeroBtn:SetChecked(false)
+    
+    local showZeroLabel = filterFrame:CreateFontString(nil, "OVERLAY")
+    showZeroLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    showZeroLabel:SetPoint("RIGHT", showZeroBtn, "LEFT", -5, 0)
+    showZeroLabel:SetText("Show Zero Contributors")
+    showZeroLabel:SetTextColor(0.8, 0.8, 0.8, 1)
+    
     -- Clear filters button
     local clearBtn = CreateFrame("Button", nil, filterFrame)
     clearBtn:SetSize(60, 20)
-    clearBtn:SetPoint("RIGHT", statsText, "LEFT", -10, 0)
+    clearBtn:SetPoint("RIGHT", showZeroBtn, "LEFT", -20, 0)
     clearBtn:SetNormalFontObject("GameFontNormalSmall")
     clearBtn:SetText("Clear")
     clearBtn:GetFontString():SetTextColor(0.8, 0.8, 0.8, 1)
@@ -629,7 +641,8 @@ function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
         searchBox = searchBox,
         typeFilter = typeFilter,
         statsText = statsText,
-        clearBtn = clearBtn
+        clearBtn = clearBtn,
+        showZeroBtn = showZeroBtn
     }
     
     -- Set up filter functionality
@@ -695,11 +708,17 @@ function EnhancedSessionDetailWindow:SetupParticipantFilters()
     
     UIDropDownMenu_SetSelectedValue(filters.typeFilter, "all")
     
+    -- Show zero contributors toggle
+    filters.showZeroBtn:SetScript("OnClick", function()
+        window:FilterParticipants()
+    end)
+    
     -- Clear button
     filters.clearBtn:SetScript("OnClick", function()
         filters.searchBox:SetText("")
         UIDropDownMenu_SetSelectedValue(filters.typeFilter, "all")
         UIDropDownMenu_SetText(filters.typeFilter, "All Types")
+        filters.showZeroBtn:SetChecked(false)
         window:FilterParticipants()
     end)
     
@@ -711,6 +730,7 @@ end
 function EnhancedSessionDetailWindow:FilterParticipants()
     local searchText = self.participantFilters.searchBox:GetText():lower()
     local typeFilter = UIDropDownMenu_GetSelectedValue(self.participantFilters.typeFilter) or "all"
+    local showZeroContributors = self.participantFilters.showZeroBtn:GetChecked()
     
     self.filteredParticipants = {}
     
@@ -721,7 +741,11 @@ function EnhancedSessionDetailWindow:FilterParticipants()
                            (typeFilter == "pet" and participant.isPet) or
                            (typeFilter == "npc" and not participant.isPlayer and not participant.isPet)
         
-        if matchesSearch and matchesType then
+        -- Zero contribution filter
+        local totalContribution = (participant.damageDealt or 0) + (participant.healingDealt or 0) + (participant.damageTaken or 0)
+        local matchesContribution = showZeroContributors or totalContribution > 0
+        
+        if matchesSearch and matchesType and matchesContribution then
             table.insert(self.filteredParticipants, participant)
         end
     end
