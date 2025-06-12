@@ -11,7 +11,7 @@ local SessionManager = addon.SessionManager
 -- CONFIGURATION & CONSTANTS
 -- =============================================================================
 
-local SESSION_HISTORY_LIMIT = 50 -- Maximum sessions to store
+local SESSION_HISTORY_LIMIT = 100 -- Maximum sessions to store
 
 -- =============================================================================
 -- DATA STRUCTURES
@@ -158,8 +158,9 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
     local combatData = addon.CombatData:GetRawCombatData()
 
     if not combatData.startTime or not combatData.endTime then
+        print("[MyUI2 DEBUG] Cannot create session: missing start/end time (start:", combatData.startTime, "end:", combatData.endTime, ")")
         if addon.DEBUG then
-            print("Cannot create session: missing start/end time")
+            print("Combat data keys:", table.concat(addon:GetTableKeys(combatData), ", "))
         end
         return nil
     end

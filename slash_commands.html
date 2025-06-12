@@ -287,7 +287,77 @@
     <div class="page-break"></div>
 
     <div class="section">
-        <h2>🐛 Debug & Development</h2>
+        <h2>📊 Session Management</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 35%">Command</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui list &lt;type&gt;</span></td>
+                    <td>List sessions by type (normal, scaled, all)</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui ids</span></td>
+                    <td>Show recent session IDs for marking</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui mark &lt;id&gt; &lt;status&gt;</span></td>
+                    <td>Mark session as rep/ignore/keep</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui clear</span></td>
+                    <td>Clear all session data</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>⚙️ Content Scaling</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 35%">Command</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui scaling &lt;type&gt;</span></td>
+                    <td>Set content type (normal, scaled, auto)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>🔬 Enhanced Logging</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 35%">Command</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="command">/myui enhancedlog</span></td>
+                    <td>Show enhanced logging status</td>
+                </tr>
+                <tr>
+                    <td><span class="command">/myui enhancedconfig &lt;option&gt;</span></td>
+                    <td>Configure enhanced logging (all, damage, group)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>🐛 Debug</h2>
         <table>
             <thead>
                 <tr>
@@ -300,44 +370,6 @@
                     <td><span class="command">/myui debug</span></td>
                     <td>Toggle debug mode on/off</td>
                 </tr>
-                <tr>
-                    <td><span class="command">/myui debugpeaks</span></td>
-                    <td>Show detailed peak tracking debug info</td>
-                </tr>
-                <tr>
-                    <td><span class="command">/myui debugdps</span></td>
-                    <td>Show DPS calculation debug details</td>
-                </tr>
-                <tr>
-                    <td><span class="command">/myui comparerolling</span></td>
-                    <td>Compare rolling vs overall DPS/HPS calculations</td>
-                </tr>
-                <tr>
-                    <td><span class="command">/myui checktiming</span></td>
-                    <td>Check update timing and timer status</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>⚔️ Combat Control (Testing)</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 35%">Command</th>
-                    <th>Description</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><span class="command">/myui cstart</span></td>
-                    <td>Force start combat tracking</td>
-                </tr>
-                <tr>
-                    <td><span class="command">/myui cend</span></td>
-                    <td>Force end combat tracking</td>
-                </tr>
             </tbody>
         </table>
     </div>
@@ -348,7 +380,7 @@
 /myui dps               # Show/hide DPS meter
 /myui hpsmax 750000     # Set HPS meter max to 750K
 /myui meterinfo         # Check current meter status
-/myui resetcombat       # Full reset for testing
+/myui resetcombat       # Full reset
 /myui debug             # Enable debug output</div>
     </div>
 
