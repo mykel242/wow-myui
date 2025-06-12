@@ -7,8 +7,13 @@
 ## DefaultState: enabled
 
 MyUI.lua
+CombatData.lua
+TimelineTracker.lua
+ContentDetection.lua
+SessionManager.lua
 CombatTracker.lua
 BaseMeterWindow.lua
 DPSWindow.lua
 HPSWindow.lua
 WorkingPixelMeter.lua
+SessionDetailWindow.lua

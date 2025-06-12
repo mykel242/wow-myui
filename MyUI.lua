@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-content-detection-9a146c1"
-addon.BUILD_DATE = "2025-06-07-16:25"
+addon.VERSION = "feature-session-detail-ea4b0fe"
+addon.BUILD_DATE = "2025-06-12-11:14"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -404,9 +404,12 @@ function addon:CreateMainFrame()
             rowBg:SetColorTexture(0.05, 0.05, 0.05, 0.3)
         end
 
+        -- CREATE the highlight texture that was missing
         local highlight = row:CreateTexture(nil, "HIGHLIGHT")
         highlight:SetAllPoints(row)
         highlight:SetColorTexture(0.3, 0.3, 0.3, 0.3)
+        highlight:SetAlpha(0)     -- Start invisible
+        row.highlight = highlight -- Store reference for easy access
 
         row.time = row:CreateFontString(nil, "OVERLAY")
         row.time:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
@@ -670,7 +673,43 @@ function addon:UpdateSessionTable()
             end
             row.location:SetText(location)
 
-            row.deleteBtn:SetScript("OnClick", function()
+            -- Clear any existing scripts to avoid duplicates
+            row:SetScript("OnClick", nil)
+            row:SetScript("OnEnter", nil)
+            row:SetScript("OnLeave", nil)
+
+            -- Click handler for showing session details
+            row:SetScript("OnClick", function()
+                if addon.SessionDetailWindow then
+                    addon.SessionDetailWindow:Show(session)
+                else
+                    print("Session detail window not available")
+                end
+            end)
+
+            -- Hover effects using our stored highlight reference
+            row:SetScript("OnEnter", function(self)
+                if self.highlight then
+                    self.highlight:SetAlpha(0.6)
+                end
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Session " .. session.sessionId)
+                GameTooltip:AddLine("Click to view details", 1, 1, 1, true)
+                GameTooltip:AddLine(string.format("%.1fs combat in %s", session.duration, session.location), 0.8, 0.8,
+                    0.8, true)
+                GameTooltip:Show()
+            end)
+
+            row:SetScript("OnLeave", function(self)
+                if self.highlight then
+                    self.highlight:SetAlpha(0)
+                end
+                GameTooltip:Hide()
+            end)
+
+            -- Delete button (prevent event bubbling to row click)
+            row.deleteBtn:SetScript("OnClick", function(self, button)
+                -- Stop the click from bubbling up to the row
                 if addon.CombatTracker then
                     addon.CombatTracker:DeleteSession(session.sessionId)
                     addon:UpdateMainWindow()
