@@ -49,6 +49,12 @@ local enhancedSessionData = {
 local function TrackParticipant(guid, name, flags)
     if not guid or not name then return end
 
+    -- Skip if we already have this participant
+    if enhancedSessionData.participants[guid] then
+        enhancedSessionData.participants[guid].lastSeen = GetTime()
+        return
+    end
+
     local isPlayer = bit.band(flags or 0, COMBATLOG_OBJECT_TYPE_PLAYER) > 0
     local isNPC = bit.band(flags or 0, COMBATLOG_OBJECT_TYPE_NPC) > 0
     local isPet = bit.band(flags or 0, COMBATLOG_OBJECT_TYPE_PET) > 0
@@ -65,6 +71,11 @@ local function TrackParticipant(guid, name, flags)
         healingDealt = 0,
         damageTaken = 0
     }
+
+    if addon.DEBUG and math.random() < 0.2 then -- 20% sample rate for debug
+        local typeStr = isPlayer and "Player" or (isPet and "Pet" or "NPC")
+        print(string.format("Enhanced: Tracked %s (%s)", name, typeStr))
+    end
 end
 
 -- Track damage taken by player
@@ -167,7 +178,7 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
                                                      destGUID, destName, destFlags, destRaidFlags, ...)
     if not addon.CombatData:IsInCombat() then return end
 
-    -- Track all participants
+    -- Track all participants more aggressively
     if sourceGUID and sourceName then
         TrackParticipant(sourceGUID, sourceName, sourceFlags)
     end
@@ -175,7 +186,9 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
         TrackParticipant(destGUID, destName, destFlags)
     end
 
-    -- Handle different event types
+    local playerGUID = UnitGUID("player")
+
+    -- Handle different event types with debug output
     if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or subevent == "RANGE_DAMAGE" then
         local spellId, spellName, spellSchool, amount
 
@@ -190,10 +203,19 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
 
         if amount and amount > 0 then
             -- Track player damage taken
-            TrackDamageTaken(timestamp, sourceGUID, sourceName, destGUID, destName, spellId, spellName, amount)
+            if destGUID == playerGUID then
+                TrackDamageTaken(timestamp, sourceGUID, sourceName, destGUID, destName, spellId, spellName, amount)
 
-            -- Track group damage taken
-            TrackGroupDamage(timestamp, sourceGUID, sourceName, destGUID, destName, spellId, spellName, amount)
+                if addon.DEBUG and math.random() < 0.1 then -- 10% sample rate for debug
+                    print(string.format("Enhanced: Player took %s damage from %s",
+                        addon.CombatTracker:FormatNumber(amount), sourceName or "Unknown"))
+                end
+            end
+
+            -- Track group damage taken (if enabled)
+            if addon.db and addon.db.trackGroupDamage then
+                TrackGroupDamage(timestamp, sourceGUID, sourceName, destGUID, destName, spellId, spellName, amount)
+            end
 
             -- Update participant damage stats
             if enhancedSessionData.participants[sourceGUID] then
@@ -245,6 +267,29 @@ end
 -- =============================================================================
 -- DATA ACCESS FUNCTIONS
 -- =============================================================================
+
+function EnhancedCombatLogger:GetStatus()
+    local status = {
+        isInitialized = self.frame ~= nil,
+        isTracking = addon.CombatData and addon.CombatData:IsInCombat(),
+        participantCount = 0,
+        eventCounts = {
+            damageTaken = #(enhancedSessionData.damageTaken or {}),
+            groupDamage = #(enhancedSessionData.groupDamage or {}),
+            cooldownUsage = #(enhancedSessionData.cooldownUsage or {}),
+            deaths = #(enhancedSessionData.deaths or {}),
+            healingEvents = #(enhancedSessionData.healingEvents or {})
+        }
+    }
+
+    if enhancedSessionData.participants then
+        for _ in pairs(enhancedSessionData.participants) do
+            status.participantCount = status.participantCount + 1
+        end
+    end
+
+    return status
+end
 
 -- Get enhanced session data for a completed session
 function EnhancedCombatLogger:GetEnhancedSessionData()
@@ -299,8 +344,8 @@ end
 -- SESSION LIFECYCLE
 -- =============================================================================
 
--- Start enhanced tracking
 function EnhancedCombatLogger:StartEnhancedTracking()
+    -- Reset all data structures
     enhancedSessionData = {
         participants = {},
         damageTaken = {},
@@ -311,7 +356,7 @@ function EnhancedCombatLogger:StartEnhancedTracking()
     }
 
     if addon.DEBUG then
-        print("Enhanced combat logging started")
+        print("Enhanced combat logging started - data structures reset")
     end
 end
 

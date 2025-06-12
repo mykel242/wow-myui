@@ -245,9 +245,27 @@ function CombatData:EndCombat()
     combatData.finalAbsorb = combatData.absorb
     combatData.finalMaxDPS = combatData.maxDPS
     combatData.finalMaxHPS = combatData.maxHPS
+
+    -- ENHANCED DATA COLLECTION - Get enhanced data BEFORE ending tracking
     local enhancedData = nil
     if addon.EnhancedCombatLogger then
         enhancedData = addon.EnhancedCombatLogger:GetEnhancedSessionData()
+
+        -- Debug enhanced data collection
+        if addon.DEBUG and enhancedData then
+            local participantCount = 0
+            if enhancedData.participants then
+                for _ in pairs(enhancedData.participants) do
+                    participantCount = participantCount + 1
+                end
+            end
+            print(string.format("Enhanced data collected: %d participants, %d cooldowns, %d deaths",
+                participantCount,
+                #(enhancedData.cooldownUsage or {}),
+                #(enhancedData.deaths or {})))
+        end
+
+        -- End enhanced tracking AFTER collecting data
         addon.EnhancedCombatLogger:EndEnhancedTracking()
     end
 
@@ -275,13 +293,36 @@ function CombatData:EndCombat()
         local timelineData = addon.TimelineTracker:GetTimelineData()
         print(string.format("Timeline Samples: %d", #timelineData))
     end
+
+    -- Enhanced data summary
+    if enhancedData then
+        local participantCount = 0
+        if enhancedData.participants then
+            for _ in pairs(enhancedData.participants) do
+                participantCount = participantCount + 1
+            end
+        end
+        print(string.format("Enhanced Data: %d participants, %d cooldowns, %d deaths",
+            participantCount,
+            #(enhancedData.cooldownUsage or {}),
+            #(enhancedData.deaths or {})))
+    end
     print("--------------------")
 
-    -- Create and store session record
+    -- Create and store session record WITH enhanced data
     if addon.SessionManager then
         local session = addon.SessionManager:CreateSessionFromCombatData(enhancedData)
         if session then
             addon.SessionManager:AddSessionToHistory(session)
+
+            -- Verify enhanced data was attached
+            if addon.DEBUG then
+                if session.enhancedData then
+                    print("✓ Session created with enhanced data")
+                else
+                    print("✗ Session created WITHOUT enhanced data")
+                end
+            end
         end
     end
 end

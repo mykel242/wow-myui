@@ -1,5 +1,5 @@
 -- EnhancedSessionDetailWindow.lua
--- Enhanced detailed view with advanced charting and combat insights
+-- Enhanced detailed view with advanced charting and combat insights - FIXED DATA POPULATION
 
 local addonName, addon = ...
 
@@ -14,11 +14,65 @@ local CHART_COLORS = {
     groupDamage = { 0.8, 0.4, 0.8 }
 }
 
+-- Debug function to inspect session data
+local function DebugSessionData(sessionData)
+    if not addon.DEBUG then return end
+
+    print("=== SESSION DATA DEBUG ===")
+    print("Session ID:", sessionData.sessionId)
+    print("Enhanced data present:", sessionData.enhancedData ~= nil)
+
+    if sessionData.enhancedData then
+        local ed = sessionData.enhancedData
+        print("Participants:", ed.participants and "YES" or "NO")
+        print("Cooldown usage:", ed.cooldownUsage and (#ed.cooldownUsage .. " events") or "NO")
+        print("Deaths:", ed.deaths and (#ed.deaths .. " events") or "NO")
+        print("Damage taken:", ed.damageTaken and (#ed.damageTaken .. " events") or "NO")
+        print("Group damage:", ed.groupDamage and (#ed.groupDamage .. " events") or "NO")
+        print("Healing events:", ed.healingEvents and (#ed.healingEvents .. " events") or "NO")
+
+        if ed.participants then
+            local count = 0
+            for _ in pairs(ed.participants) do count = count + 1 end
+            print("Participant count:", count)
+        end
+    else
+        print("No enhanced data found")
+    end
+    print("==========================")
+end
+
 -- Create enhanced detail window
 function EnhancedSessionDetailWindow:Create(sessionData)
     if self.frame then
         self.frame:Hide()
         self.frame = nil
+    end
+
+    -- Debug the incoming session data
+    DebugSessionData(sessionData)
+
+    -- Try to get enhanced data if not already present
+    if not sessionData.enhancedData and addon.SessionManager then
+        -- Check if this session has enhanced data stored
+        local storedSession = addon.SessionManager:GetSession(sessionData.sessionId)
+        if storedSession and storedSession.enhancedData then
+            sessionData.enhancedData = storedSession.enhancedData
+            if addon.DEBUG then
+                print("Retrieved enhanced data from stored session")
+            end
+        end
+    end
+
+    -- If still no enhanced data, try to get current enhanced data if this is a recent session
+    if not sessionData.enhancedData and addon.EnhancedCombatLogger then
+        local currentEnhancedData = addon.EnhancedCombatLogger:GetEnhancedSessionData()
+        if currentEnhancedData then
+            sessionData.enhancedData = currentEnhancedData
+            if addon.DEBUG then
+                print("Using current enhanced data from logger")
+            end
+        end
     end
 
     local frame = CreateFrame("Frame", addonName .. "EnhancedSessionDetailFrame", UIParent)
@@ -87,8 +141,9 @@ function EnhancedSessionDetailWindow:CreateHeaderSection(frame, sessionData)
     local rightMeta = headerPanel:CreateFontString(nil, "OVERLAY")
     rightMeta:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
     rightMeta:SetPoint("TOPRIGHT", headerPanel, "TOPRIGHT", -10, -25)
-    rightMeta:SetText(string.format("Quality: %d | Content: %s | Actions: %d",
-        sessionData.qualityScore, sessionData.contentType or "normal", sessionData.actionCount or 0))
+    local enhancedStatus = sessionData.enhancedData and "Enhanced" or "Basic"
+    rightMeta:SetText(string.format("Quality: %d | Content: %s | Data: %s",
+        sessionData.qualityScore, sessionData.contentType or "normal", enhancedStatus))
     rightMeta:SetJustifyH("RIGHT")
 
     -- Performance summary line
@@ -456,7 +511,7 @@ function EnhancedSessionDetailWindow:CreateChartControls(controlsFrame)
     end
 end
 
--- Create participants tab
+-- Create participants tab - FIXED VERSION
 function EnhancedSessionDetailWindow:CreateParticipantsTab()
     local content = CreateFrame("Frame", nil, self.frame.contentArea)
     content:SetAllPoints(self.frame.contentArea)
@@ -466,109 +521,171 @@ function EnhancedSessionDetailWindow:CreateParticipantsTab()
     title:SetPoint("TOP", content, "TOP", 0, -20)
     title:SetText("Combat Participants")
 
+    -- Check for enhanced data
+    if not self.sessionData.enhancedData or not self.sessionData.enhancedData.participants then
+        local noDataText = content:CreateFontString(nil, "OVERLAY")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        noDataText:SetPoint("CENTER", content, "CENTER", 0, 0)
+        noDataText:SetText("No participant data available\n(Enhanced logging was not active during this session)")
+        noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
+
+        -- Add instructions for enabling enhanced logging
+        local instructionText = content:CreateFontString(nil, "OVERLAY")
+        instructionText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+        instructionText:SetPoint("CENTER", content, "CENTER", 0, -40)
+        instructionText:SetText(
+        "To see participant data in future sessions:\n• Enhanced logging should be automatically enabled\n• Use '/myui enhancedlog' to check status")
+        instructionText:SetTextColor(0.8, 0.8, 0.6, 1)
+
+        content:Show()
+        self.frame.currentContent = content
+        return
+    end
+
+    -- Create header row
+    local headerRow = CreateFrame("Frame", nil, content)
+    headerRow:SetSize(740, 25)
+    headerRow:SetPoint("TOP", content, "TOP", 0, -50)
+
+    local headerBg = headerRow:CreateTexture(nil, "BACKGROUND")
+    headerBg:SetAllPoints(headerRow)
+    headerBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
+
+    -- Column headers
+    local nameHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    nameHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    nameHeader:SetPoint("LEFT", headerRow, "LEFT", 10, 0)
+    nameHeader:SetSize(150, 0)
+    nameHeader:SetText("Name")
+    nameHeader:SetJustifyH("LEFT")
+    nameHeader:SetTextColor(1, 1, 1, 1)
+
+    local typeHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    typeHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    typeHeader:SetPoint("LEFT", headerRow, "LEFT", 170, 0)
+    typeHeader:SetSize(80, 0)
+    typeHeader:SetText("Type")
+    typeHeader:SetJustifyH("CENTER")
+    typeHeader:SetTextColor(1, 1, 1, 1)
+
+    local damageHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    damageHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    damageHeader:SetPoint("LEFT", headerRow, "LEFT", 260, 0)
+    damageHeader:SetSize(100, 0)
+    damageHeader:SetText("Damage Dealt")
+    damageHeader:SetJustifyH("RIGHT")
+    damageHeader:SetTextColor(1, 1, 1, 1)
+
+    local healingHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    healingHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    healingHeader:SetPoint("LEFT", headerRow, "LEFT", 370, 0)
+    healingHeader:SetSize(100, 0)
+    healingHeader:SetText("Healing Dealt")
+    healingHeader:SetJustifyH("RIGHT")
+    healingHeader:SetTextColor(1, 1, 1, 1)
+
+    local takenHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    takenHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    takenHeader:SetPoint("LEFT", headerRow, "LEFT", 480, 0)
+    takenHeader:SetSize(100, 0)
+    takenHeader:SetText("Damage Taken")
+    takenHeader:SetJustifyH("RIGHT")
+    takenHeader:SetTextColor(1, 1, 1, 1)
+
     -- Participants list (scrollable)
     local scrollFrame = CreateFrame("ScrollFrame", nil, content, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetSize(740, 380)
-    scrollFrame:SetPoint("TOP", content, "TOP", -20, -50)
+    scrollFrame:SetSize(740, 340)
+    scrollFrame:SetPoint("TOP", headerRow, "BOTTOM", -20, -5)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetSize(720, 400)
     scrollFrame:SetScrollChild(scrollChild)
 
-    -- Get participant data if available
-    if self.sessionData.enhancedData and self.sessionData.enhancedData.participants then
-        local summary = {}
-        for guid, participant in pairs(self.sessionData.enhancedData.participants) do
-            table.insert(summary, participant)
-        end
-
-        -- Sort by total damage/healing dealt
-        table.sort(summary, function(a, b)
-            return (a.damageDealt + a.healingDealt) > (b.damageDealt + b.healingDealt)
-        end)
-
-        -- Create participant rows
-        for i, participant in ipairs(summary) do
-            if i <= 20 then -- Limit display
-                local row = CreateFrame("Frame", nil, scrollChild)
-                row:SetSize(720, 25)
-                row:SetPoint("TOP", scrollChild, "TOP", 0, -(i - 1) * 27)
-
-                local rowBg = row:CreateTexture(nil, "BACKGROUND")
-                rowBg:SetAllPoints(row)
-                rowBg:SetColorTexture(i % 2 == 0 and 0.1 or 0.05, i % 2 == 0 and 0.1 or 0.05, i % 2 == 0 and 0.1 or 0.05,
-                    0.5)
-
-                -- Name
-                local nameText = row:CreateFontString(nil, "OVERLAY")
-                nameText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-                nameText:SetPoint("LEFT", row, "LEFT", 10, 0)
-                nameText:SetSize(150, 0)
-                nameText:SetText(participant.name)
-                nameText:SetJustifyH("LEFT")
-
-                -- Color code by type
-                if participant.isPlayer then
-                    nameText:SetTextColor(0.3, 1, 0.3, 1)
-                elseif participant.isPet then
-                    nameText:SetTextColor(0.8, 0.8, 0.3, 1)
-                else
-                    nameText:SetTextColor(1, 0.5, 0.5, 1)
-                end
-
-                -- Damage dealt
-                local damageText = row:CreateFontString(nil, "OVERLAY")
-                damageText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-                damageText:SetPoint("LEFT", row, "LEFT", 170, 0)
-                damageText:SetSize(100, 0)
-                damageText:SetText(addon.CombatTracker:FormatNumber(participant.damageDealt or 0))
-                damageText:SetJustifyH("RIGHT")
-                damageText:SetTextColor(1, 0.4, 0.4, 1)
-
-                -- Healing dealt
-                local healingText = row:CreateFontString(nil, "OVERLAY")
-                healingText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-                healingText:SetPoint("LEFT", row, "LEFT", 280, 0)
-                healingText:SetSize(100, 0)
-                healingText:SetText(addon.CombatTracker:FormatNumber(participant.healingDealt or 0))
-                healingText:SetJustifyH("RIGHT")
-                healingText:SetTextColor(0.4, 1, 0.4, 1)
-
-                -- Damage taken
-                local takenText = row:CreateFontString(nil, "OVERLAY")
-                takenText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-                takenText:SetPoint("LEFT", row, "LEFT", 390, 0)
-                takenText:SetSize(100, 0)
-                takenText:SetText(addon.CombatTracker:FormatNumber(participant.damageTaken or 0))
-                takenText:SetJustifyH("RIGHT")
-                takenText:SetTextColor(1, 0.8, 0.4, 1)
-
-                -- Type
-                local typeText = row:CreateFontString(nil, "OVERLAY")
-                typeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-                typeText:SetPoint("RIGHT", row, "RIGHT", -10, 0)
-                typeText:SetSize(80, 0)
-                local typeStr = participant.isPlayer and "Player" or (participant.isPet and "Pet" or "NPC")
-                typeText:SetText(typeStr)
-                typeText:SetJustifyH("CENTER")
-                typeText:SetTextColor(0.7, 0.7, 0.7, 1)
-            end
-        end
-
-        scrollChild:SetHeight(math.max(400, #summary * 27))
-    else
-        local noDataText = content:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
-        noDataText:SetPoint("CENTER", content, "CENTER", 0, 0)
-        noDataText:SetText("No participant data available\n(Enhanced logging was not active)")
-        noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
+    -- Convert participants table to array and sort
+    local participants = {}
+    for guid, participant in pairs(self.sessionData.enhancedData.participants) do
+        table.insert(participants, participant)
     end
+
+    -- Sort by total damage/healing dealt
+    table.sort(participants, function(a, b)
+        return (a.damageDealt + a.healingDealt) > (b.damageDealt + b.healingDealt)
+    end)
+
+    -- Create participant rows
+    for i, participant in ipairs(participants) do
+        if i <= 20 then -- Limit display
+            local row = CreateFrame("Frame", nil, scrollChild)
+            row:SetSize(720, 25)
+            row:SetPoint("TOP", scrollChild, "TOP", 0, -(i - 1) * 27)
+
+            local rowBg = row:CreateTexture(nil, "BACKGROUND")
+            rowBg:SetAllPoints(row)
+            rowBg:SetColorTexture(i % 2 == 0 and 0.1 or 0.05, i % 2 == 0 and 0.1 or 0.05, i % 2 == 0 and 0.1 or 0.05, 0.5)
+
+            -- Name
+            local nameText = row:CreateFontString(nil, "OVERLAY")
+            nameText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+            nameText:SetPoint("LEFT", row, "LEFT", 10, 0)
+            nameText:SetSize(150, 0)
+            nameText:SetText(participant.name)
+            nameText:SetJustifyH("LEFT")
+
+            -- Color code by type
+            if participant.isPlayer then
+                nameText:SetTextColor(0.3, 1, 0.3, 1)
+            elseif participant.isPet then
+                nameText:SetTextColor(0.8, 0.8, 0.3, 1)
+            else
+                nameText:SetTextColor(1, 0.5, 0.5, 1)
+            end
+
+            -- Type
+            local typeText = row:CreateFontString(nil, "OVERLAY")
+            typeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+            typeText:SetPoint("LEFT", row, "LEFT", 170, 0)
+            typeText:SetSize(80, 0)
+            local typeStr = participant.isPlayer and "Player" or (participant.isPet and "Pet" or "NPC")
+            typeText:SetText(typeStr)
+            typeText:SetJustifyH("CENTER")
+            typeText:SetTextColor(0.7, 0.7, 0.7, 1)
+
+            -- Damage dealt
+            local damageText = row:CreateFontString(nil, "OVERLAY")
+            damageText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+            damageText:SetPoint("LEFT", row, "LEFT", 260, 0)
+            damageText:SetSize(100, 0)
+            damageText:SetText(addon.CombatTracker:FormatNumber(participant.damageDealt or 0))
+            damageText:SetJustifyH("RIGHT")
+            damageText:SetTextColor(1, 0.4, 0.4, 1)
+
+            -- Healing dealt
+            local healingText = row:CreateFontString(nil, "OVERLAY")
+            healingText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+            healingText:SetPoint("LEFT", row, "LEFT", 370, 0)
+            healingText:SetSize(100, 0)
+            healingText:SetText(addon.CombatTracker:FormatNumber(participant.healingDealt or 0))
+            healingText:SetJustifyH("RIGHT")
+            healingText:SetTextColor(0.4, 1, 0.4, 1)
+
+            -- Damage taken
+            local takenText = row:CreateFontString(nil, "OVERLAY")
+            takenText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+            takenText:SetPoint("LEFT", row, "LEFT", 480, 0)
+            takenText:SetSize(100, 0)
+            takenText:SetText(addon.CombatTracker:FormatNumber(participant.damageTaken or 0))
+            takenText:SetJustifyH("RIGHT")
+            takenText:SetTextColor(1, 0.8, 0.4, 1)
+        end
+    end
+
+    scrollChild:SetHeight(math.max(400, #participants * 27))
 
     content:Show()
     self.frame.currentContent = content
 end
 
--- Create damage analysis tab
+-- Create damage analysis tab - FIXED VERSION
 function EnhancedSessionDetailWindow:CreateDamageTab()
     local content = CreateFrame("Frame", nil, self.frame.contentArea)
     content:SetAllPoints(self.frame.contentArea)
@@ -578,26 +695,27 @@ function EnhancedSessionDetailWindow:CreateDamageTab()
     title:SetPoint("TOP", content, "TOP", 0, -20)
     title:SetText("Damage Analysis")
 
-    -- Split into two sections: Damage Taken and Group Damage
-    if self.sessionData.enhancedData then
-        -- Personal damage taken section
-        self:CreateDamageTakenSection(content, self.sessionData.enhancedData.damageTaken or {})
-
-        -- Group damage section
-        self:CreateGroupDamageSection(content, self.sessionData.enhancedData.groupDamage or {})
-    else
+    if not self.sessionData.enhancedData then
         local noDataText = content:CreateFontString(nil, "OVERLAY")
         noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
         noDataText:SetPoint("CENTER", content, "CENTER", 0, 0)
-        noDataText:SetText("No damage analysis data available\n(Enhanced logging was not active)")
+        noDataText:SetText("No damage analysis data available\n(Enhanced logging was not active during this session)")
         noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
+
+        content:Show()
+        self.frame.currentContent = content
+        return
     end
+
+    -- Split into sections
+    self:CreateDamageTakenSection(content, self.sessionData.enhancedData.damageTaken or {})
+    self:CreateGroupDamageSection(content, self.sessionData.enhancedData.groupDamage or {})
 
     content:Show()
     self.frame.currentContent = content
 end
 
--- Create insights tab
+-- Create insights tab - FIXED VERSION
 function EnhancedSessionDetailWindow:CreateInsightsTab()
     local content = CreateFrame("Frame", nil, self.frame.contentArea)
     content:SetAllPoints(self.frame.contentArea)
@@ -636,7 +754,7 @@ function EnhancedSessionDetailWindow:CreateInsightsTab()
     self.frame.currentContent = content
 end
 
--- Generate performance insights
+-- Generate performance insights - ENHANCED VERSION
 function EnhancedSessionDetailWindow:GenerateInsights(sessionData)
     local insights = {}
 
@@ -679,10 +797,48 @@ function EnhancedSessionDetailWindow:GenerateInsights(sessionData)
         })
     end
 
+    -- Performance comparison insights
+    if addon.CombatTracker then
+        local baseline = addon.CombatTracker:GetContentBaseline(sessionData.contentType or "normal", 10)
+        if baseline.sampleCount > 0 then
+            local dpsRatio = baseline.avgDPS > 0 and (sessionData.avgDPS / baseline.avgDPS) or 1
+            local hpsRatio = baseline.avgHPS > 0 and (sessionData.avgHPS / baseline.avgHPS) or 1
+
+            if dpsRatio > 1.2 then
+                table.insert(insights, {
+                    text = string.format("✓ Above Average DPS: %.0f%% above your baseline for %s content.",
+                        (dpsRatio - 1) * 100, sessionData.contentType or "normal"),
+                    color = { 0.3, 1, 0.3 }
+                })
+            elseif dpsRatio < 0.8 then
+                table.insert(insights, {
+                    text = string.format("⚠ Below Average DPS: %.0f%% below your baseline for %s content.",
+                        (1 - dpsRatio) * 100, sessionData.contentType or "normal"),
+                    color = { 1, 0.6, 0.3 }
+                })
+            end
+
+            if hpsRatio > 1.2 and sessionData.avgHPS > 1000 then
+                table.insert(insights, {
+                    text = string.format("✓ High Healing Output: %.0f%% above your baseline healing.",
+                        (hpsRatio - 1) * 100),
+                    color = { 0.3, 1, 0.3 }
+                })
+            end
+        end
+    end
+
     -- Enhanced data insights
     if sessionData.enhancedData then
         local cooldowns = #(sessionData.enhancedData.cooldownUsage or {})
         local deaths = #(sessionData.enhancedData.deaths or {})
+        local participantCount = 0
+
+        if sessionData.enhancedData.participants then
+            for _ in pairs(sessionData.enhancedData.participants) do
+                participantCount = participantCount + 1
+            end
+        end
 
         if cooldowns > 0 then
             table.insert(insights, {
@@ -696,6 +852,41 @@ function EnhancedSessionDetailWindow:GenerateInsights(sessionData)
                 text = string.format("⚠ Deaths Occurred: %d death(s) recorded during this encounter.", deaths),
                 color = { 1, 0.4, 0.4 }
             })
+        elseif sessionData.duration > 30 then
+            table.insert(insights, {
+                text = "✓ Clean Fight: No deaths recorded during this extended encounter.",
+                color = { 0.3, 1, 0.3 }
+            })
+        end
+
+        if participantCount > 1 then
+            table.insert(insights, {
+                text = string.format("Group Content: %d participants detected in this encounter.", participantCount),
+                color = { 0.6, 0.8, 1 }
+            })
+        end
+
+        -- Damage taken analysis
+        local damageTaken = sessionData.enhancedData.damageTaken or {}
+        if #damageTaken > 0 then
+            local totalDamageTaken = 0
+            for _, dmg in ipairs(damageTaken) do
+                totalDamageTaken = totalDamageTaken + dmg.amount
+            end
+
+            local dtps = sessionData.duration > 0 and (totalDamageTaken / sessionData.duration) or 0
+            if dtps > 50000 then
+                table.insert(insights, {
+                    text = string.format("High Damage Taken: %.0f DTPS - Consider defensive cooldowns or positioning.",
+                        dtps),
+                    color = { 1, 0.6, 0.3 }
+                })
+            elseif dtps < 10000 and sessionData.duration > 20 then
+                table.insert(insights, {
+                    text = "✓ Low Damage Taken: Excellent damage avoidance throughout the encounter.",
+                    color = { 0.3, 1, 0.3 }
+                })
+            end
         end
     else
         table.insert(insights, {
@@ -704,26 +895,187 @@ function EnhancedSessionDetailWindow:GenerateInsights(sessionData)
         })
     end
 
+    -- Timeline analysis insights
+    if sessionData.timelineData and #sessionData.timelineData > 0 then
+        -- Calculate performance consistency
+        local dpsValues = {}
+        for _, point in ipairs(sessionData.timelineData) do
+            if point.instantDPS and point.instantDPS > 0 then
+                table.insert(dpsValues, point.instantDPS)
+            end
+        end
+
+        if #dpsValues > 5 then
+            local mean = 0
+            for _, dps in ipairs(dpsValues) do
+                mean = mean + dps
+            end
+            mean = mean / #dpsValues
+
+            local variance = 0
+            for _, dps in ipairs(dpsValues) do
+                variance = variance + (dps - mean) ^ 2
+            end
+            variance = variance / (#dpsValues - 1)
+
+            local stdDev = math.sqrt(variance)
+            local cv = stdDev / mean -- Coefficient of variation
+
+            if cv < 0.3 then
+                table.insert(insights, {
+                    text = "✓ Consistent Performance: Your DPS remained steady throughout the encounter.",
+                    color = { 0.3, 1, 0.3 }
+                })
+            elseif cv > 0.6 then
+                table.insert(insights, {
+                    text = "⚠ Variable Performance: Consider maintaining rotation consistency for better DPS.",
+                    color = { 1, 0.6, 0.3 }
+                })
+            end
+        end
+    end
+
     return insights
 end
 
 -- Helper functions for damage sections
 function EnhancedSessionDetailWindow:CreateDamageTakenSection(parent, damageTaken)
-    -- Implementation would create a detailed breakdown of damage sources
-    local sectionTitle = parent:CreateFontString(nil, "OVERLAY")
+    local sectionFrame = CreateFrame("Frame", nil, parent)
+    sectionFrame:SetSize(740, 180)
+    sectionFrame:SetPoint("TOP", parent, "TOP", 0, -60)
+
+    local sectionBg = sectionFrame:CreateTexture(nil, "BACKGROUND")
+    sectionBg:SetAllPoints(sectionFrame)
+    sectionBg:SetColorTexture(0.05, 0.05, 0.05, 0.6)
+
+    local sectionTitle = sectionFrame:CreateFontString(nil, "OVERLAY")
     sectionTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    sectionTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -60)
+    sectionTitle:SetPoint("TOP", sectionFrame, "TOP", 0, -10)
     sectionTitle:SetText(string.format("Personal Damage Taken (%d events)", #damageTaken))
     sectionTitle:SetTextColor(1, 0.8, 0.4, 1)
+
+    if #damageTaken == 0 then
+        local noDataText = sectionFrame:CreateFontString(nil, "OVERLAY")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        noDataText:SetPoint("CENTER", sectionFrame, "CENTER", 0, 0)
+        noDataText:SetText("No damage taken events recorded")
+        noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
+        return
+    end
+
+    -- Aggregate damage by source
+    local sourceData = {}
+    local totalDamage = 0
+
+    for _, dmg in ipairs(damageTaken) do
+        local key = dmg.sourceName or "Unknown"
+        if not sourceData[key] then
+            sourceData[key] = { name = key, damage = 0, hits = 0 }
+        end
+        sourceData[key].damage = sourceData[key].damage + dmg.amount
+        sourceData[key].hits = sourceData[key].hits + 1
+        totalDamage = totalDamage + dmg.amount
+    end
+
+    -- Convert to array and sort
+    local sources = {}
+    for _, data in pairs(sourceData) do
+        table.insert(sources, data)
+    end
+    table.sort(sources, function(a, b) return a.damage > b.damage end)
+
+    -- Display top damage sources
+    local yOffset = -35
+    for i = 1, math.min(5, #sources) do
+        local source = sources[i]
+        local percent = totalDamage > 0 and (source.damage / totalDamage * 100) or 0
+
+        local sourceText = sectionFrame:CreateFontString(nil, "OVERLAY")
+        sourceText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        sourceText:SetPoint("TOPLEFT", sectionFrame, "TOPLEFT", 10, yOffset)
+        sourceText:SetText(string.format("%s: %s (%.1f%%) - %d hits",
+            source.name, addon.CombatTracker:FormatNumber(source.damage), percent, source.hits))
+        sourceText:SetTextColor(1, 0.8, 0.6, 1)
+
+        yOffset = yOffset - 20
+    end
+
+    -- Total summary
+    local totalText = sectionFrame:CreateFontString(nil, "OVERLAY")
+    totalText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    totalText:SetPoint("BOTTOMRIGHT", sectionFrame, "BOTTOMRIGHT", -10, 10)
+    local dtps = self.sessionData.duration > 0 and (totalDamage / self.sessionData.duration) or 0
+    totalText:SetText(string.format("Total: %s (%.0f DTPS)",
+        addon.CombatTracker:FormatNumber(totalDamage), dtps))
+    totalText:SetTextColor(1, 1, 0.6, 1)
 end
 
 function EnhancedSessionDetailWindow:CreateGroupDamageSection(parent, groupDamage)
-    -- Implementation would create a breakdown of group-wide damage patterns
-    local sectionTitle = parent:CreateFontString(nil, "OVERLAY")
+    local sectionFrame = CreateFrame("Frame", nil, parent)
+    sectionFrame:SetSize(740, 180)
+    sectionFrame:SetPoint("TOP", parent, "TOP", 0, -250)
+
+    local sectionBg = sectionFrame:CreateTexture(nil, "BACKGROUND")
+    sectionBg:SetAllPoints(sectionFrame)
+    sectionBg:SetColorTexture(0.05, 0.05, 0.05, 0.6)
+
+    local sectionTitle = sectionFrame:CreateFontString(nil, "OVERLAY")
     sectionTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    sectionTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -200)
+    sectionTitle:SetPoint("TOP", sectionFrame, "TOP", 0, -10)
     sectionTitle:SetText(string.format("Group Damage Events (%d events)", #groupDamage))
     sectionTitle:SetTextColor(0.8, 0.4, 1, 1)
+
+    if #groupDamage == 0 then
+        local noDataText = sectionFrame:CreateFontString(nil, "OVERLAY")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        noDataText:SetPoint("CENTER", sectionFrame, "CENTER", 0, 0)
+        noDataText:SetText("No group damage events recorded\n(Group damage tracking may be disabled)")
+        noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
+        return
+    end
+
+    -- Similar analysis for group damage
+    local sourceData = {}
+    local totalDamage = 0
+
+    for _, dmg in ipairs(groupDamage) do
+        local key = dmg.sourceName or "Unknown"
+        if not sourceData[key] then
+            sourceData[key] = { name = key, damage = 0, hits = 0, targets = {} }
+        end
+        sourceData[key].damage = sourceData[key].damage + dmg.amount
+        sourceData[key].hits = sourceData[key].hits + 1
+        sourceData[key].targets[dmg.destName] = true
+        totalDamage = totalDamage + dmg.amount
+    end
+
+    -- Convert to array and sort
+    local sources = {}
+    for _, data in pairs(sourceData) do
+        data.targetCount = 0
+        for _ in pairs(data.targets) do
+            data.targetCount = data.targetCount + 1
+        end
+        table.insert(sources, data)
+    end
+    table.sort(sources, function(a, b) return a.damage > b.damage end)
+
+    -- Display top group damage sources
+    local yOffset = -35
+    for i = 1, math.min(5, #sources) do
+        local source = sources[i]
+        local percent = totalDamage > 0 and (source.damage / totalDamage * 100) or 0
+
+        local sourceText = sectionFrame:CreateFontString(nil, "OVERLAY")
+        sourceText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        sourceText:SetPoint("TOPLEFT", sectionFrame, "TOPLEFT", 10, yOffset)
+        sourceText:SetText(string.format("%s: %s (%.1f%%) - %d hits, %d targets",
+            source.name, addon.CombatTracker:FormatNumber(source.damage),
+            percent, source.hits, source.targetCount))
+        sourceText:SetTextColor(0.8, 0.6, 1, 1)
+
+        yOffset = yOffset - 20
+    end
 end
 
 -- Close button and controls
@@ -739,11 +1091,27 @@ end
 
 -- Show enhanced session detail window
 function EnhancedSessionDetailWindow:Show(sessionData)
-    -- Attach enhanced data if available
-    if addon.EnhancedCombatLogger then
-        local enhancedData = addon.EnhancedCombatLogger:GetEnhancedSessionData()
-        if enhancedData then
-            sessionData.enhancedData = enhancedData
+    -- Try to attach enhanced data if available and not already present
+    if not sessionData.enhancedData then
+        if addon.EnhancedCombatLogger then
+            local enhancedData = addon.EnhancedCombatLogger:GetEnhancedSessionData()
+            if enhancedData then
+                sessionData.enhancedData = enhancedData
+                if addon.DEBUG then
+                    print("Attached current enhanced data to session")
+                end
+            end
+        end
+
+        -- Also try to get from session manager if this is a stored session
+        if addon.SessionManager then
+            local storedSession = addon.SessionManager:GetSession(sessionData.sessionId)
+            if storedSession and storedSession.enhancedData then
+                sessionData.enhancedData = storedSession.enhancedData
+                if addon.DEBUG then
+                    print("Retrieved enhanced data from stored session")
+                end
+            end
         end
     end
 

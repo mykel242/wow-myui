@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-session-detail-fbb61d8"
-addon.BUILD_DATE = "2025-06-12-12:13"
+addon.VERSION = "feature-session-detail-918df4b"
+addon.BUILD_DATE = "2025-06-12-12:34"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -120,24 +120,70 @@ function addon:OnInitialize()
     -- Load debug state from saved variables
     self.DEBUG = self.db.debugMode
 
-    -- Initialize all modules
-    if self.CombatTracker then
-        self.CombatTracker:Initialize()
-        self.CombatTracker:InitializeSessionHistory()
-    end
-    if self.EnhancedCombatLogger then
-        self.EnhancedCombatLogger:Initialize()
+    -- Initialize all modules IN THE CORRECT ORDER
+    -- 1. Core combat tracking first
+    if self.CombatData then
+        self.CombatData:Initialize()
+        print("✓ CombatData initialized")
     end
 
+    -- 2. Timeline tracker (depends on CombatData)
+    if self.TimelineTracker then
+        self.TimelineTracker:Initialize()
+        print("✓ TimelineTracker initialized")
+    end
+
+    -- 3. Enhanced logger (depends on CombatData)
+    if self.EnhancedCombatLogger then
+        self.EnhancedCombatLogger:Initialize()
+        print("✓ EnhancedCombatLogger initialized")
+    else
+        print("✗ EnhancedCombatLogger not found!")
+    end
+
+    -- 4. Content detection
+    if self.ContentDetection then
+        self.ContentDetection:Initialize()
+        print("✓ ContentDetection initialized")
+    end
+
+    -- 5. Session manager (depends on others)
+    if self.SessionManager then
+        self.SessionManager:Initialize()
+        print("✓ SessionManager initialized")
+    end
+
+    -- 6. Main combat tracker (coordinator)
+    if self.CombatTracker then
+        self.CombatTracker:Initialize()
+        print("✓ CombatTracker initialized")
+    end
+
+    -- 7. UI windows
     if self.DPSWindow then
         self.DPSWindow:Initialize()
+        print("✓ DPSWindow initialized")
     end
     if self.HPSWindow then
         self.HPSWindow:Initialize()
+        print("✓ HPSWindow initialized")
+    end
+
+    -- Load session history for current character/spec
+    if self.SessionManager then
+        self.SessionManager:InitializeSessionHistory()
+        print("✓ Session history loaded")
     end
 
     print(addonName .. " loaded successfully!")
     print("Use /myui to toggle the main configuration window")
+
+    -- Debug enhanced logging status
+    if self.DEBUG and self.EnhancedCombatLogger then
+        local status = self.EnhancedCombatLogger:GetStatus()
+        print(string.format("Enhanced logging status: initialized=%s, tracking=%s, participants=%d",
+            tostring(status.isInitialized), tostring(status.isTracking), status.participantCount))
+    end
 end
 
 function addon:OnEnable()

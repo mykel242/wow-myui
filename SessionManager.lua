@@ -198,6 +198,8 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
 
         -- Store actual timeline data
         timelineData = {},
+
+        -- ENHANCED DATA - Store the enhanced data directly
         enhancedData = enhancedData
     }
 
@@ -237,6 +239,8 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
             end
 
             enhancedInfo = string.format(", Enhanced: %dP/%dC/%dD", participants, cooldowns, deaths)
+        else
+            enhancedInfo = ", Enhanced: NO DATA"
         end
 
         print(string.format(
@@ -246,6 +250,38 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
     end
 
     return sessionData
+end
+
+function SessionManager:VerifyEnhancedData(sessionId)
+    local session = self:GetSession(sessionId)
+    if not session then
+        return false, "Session not found"
+    end
+
+    if not session.enhancedData then
+        return false, "No enhanced data"
+    end
+
+    local ed = session.enhancedData
+    local checks = {
+        participants = ed.participants ~= nil,
+        damageTaken = ed.damageTaken ~= nil,
+        cooldownUsage = ed.cooldownUsage ~= nil,
+        deaths = ed.deaths ~= nil,
+        healingEvents = ed.healingEvents ~= nil
+    }
+
+    local participantCount = 0
+    if ed.participants then
+        for _ in pairs(ed.participants) do
+            participantCount = participantCount + 1
+        end
+    end
+
+    return true, string.format("Enhanced data OK: %d participants, %d cooldowns, %d deaths",
+        participantCount,
+        #(ed.cooldownUsage or {}),
+        #(ed.deaths or {}))
 end
 
 -- Add session to history with limit management
