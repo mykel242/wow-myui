@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-3aa1045"
-addon.BUILD_DATE = "2025-06-12-15:05"
+addon.VERSION = "main-0d5f70e"
+addon.BUILD_DATE = "2025-06-12-17:57"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
