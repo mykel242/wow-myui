@@ -43,16 +43,7 @@ function WorkingPixelMeter:Create()
     -- Create main window frame - match parent width
     local frame = CreateFrame("Frame", nil, UIParent)
     frame:SetSize(220, totalHeight + 8)                  -- Match the 220px window width
-    
-    -- Restore saved position or use default
-    local positionKey = self.meterName .. "Position"
-    if addon.db and addon.db[positionKey] then
-        local pos = addon.db[positionKey]
-        frame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
-    else
-        frame:SetPoint("CENTER", UIParent, "CENTER", 200, 0) -- Default: Right of center
-    end
-    
+    frame:SetPoint("CENTER", UIParent, "CENTER", 200, 0) -- Default position - will be repositioned by parent
     frame:SetFrameStrata("MEDIUM")
 
     -- Cleaner background to match existing meters
@@ -89,27 +80,48 @@ function WorkingPixelMeter:Create()
         end
     end
 
-    -- Make it draggable like other meter windows
-    frame:SetMovable(true)
+    -- Make it draggable but propagate to parent window
+    frame:SetMovable(false)  -- Don't move this frame directly
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
     
-    -- Save position when dragging stops
+    -- Find parent window and delegate dragging to it
     local meterInstance = self
-    frame:SetScript("OnDragStop", function(dragFrame)
-        dragFrame:StopMovingOrSizing()
-        local point, relativeTo, relativePoint, xOfs, yOfs = dragFrame:GetPoint()
+    frame:SetScript("OnDragStart", function(pixelFrame)
+        local parentWindow = nil
         
-        -- Save position to addon database
-        local positionKey = meterInstance.meterName .. "Position"
-        if addon.db then
-            addon.db[positionKey] = {
-                point = point,
-                relativePoint = relativePoint,
-                xOfs = xOfs,
-                yOfs = yOfs
-            }
+        -- Find the parent meter window based on meter name
+        if meterInstance.meterName == "DPS" and addon.DPSWindow and addon.DPSWindow.frame then
+            parentWindow = addon.DPSWindow.frame
+        elseif meterInstance.meterName == "HPS" and addon.HPSWindow and addon.HPSWindow.frame then
+            parentWindow = addon.HPSWindow.frame
+        end
+        
+        -- Start dragging the parent window instead
+        if parentWindow and parentWindow:IsMovable() then
+            parentWindow:StartMoving()
+        end
+    end)
+    
+    frame:SetScript("OnDragStop", function(pixelFrame)
+        local parentWindow = nil
+        
+        -- Find the parent meter window based on meter name
+        if meterInstance.meterName == "DPS" and addon.DPSWindow and addon.DPSWindow.frame then
+            parentWindow = addon.DPSWindow.frame
+        elseif meterInstance.meterName == "HPS" and addon.HPSWindow and addon.HPSWindow.frame then
+            parentWindow = addon.HPSWindow.frame
+        end
+        
+        -- Stop dragging the parent window
+        if parentWindow then
+            parentWindow:StopMovingOrSizing()
+            
+            -- Trigger the parent's OnDragStop if it has one
+            local parentDragStop = parentWindow:GetScript("OnDragStop")
+            if parentDragStop then
+                parentDragStop(parentWindow)
+            end
         end
     end)
 

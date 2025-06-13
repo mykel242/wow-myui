@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-enhanced-logging-participants-view-bd3a581"
-addon.BUILD_DATE = "2025-06-12-20:41"
+addon.VERSION = "feature-enhanced-logging-participants-view-7e4f039"
+addon.BUILD_DATE = "2025-06-12-20:47"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -31,8 +31,6 @@ addon.defaults = {
     showDPSWindow = false,
     hpsWindowPosition = nil,
     showHPSWindow = false,
-    DPSPosition = nil,  -- Pixel meter positions
-    HPSPosition = nil,
     debugMode = false,
     showMainWindow = false,
     enhancedLogging = true,
