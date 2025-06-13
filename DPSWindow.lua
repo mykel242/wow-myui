@@ -18,9 +18,9 @@ local dpsConfig = {
         xOffset = -100,
         yOffset = 100
     },
-    getMainValue = function() return addon.CombatTracker:GetDisplayDPS() end, -- Changed
-    getMaxValue = function() return addon.CombatTracker:GetMaxDPS() end,
-    getTotalValue = function() return addon.CombatTracker:GetTotalDamage() end
+    getMainValue = function() return addon.CombatData:GetDisplayDPS() end,
+    getMaxValue = function() return addon.CombatData:GetMaxDPS() end,
+    getTotalValue = function() return addon.CombatData:GetTotalDamage() end
 }
 
 -- Create DPS Window instance
@@ -52,13 +52,19 @@ function addon.DPSWindow:Show()
             meterName = "DPS"
         })
         addon.dpsPixelMeter:SetValueSource(function()
-            return addon.CombatTracker:GetDisplayDPS()     -- Changed
+            return addon.CombatData:GetDisplayDPS()
         end)
     end
 
     if addon.dpsPixelMeter then
         addon.dpsPixelMeter:Show()
         PositionPixelMeter()
+        
+        -- Update focus manager registration to include pixel meter
+        if addon.FocusManager and self.frame then
+            addon.FocusManager.registeredWindows[self.frame].pixelMeter = addon.dpsPixelMeter
+            addon.dpsPixelMeter:SyncStrataWithParent()
+        end
     end
 
     -- Hook into the drag events to keep pixel meter positioned

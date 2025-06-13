@@ -18,10 +18,10 @@ local hpsConfig = {
         xOffset = -100,
         yOffset = 0
     },
-    getMainValue = function() return addon.CombatTracker:GetDisplayHPS() end, -- Changed
-    getMaxValue = function() return addon.CombatTracker:GetMaxHPS() end,
-    getTotalValue = function() return addon.CombatTracker:GetTotalHealing() end,
-    getAbsorbValue = function() return addon.CombatTracker:GetTotalAbsorb() end
+    getMainValue = function() return addon.CombatData:GetDisplayHPS() end,
+    getMaxValue = function() return addon.CombatData:GetMaxHPS() end,
+    getTotalValue = function() return addon.CombatData:GetTotalHealing() end,
+    getAbsorbValue = function() return addon.CombatData:GetTotalAbsorb() end
 }
 
 -- Create HPS Window instance
@@ -53,13 +53,19 @@ function addon.HPSWindow:Show()
             meterName = "HPS"
         })
         addon.hpsPixelMeter:SetValueSource(function()
-            return addon.CombatTracker:GetDisplayHPS()     -- Changed
+            return addon.CombatData:GetDisplayHPS()
         end)
     end
 
     if addon.hpsPixelMeter then
         addon.hpsPixelMeter:Show()
         PositionPixelMeter()
+        
+        -- Update focus manager registration to include pixel meter
+        if addon.FocusManager and self.frame then
+            addon.FocusManager.registeredWindows[self.frame].pixelMeter = addon.hpsPixelMeter
+            addon.hpsPixelMeter:SyncStrataWithParent()
+        end
     end
 
     -- Hook into the drag events to keep pixel meter positioned

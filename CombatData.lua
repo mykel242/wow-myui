@@ -11,6 +11,9 @@ local CombatData = addon.CombatData
 -- DATA STRUCTURES
 -- =============================================================================
 
+-- Unified calculator instance
+local calculator = nil
+
 -- Combat data storage
 local combatData = {
     damage = 0,
@@ -48,8 +51,12 @@ local combatActionCount = 0
 -- COMBAT TRACKING API
 -- =============================================================================
 
--- Calculate DPS (rolling during combat, final after)
+-- Calculate DPS using unified calculator
 function CombatData:GetDPS()
+    if calculator then
+        return calculator:GetDPS()
+    end
+    -- Fallback to original logic
     if combatData.inCombat then
         return addon.TimelineTracker:GetRollingDPS()
     else
@@ -57,8 +64,12 @@ function CombatData:GetDPS()
     end
 end
 
--- Calculate HPS (rolling during combat, final after)
+-- Calculate HPS using unified calculator
 function CombatData:GetHPS()
+    if calculator then
+        return calculator:GetHPS()
+    end
+    -- Fallback to original logic
     if combatData.inCombat then
         return addon.TimelineTracker:GetRollingHPS()
     else
@@ -66,8 +77,12 @@ function CombatData:GetHPS()
     end
 end
 
--- Get displayed DPS for meters (rolling during combat, final after)
+-- Get displayed DPS for meters using unified calculator
 function CombatData:GetDisplayDPS()
+    if calculator then
+        return calculator:GetDPS(true)
+    end
+    -- Fallback to original logic
     if combatData.inCombat then
         return addon.TimelineTracker:GetRollingDPS()
     else
@@ -75,8 +90,12 @@ function CombatData:GetDisplayDPS()
     end
 end
 
--- Get displayed HPS for meters (rolling during combat, final after)
+-- Get displayed HPS for meters using unified calculator
 function CombatData:GetDisplayHPS()
+    if calculator then
+        return calculator:GetHPS(true)
+    end
+    -- Fallback to original logic
     if combatData.inCombat then
         return addon.TimelineTracker:GetRollingHPS()
     else
@@ -116,8 +135,13 @@ function CombatData:GetTotalAbsorb()
     return combatData.absorb
 end
 
--- Get combat duration
+-- Get combat duration (alias for GetElapsed)
 function CombatData:GetCombatTime()
+    return self:GetElapsed()
+end
+
+-- Get elapsed combat time
+function CombatData:GetElapsed()
     if not combatData.startTime then
         return 0
     end
@@ -129,16 +153,38 @@ function CombatData:GetCombatTime()
     return GetTime() - combatData.startTime
 end
 
--- Get max DPS recorded (use final value if combat ended)
+-- Access combat data for calculator
+function CombatData:GetRawData()
+    return combatData
+end
+
+-- Get totals for calculator
+function CombatData:GetTotalDamageRaw()
+    return combatData.damage
+end
+
+function CombatData:GetTotalHealingRaw()
+    return combatData.healing
+end
+
+-- Get max DPS recorded using unified calculator
 function CombatData:GetMaxDPS()
+    if calculator then
+        return calculator:GetMaxDPS()
+    end
+    -- Fallback to original logic
     if not combatData.inCombat and combatData.finalMaxDPS > 0 then
         return combatData.finalMaxDPS
     end
     return combatData.maxDPS
 end
 
--- Get max HPS recorded (use final value if combat ended)
+-- Get max HPS recorded using unified calculator
 function CombatData:GetMaxHPS()
+    if calculator then
+        return calculator:GetMaxHPS()
+    end
+    -- Fallback to original logic
     if not combatData.inCombat and combatData.finalMaxHPS > 0 then
         return combatData.finalMaxHPS
     end
@@ -599,14 +645,46 @@ function CombatData:Initialize()
         CombatData:OnEvent(event, ...)
     end)
 
+    -- Initialize unified calculator
+    if addon.UnifiedCalculator then
+        calculator = addon.UnifiedCalculator:New()
+        calculator:SetCombatData(self)
+    end
+    
+    -- Set timeline tracker when available
+    if calculator and addon.TimelineTracker then
+        calculator:SetTimelineTracker(addon.TimelineTracker)
+    end
+
     -- Update timer (for displays and max tracking)
     self.updateTimer = C_Timer.NewTicker(0.1, function()
         CombatData:UpdateDisplays()
     end)
 
     if addon.DEBUG then
-        print("CombatData module initialized")
+        print("CombatData module initialized with UnifiedCalculator")
     end
+end
+
+-- Get calculator instance for external access
+function CombatData:GetCalculator()
+    return calculator
+end
+
+-- Update calculator configuration
+function CombatData:SetCalculationMethod(method)
+    if calculator then
+        return calculator:SetCalculationMethod(method)
+    end
+    return false
+end
+
+-- Get current calculation method
+function CombatData:GetCalculationMethod()
+    if calculator then
+        return calculator:GetCalculationMethod()
+    end
+    return "unknown"
 end
 
 -- =============================================================================
