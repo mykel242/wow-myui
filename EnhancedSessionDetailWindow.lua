@@ -573,61 +573,56 @@ end
 -- Create participant filter controls
 function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
     local filterFrame = CreateFrame("Frame", nil, parent)
-    filterFrame:SetSize(740, 60)
+    filterFrame:SetSize(740, 50)
     filterFrame:SetPoint("TOP", parent, "TOP", 0, -45)
     
     local filterBg = filterFrame:CreateTexture(nil, "BACKGROUND")
     filterBg:SetAllPoints(filterFrame)
     filterBg:SetColorTexture(0.15, 0.15, 0.15, 0.8)
     
+    -- Reorganize controls in a more compact layout
+    
     -- Search box
     local searchBox = CreateFrame("EditBox", nil, filterFrame, "InputBoxTemplate")
-    searchBox:SetSize(200, 20)
-    searchBox:SetPoint("LEFT", filterFrame, "LEFT", 10, 10)
+    searchBox:SetSize(180, 20)
+    searchBox:SetPoint("LEFT", filterFrame, "LEFT", 10, 5)
     searchBox:SetAutoFocus(false)
-    searchBox:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    searchBox:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
     
     local searchLabel = filterFrame:CreateFontString(nil, "OVERLAY")
-    searchLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    searchLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
     searchLabel:SetPoint("BOTTOMLEFT", searchBox, "TOPLEFT", 0, 2)
     searchLabel:SetText("Search:")
     searchLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     
     -- Type filter dropdown
     local typeFilter = CreateFrame("Frame", nil, filterFrame, "UIDropDownMenuTemplate")
-    typeFilter:SetPoint("LEFT", searchBox, "RIGHT", 20, 0)
-    UIDropDownMenu_SetWidth(typeFilter, 100)
+    typeFilter:SetPoint("LEFT", searchBox, "RIGHT", 10, 5)
+    UIDropDownMenu_SetWidth(typeFilter, 90)
     UIDropDownMenu_SetText(typeFilter, "All Types")
     
     local typeLabel = filterFrame:CreateFontString(nil, "OVERLAY")
-    typeLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    typeLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
     typeLabel:SetPoint("BOTTOMLEFT", typeFilter, "TOPLEFT", 20, 2)
     typeLabel:SetText("Type:")
     typeLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     
-    -- Stats display
-    local statsText = filterFrame:CreateFontString(nil, "OVERLAY")
-    statsText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    statsText:SetPoint("RIGHT", filterFrame, "RIGHT", -10, 10)
-    statsText:SetJustifyH("RIGHT")
-    statsText:SetTextColor(0.8, 0.8, 0.6, 1)
-    
     -- Show zero contributors toggle
     local showZeroBtn = CreateFrame("CheckButton", nil, filterFrame, "UICheckButtonTemplate")
-    showZeroBtn:SetSize(16, 16)
-    showZeroBtn:SetPoint("RIGHT", statsText, "LEFT", -120, 0)
+    showZeroBtn:SetSize(14, 14)
+    showZeroBtn:SetPoint("LEFT", typeFilter, "RIGHT", 15, 5)
     showZeroBtn:SetChecked(false)
     
     local showZeroLabel = filterFrame:CreateFontString(nil, "OVERLAY")
-    showZeroLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    showZeroLabel:SetPoint("RIGHT", showZeroBtn, "LEFT", -5, 0)
+    showZeroLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    showZeroLabel:SetPoint("LEFT", showZeroBtn, "RIGHT", 5, 0)
     showZeroLabel:SetText("Show Zero Contributors")
     showZeroLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     
     -- Clear filters button
     local clearBtn = CreateFrame("Button", nil, filterFrame)
-    clearBtn:SetSize(60, 20)
-    clearBtn:SetPoint("RIGHT", showZeroBtn, "LEFT", -20, 0)
+    clearBtn:SetSize(50, 18)
+    clearBtn:SetPoint("LEFT", showZeroLabel, "RIGHT", 15, 0)
     clearBtn:SetNormalFontObject("GameFontNormalSmall")
     clearBtn:SetText("Clear")
     clearBtn:GetFontString():SetTextColor(0.8, 0.8, 0.8, 1)
@@ -635,6 +630,13 @@ function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
     local clearBg = clearBtn:CreateTexture(nil, "BACKGROUND")
     clearBg:SetAllPoints(clearBtn)
     clearBg:SetColorTexture(0.3, 0.3, 0.3, 0.6)
+    
+    -- Stats display
+    local statsText = filterFrame:CreateFontString(nil, "OVERLAY")
+    statsText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    statsText:SetPoint("RIGHT", filterFrame, "RIGHT", -10, 5)
+    statsText:SetJustifyH("RIGHT")
+    statsText:SetTextColor(0.8, 0.8, 0.6, 1)
     
     -- Store references
     self.participantFilters = {
@@ -767,60 +769,98 @@ function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
     -- Create header row
     local headerRow = CreateFrame("Frame", nil, parent)
     headerRow:SetSize(740, 25)
-    headerRow:SetPoint("TOP", parent, "TOP", 0, -110)
+    headerRow:SetPoint("TOP", parent, "TOP", 0, -100)
     
     local headerBg = headerRow:CreateTexture(nil, "BACKGROUND")
     headerBg:SetAllPoints(headerRow)
     headerBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
     
-    -- Column headers
-    local nameHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    -- Initialize sorting state
+    self.sortColumn = "total"  -- default sort by total damage + healing
+    self.sortDirection = "desc"  -- descending by default
+    
+    -- Clickable column headers with sorting
+    local nameHeaderBtn = CreateFrame("Button", nil, headerRow)
+    nameHeaderBtn:SetSize(150, 25)
+    nameHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 10, 0)
+    nameHeaderBtn:SetScript("OnClick", function() self:SortParticipants("name") end)
+    
+    local nameHeader = nameHeaderBtn:CreateFontString(nil, "OVERLAY")
     nameHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    nameHeader:SetPoint("LEFT", headerRow, "LEFT", 10, 0)
-    nameHeader:SetSize(150, 0)
+    nameHeader:SetAllPoints(nameHeaderBtn)
     nameHeader:SetText("Name")
     nameHeader:SetJustifyH("LEFT")
     nameHeader:SetTextColor(1, 1, 1, 1)
+    nameHeaderBtn.text = nameHeader
     
-    local typeHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    local typeHeaderBtn = CreateFrame("Button", nil, headerRow)
+    typeHeaderBtn:SetSize(80, 25)
+    typeHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 170, 0)
+    typeHeaderBtn:SetScript("OnClick", function() self:SortParticipants("type") end)
+    
+    local typeHeader = typeHeaderBtn:CreateFontString(nil, "OVERLAY")
     typeHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    typeHeader:SetPoint("LEFT", headerRow, "LEFT", 170, 0)
-    typeHeader:SetSize(80, 0)
+    typeHeader:SetAllPoints(typeHeaderBtn)
     typeHeader:SetText("Type")
     typeHeader:SetJustifyH("CENTER")
     typeHeader:SetTextColor(1, 1, 1, 1)
+    typeHeaderBtn.text = typeHeader
     
-    local damageHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    local damageHeaderBtn = CreateFrame("Button", nil, headerRow)
+    damageHeaderBtn:SetSize(100, 25)
+    damageHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 260, 0)
+    damageHeaderBtn:SetScript("OnClick", function() self:SortParticipants("damage") end)
+    
+    local damageHeader = damageHeaderBtn:CreateFontString(nil, "OVERLAY")
     damageHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    damageHeader:SetPoint("LEFT", headerRow, "LEFT", 260, 0)
-    damageHeader:SetSize(100, 0)
+    damageHeader:SetAllPoints(damageHeaderBtn)
     damageHeader:SetText("Damage Dealt")
     damageHeader:SetJustifyH("RIGHT")
     damageHeader:SetTextColor(1, 1, 1, 1)
+    damageHeaderBtn.text = damageHeader
     
-    local healingHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    local healingHeaderBtn = CreateFrame("Button", nil, headerRow)
+    healingHeaderBtn:SetSize(100, 25)
+    healingHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 370, 0)
+    healingHeaderBtn:SetScript("OnClick", function() self:SortParticipants("healing") end)
+    
+    local healingHeader = healingHeaderBtn:CreateFontString(nil, "OVERLAY")
     healingHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    healingHeader:SetPoint("LEFT", headerRow, "LEFT", 370, 0)
-    healingHeader:SetSize(100, 0)
+    healingHeader:SetAllPoints(healingHeaderBtn)
     healingHeader:SetText("Healing Dealt")
     healingHeader:SetJustifyH("RIGHT")
     healingHeader:SetTextColor(1, 1, 1, 1)
+    healingHeaderBtn.text = healingHeader
     
-    local takenHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    local takenHeaderBtn = CreateFrame("Button", nil, headerRow)
+    takenHeaderBtn:SetSize(100, 25)
+    takenHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 480, 0)
+    takenHeaderBtn:SetScript("OnClick", function() self:SortParticipants("taken") end)
+    
+    local takenHeader = takenHeaderBtn:CreateFontString(nil, "OVERLAY")
     takenHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    takenHeader:SetPoint("LEFT", headerRow, "LEFT", 480, 0)
-    takenHeader:SetSize(100, 0)
+    takenHeader:SetAllPoints(takenHeaderBtn)
     takenHeader:SetText("Damage Taken")
     takenHeader:SetJustifyH("RIGHT")
     takenHeader:SetTextColor(1, 1, 1, 1)
+    takenHeaderBtn.text = takenHeader
+    
+    -- Store header references for sorting indicators
+    self.columnHeaders = {
+        name = nameHeaderBtn,
+        type = typeHeaderBtn,
+        damage = damageHeaderBtn,
+        healing = healingHeaderBtn,
+        taken = takenHeaderBtn
+    }
     
     -- Virtualized scrollable list
     local scrollFrame = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetSize(740, 280)
+    scrollFrame:SetSize(740, 300)
     scrollFrame:SetPoint("TOP", headerRow, "BOTTOM", -20, -5)
     
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetSize(720, 280)
+    scrollChild:SetSize(720, 300)
     scrollFrame:SetScrollChild(scrollChild)
     
     -- Store references for virtualization
@@ -830,7 +870,7 @@ function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
         headerRow = headerRow,
         visibleRows = {},
         rowHeight = 27,
-        maxVisibleRows = 12
+        maxVisibleRows = 13
     }
     
     -- Create reusable row frames for virtualization
@@ -843,6 +883,9 @@ function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
     scrollFrame:SetScript("OnVerticalScroll", function(frame, delta)
         self:UpdateVisibleParticipants()
     end)
+    
+    -- Initial sorting indicators
+    self:UpdateSortingIndicators()
     
     -- Initial population
     self:RefreshParticipantsList()
@@ -911,7 +954,7 @@ function EnhancedSessionDetailWindow:RefreshParticipantsList()
     local numParticipants = #self.filteredParticipants
     
     -- Update scroll child height for proper scrolling
-    local totalHeight = math.max(280, numParticipants * list.rowHeight)
+    local totalHeight = math.max(300, numParticipants * list.rowHeight)
     list.scrollChild:SetHeight(totalHeight)
     
     -- Update visible participants
@@ -978,6 +1021,81 @@ function EnhancedSessionDetailWindow:UpdateParticipantRowData(row, participant, 
     row.damageText:SetText(addon.CombatTracker:FormatNumber(participant.damageDealt or 0))
     row.healingText:SetText(addon.CombatTracker:FormatNumber(participant.healingDealt or 0))
     row.takenText:SetText(addon.CombatTracker:FormatNumber(participant.damageTaken or 0))
+end
+
+-- Sort participants by column
+function EnhancedSessionDetailWindow:SortParticipants(column)
+    -- Toggle direction if clicking same column, otherwise default to desc
+    if self.sortColumn == column then
+        self.sortDirection = self.sortDirection == "desc" and "asc" or "desc"
+    else
+        self.sortColumn = column
+        self.sortDirection = "desc"
+    end
+    
+    -- Sort the participants array
+    table.sort(self.allParticipants, function(a, b)
+        local valueA, valueB
+        
+        if column == "name" then
+            valueA = a.name:lower()
+            valueB = b.name:lower()
+        elseif column == "type" then
+            -- Sort order: Player, Pet, NPC
+            local function getTypeOrder(participant)
+                if participant.isPlayer then return 1
+                elseif participant.isPet then return 2
+                else return 3 end
+            end
+            valueA = getTypeOrder(a)
+            valueB = getTypeOrder(b)
+        elseif column == "damage" then
+            valueA = a.damageDealt or 0
+            valueB = b.damageDealt or 0
+        elseif column == "healing" then
+            valueA = a.healingDealt or 0
+            valueB = b.healingDealt or 0
+        elseif column == "taken" then
+            valueA = a.damageTaken or 0
+            valueB = b.damageTaken or 0
+        else -- total (default)
+            valueA = (a.damageDealt or 0) + (a.healingDealt or 0)
+            valueB = (b.damageDealt or 0) + (b.healingDealt or 0)
+        end
+        
+        if self.sortDirection == "asc" then
+            return valueA < valueB
+        else
+            return valueA > valueB
+        end
+    end)
+    
+    -- Update column header indicators
+    self:UpdateSortingIndicators()
+    
+    -- Refresh the filtered view
+    self:FilterParticipants()
+end
+
+-- Update sorting indicators in column headers
+function EnhancedSessionDetailWindow:UpdateSortingIndicators()
+    -- Reset all headers
+    for _, header in pairs(self.columnHeaders) do
+        local text = header.text:GetText()
+        -- Remove existing arrows
+        text = text:gsub(" [↑↓]", "")
+        header.text:SetText(text)
+        header.text:SetTextColor(1, 1, 1, 1)
+    end
+    
+    -- Add arrow to current sort column
+    if self.columnHeaders[self.sortColumn] then
+        local header = self.columnHeaders[self.sortColumn]
+        local text = header.text:GetText()
+        local arrow = self.sortDirection == "asc" and "↑" or "↓"
+        header.text:SetText(text .. " " .. arrow)
+        header.text:SetTextColor(0.8, 0.8, 1, 1)  -- Highlight sorted column
+    end
 end
 
 -- Create damage analysis tab - FIXED VERSION
