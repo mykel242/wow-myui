@@ -241,7 +241,7 @@ function CombatTracker:CheckSpecChange()
                 if newSpecName_temp then newSpecName = newSpecName_temp end
             end
 
-            print(string.format("Spec changed from %s to %s - reloading session data", oldSpecName, newSpecName))
+            addon:DebugPrint(string.format("Spec changed from %s to %s - reloading session data", oldSpecName, newSpecName))
         end
 
         -- Reload session history for new spec
@@ -255,7 +255,7 @@ function CombatTracker:CheckSpecChange()
             addon.hpsPixelMeter:ResetMaxValue()
         end
 
-        print(string.format("Switched to new spec - session data and meter scaling updated"))
+        addon:DebugPrint("Switched to new spec - session data and meter scaling updated")
     end
 
     currentSpec = newSpec
@@ -291,7 +291,6 @@ function CombatTracker:Initialize()
     end)
 
     if addon.DEBUG then
-        print("CombatTracker main module initialized")
     end
 end
 

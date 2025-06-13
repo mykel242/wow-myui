@@ -74,7 +74,7 @@ local function TrackParticipant(guid, name, flags)
 
     if addon.DEBUG and math.random() < 0.2 then -- 20% sample rate for debug
         local typeStr = isPlayer and "Player" or (isPet and "Pet" or "NPC")
-        print(string.format("Enhanced: Tracked %s (%s)", name, typeStr))
+        addon:DebugPrint(string.format("Enhanced: Tracked %s (%s)", name, typeStr))
     end
 end
 
@@ -151,7 +151,7 @@ local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, spellId, sp
         })
 
         if addon.DEBUG then
-            print(string.format("Cooldown tracked: %s used %s at %.1fs",
+            addon:DebugPrint(string.format("Cooldown tracked: %s used %s at %.1fs",
                 sourceName, spellName, timestamp - (addon.CombatData:GetRawCombatData().startTime or timestamp)))
         end
     end
@@ -167,7 +167,7 @@ local function TrackDeath(timestamp, destGUID, destName)
     })
 
     if addon.DEBUG then
-        print(string.format("Death tracked: %s died at %.1fs",
+        addon:DebugPrint(string.format("Death tracked: %s died at %.1fs",
             destName, timestamp - (addon.CombatData:GetRawCombatData().startTime or timestamp)))
     end
 end
@@ -207,7 +207,7 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
                 TrackDamageTaken(timestamp, sourceGUID, sourceName, destGUID, destName, spellId, spellName, amount)
 
                 if addon.DEBUG and math.random() < 0.1 then -- 10% sample rate for debug
-                    print(string.format("Enhanced: Player took %s damage from %s",
+                    addon:DebugPrint(string.format("Enhanced: Player took %s damage from %s",
                         addon.CombatTracker:FormatNumber(amount), sourceName or "Unknown"))
                 end
             end
@@ -356,7 +356,7 @@ function EnhancedCombatLogger:StartEnhancedTracking()
     }
 
     if addon.DEBUG then
-        print("Enhanced combat logging started - data structures reset")
+        addon:DebugPrint("Enhanced combat logging started - data structures reset")
     end
 end
 
@@ -364,7 +364,7 @@ end
 function EnhancedCombatLogger:EndEnhancedTracking()
     if addon.DEBUG then
         local summary = self:GetParticipantsSummary()
-        print(string.format("Enhanced logging ended: %d players, %d NPCs, %d cooldowns used, %d deaths",
+        addon:DebugPrint(string.format("Enhanced logging ended: %d players, %d NPCs, %d cooldowns used, %d deaths",
             #summary.players, #summary.npcs, #enhancedSessionData.cooldownUsage, #enhancedSessionData.deaths))
     end
 end
@@ -405,6 +405,5 @@ function EnhancedCombatLogger:Initialize()
     end)
 
     if addon.DEBUG then
-        print("EnhancedCombatLogger module initialized")
     end
 end

@@ -257,7 +257,7 @@ function TimelineTracker:StartCombat()
     timelineData.samples = {}
 
     if addon.DEBUG then
-        print("TimelineTracker: Combat started, data cleared")
+        addon:DebugPrint("TimelineTracker: Combat started, data cleared")
     end
 end
 
@@ -267,7 +267,7 @@ function TimelineTracker:EndCombat()
     SampleCombatData()
 
     if addon.DEBUG then
-        print(string.format("TimelineTracker: Combat ended, %d timeline samples recorded", #timelineData.samples))
+        addon:DebugPrint(string.format("TimelineTracker: Combat ended, %d timeline samples recorded", #timelineData.samples))
     end
 end
 
@@ -279,7 +279,7 @@ function TimelineTracker:Reset()
     timelineData.samples = {}
 
     if addon.DEBUG then
-        print("TimelineTracker: Data reset")
+        addon:DebugPrint("TimelineTracker: Data reset")
     end
 end
 
