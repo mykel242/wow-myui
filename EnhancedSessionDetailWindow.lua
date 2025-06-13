@@ -610,19 +610,19 @@ function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
     -- Show zero contributors toggle
     local showZeroBtn = CreateFrame("CheckButton", nil, filterFrame, "UICheckButtonTemplate")
     showZeroBtn:SetSize(14, 14)
-    showZeroBtn:SetPoint("LEFT", typeFilter, "RIGHT", 15, 5)
+    showZeroBtn:SetPoint("LEFT", typeFilter, "RIGHT", 10, 5)
     showZeroBtn:SetChecked(false)
     
     local showZeroLabel = filterFrame:CreateFontString(nil, "OVERLAY")
     showZeroLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
-    showZeroLabel:SetPoint("LEFT", showZeroBtn, "RIGHT", 5, 0)
-    showZeroLabel:SetText("Show Zero Contributors")
+    showZeroLabel:SetPoint("LEFT", showZeroBtn, "RIGHT", 3, 0)
+    showZeroLabel:SetText("Show Zero")
     showZeroLabel:SetTextColor(0.8, 0.8, 0.8, 1)
     
     -- Clear filters button
     local clearBtn = CreateFrame("Button", nil, filterFrame)
-    clearBtn:SetSize(50, 18)
-    clearBtn:SetPoint("LEFT", showZeroLabel, "RIGHT", 15, 0)
+    clearBtn:SetSize(45, 18)
+    clearBtn:SetPoint("LEFT", showZeroLabel, "RIGHT", 8, 0)
     clearBtn:SetNormalFontObject("GameFontNormalSmall")
     clearBtn:SetText("Clear")
     clearBtn:GetFontString():SetTextColor(0.8, 0.8, 0.8, 1)
@@ -631,18 +631,10 @@ function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
     clearBg:SetAllPoints(clearBtn)
     clearBg:SetColorTexture(0.3, 0.3, 0.3, 0.6)
     
-    -- Stats display
-    local statsText = filterFrame:CreateFontString(nil, "OVERLAY")
-    statsText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    statsText:SetPoint("RIGHT", filterFrame, "RIGHT", -10, 5)
-    statsText:SetJustifyH("RIGHT")
-    statsText:SetTextColor(0.8, 0.8, 0.6, 1)
-    
     -- Store references
     self.participantFilters = {
         searchBox = searchBox,
         typeFilter = typeFilter,
-        statsText = statsText,
         clearBtn = clearBtn,
         showZeroBtn = showZeroBtn
     }
@@ -724,8 +716,6 @@ function EnhancedSessionDetailWindow:SetupParticipantFilters()
         window:FilterParticipants()
     end)
     
-    -- Initial stats update
-    self:UpdateParticipantStats()
 end
 
 -- Filter participants based on current filter settings
@@ -752,16 +742,7 @@ function EnhancedSessionDetailWindow:FilterParticipants()
         end
     end
     
-    self:UpdateParticipantStats()
     self:RefreshParticipantsList()
-end
-
--- Update participant statistics display
-function EnhancedSessionDetailWindow:UpdateParticipantStats()
-    local total = #self.allParticipants
-    local filtered = #self.filteredParticipants
-    local statsText = string.format("Showing %d of %d participants", filtered, total)
-    self.participantFilters.statsText:SetText(statsText)
 end
 
 -- Create the virtualized participants list
@@ -1079,21 +1060,26 @@ end
 
 -- Update sorting indicators in column headers
 function EnhancedSessionDetailWindow:UpdateSortingIndicators()
-    -- Reset all headers
-    for _, header in pairs(self.columnHeaders) do
-        local text = header.text:GetText()
-        -- Remove existing arrows
-        text = text:gsub(" [↑↓]", "")
-        header.text:SetText(text)
+    -- Reset all headers to base names
+    local baseNames = {
+        name = "Name",
+        type = "Type", 
+        damage = "Damage Dealt",
+        healing = "Healing Dealt",
+        taken = "Damage Taken"
+    }
+    
+    for column, header in pairs(self.columnHeaders) do
+        header.text:SetText(baseNames[column] or "")
         header.text:SetTextColor(1, 1, 1, 1)
     end
     
     -- Add arrow to current sort column
     if self.columnHeaders[self.sortColumn] then
         local header = self.columnHeaders[self.sortColumn]
-        local text = header.text:GetText()
-        local arrow = self.sortDirection == "asc" and "↑" or "↓"
-        header.text:SetText(text .. " " .. arrow)
+        local baseName = baseNames[self.sortColumn] or ""
+        local arrow = self.sortDirection == "asc" and " ↑" or " ↓"
+        header.text:SetText(baseName .. arrow)
         header.text:SetTextColor(0.8, 0.8, 1, 1)  -- Highlight sorted column
     end
 end

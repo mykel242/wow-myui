@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-enhanced-logging-participants-view-a93d1dd"
-addon.BUILD_DATE = "2025-06-12-20:13"
+addon.VERSION = "feature-enhanced-logging-participants-view-3836c08"
+addon.BUILD_DATE = "2025-06-12-20:21"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
