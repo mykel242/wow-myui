@@ -59,6 +59,12 @@ function addon.DPSWindow:Show()
     if addon.dpsPixelMeter then
         addon.dpsPixelMeter:Show()
         PositionPixelMeter()
+        
+        -- Update focus manager registration to include pixel meter
+        if addon.FocusManager and self.frame then
+            addon.FocusManager.registeredWindows[self.frame].pixelMeter = addon.dpsPixelMeter
+            addon.dpsPixelMeter:SyncStrataWithParent()
+        end
     end
 
     -- Hook into the drag events to keep pixel meter positioned

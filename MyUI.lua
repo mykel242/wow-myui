@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-8d07844"
-addon.BUILD_DATE = "2025-06-12-20:51"
+addon.VERSION = "main-0a78fcb"
+addon.BUILD_DATE = "2025-06-12-21:11"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -44,6 +44,109 @@ addon.defaults = {
 function addon:DebugPrint(...)
     if self.DEBUG then
         print("[" .. addonName .. " DEBUG]", ...)
+    end
+end
+
+-- Window focus management system
+addon.FocusManager = {
+    focusedWindow = nil,
+    registeredWindows = {}
+}
+
+function addon.FocusManager:RegisterWindow(frame, pixelMeter)
+    if not frame then return end
+    
+    -- Set default strata
+    frame:SetFrameStrata("MEDIUM")
+    
+    -- Store registration
+    self.registeredWindows[frame] = {
+        pixelMeter = pixelMeter,
+        defaultStrata = "MEDIUM"
+    }
+    
+    -- Sync pixel meter strata if it exists
+    if pixelMeter and pixelMeter.SyncStrataWithParent then
+        pixelMeter:SyncStrataWithParent()
+    end
+    
+    -- Hook focus events
+    self:HookFocusEvents(frame)
+end
+
+function addon.FocusManager:HookFocusEvents(frame)
+    -- Focus on drag start
+    local originalDragStart = frame:GetScript("OnDragStart")
+    frame:SetScript("OnDragStart", function(self)
+        addon.FocusManager:SetFocus(self)
+        if originalDragStart then
+            originalDragStart(self)
+        end
+    end)
+    
+    -- Focus on mouse down
+    local originalMouseDown = frame:GetScript("OnMouseDown")
+    frame:SetScript("OnMouseDown", function(self, button)
+        addon.FocusManager:SetFocus(self)
+        if originalMouseDown then
+            originalMouseDown(self, button)
+        end
+    end)
+    
+    -- Focus when shown
+    local originalShow = frame:GetScript("OnShow")
+    frame:SetScript("OnShow", function(self)
+        addon.FocusManager:SetFocus(self)
+        if originalShow then
+            originalShow(self)
+        end
+    end)
+    
+    -- Lose focus when hidden
+    local originalHide = frame:GetScript("OnHide")
+    frame:SetScript("OnHide", function(self)
+        if addon.FocusManager.focusedWindow == self then
+            addon.FocusManager:ClearFocus()
+        end
+        if originalHide then
+            originalHide(self)
+        end
+    end)
+end
+
+function addon.FocusManager:SetFocus(frame)
+    -- Clear previous focus
+    if self.focusedWindow and self.focusedWindow ~= frame then
+        self:RevertWindowStrata(self.focusedWindow)
+    end
+    
+    -- Set new focus
+    self.focusedWindow = frame
+    frame:SetFrameStrata("HIGH")
+    
+    -- Sync pixel meter strata
+    local windowInfo = self.registeredWindows[frame]
+    if windowInfo and windowInfo.pixelMeter and windowInfo.pixelMeter.SyncStrataWithParent then
+        windowInfo.pixelMeter:SyncStrataWithParent()
+    end
+end
+
+function addon.FocusManager:ClearFocus()
+    if self.focusedWindow then
+        self:RevertWindowStrata(self.focusedWindow)
+        self.focusedWindow = nil
+    end
+end
+
+function addon.FocusManager:RevertWindowStrata(frame)
+    local windowInfo = self.registeredWindows[frame]
+    if windowInfo then
+        frame:SetFrameStrata(windowInfo.defaultStrata)
+        
+        -- Sync pixel meter strata
+        if windowInfo.pixelMeter and windowInfo.pixelMeter.SyncStrataWithParent then
+            windowInfo.pixelMeter:SyncStrataWithParent()
+        end
     end
 end
 
@@ -308,6 +411,11 @@ function addon:CreateMainFrame()
             yOffset = yOfs
         }
     end)
+    
+    -- Register with focus management  
+    if addon.FocusManager then
+        addon.FocusManager:RegisterWindow(frame, nil)
+    end
 
     -- === CURRENT COMBAT PANEL ===
     local combatPanel = CreateFrame("Frame", nil, frame)

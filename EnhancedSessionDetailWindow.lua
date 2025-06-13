@@ -96,6 +96,11 @@ function EnhancedSessionDetailWindow:Create(sessionData)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    
+    -- Register with focus management
+    if addon.FocusManager then
+        addon.FocusManager:RegisterWindow(frame, nil)
+    end
 
     -- === HEADER SECTION ===
     self:CreateHeaderSection(frame, sessionData)

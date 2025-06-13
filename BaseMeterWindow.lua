@@ -130,6 +130,11 @@ function BaseMeterWindow:Create()
 
     -- Store frame reference
     self.frame = frame
+    
+    -- Register with focus management system
+    if addon.FocusManager then
+        addon.FocusManager:RegisterWindow(frame, nil)
+    end
 
     -- Meter mode indicator (small text showing current max and mode)
     local meterIndicator = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")

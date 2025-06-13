@@ -28,6 +28,23 @@ function WorkingPixelMeter:New(config)
     return instance
 end
 
+-- Sync frame strata with parent window
+function WorkingPixelMeter:SyncStrataWithParent()
+    if not self.frame then return end
+    
+    local parentWindow = nil
+    if self.meterName == "DPS" and addon.DPSWindow and addon.DPSWindow.frame then
+        parentWindow = addon.DPSWindow.frame
+    elseif self.meterName == "HPS" and addon.HPSWindow and addon.HPSWindow.frame then
+        parentWindow = addon.HPSWindow.frame
+    end
+    
+    if parentWindow then
+        local parentStrata = parentWindow:GetFrameStrata()
+        self.frame:SetFrameStrata(parentStrata)
+    end
+end
+
 function WorkingPixelMeter:Create()
     if self.frame then return end
 
@@ -44,7 +61,7 @@ function WorkingPixelMeter:Create()
     local frame = CreateFrame("Frame", nil, UIParent)
     frame:SetSize(220, totalHeight + 8)                  -- Match the 220px window width
     frame:SetPoint("CENTER", UIParent, "CENTER", 200, 0) -- Default position - will be repositioned by parent
-    frame:SetFrameStrata("MEDIUM")
+    -- Inherit strata from parent window (will be set when parent is created)
 
     -- Cleaner background to match existing meters
     local bg = frame:CreateTexture(nil, "BACKGROUND")
