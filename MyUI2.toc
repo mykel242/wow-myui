@@ -7,6 +7,7 @@
 ## DefaultState: enabled
 
 MyUI.lua
+UnifiedCalculator.lua
 BaseMeterWindow.lua
 CombatData.lua
 CombatTracker.lua
@@ -19,3 +20,4 @@ SessionDetailWindow.lua
 SessionManager.lua
 TimelineTracker.lua
 WorkingPixelMeter.lua
+CalculationConfig.lua

@@ -101,6 +101,13 @@ function EnhancedSessionDetailWindow:Create(sessionData)
     if addon.FocusManager then
         addon.FocusManager:RegisterWindow(frame, nil)
     end
+    
+    -- Standard close button (top-right)
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+    closeButton:SetScript("OnClick", function()
+        frame:Hide()
+    end)
 
     -- === HEADER SECTION ===
     self:CreateHeaderSection(frame, sessionData)

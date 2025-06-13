@@ -124,8 +124,20 @@ function BaseMeterWindow:Create()
     label:SetText(self.config.label)
     label:SetTextColor(self.config.labelColor.r, self.config.labelColor.g, self.config.labelColor.b, 1)
     label:SetJustifyH("RIGHT")
+    
+    -- Calculation method indicator (smaller text under label)
+    local methodIndicator = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    methodIndicator:SetPoint("TOPRIGHT", label, "BOTTOMRIGHT", 0, -2)
+    methodIndicator:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 8, "OUTLINE")
+    methodIndicator:SetText("Rolling")
+    methodIndicator:SetTextColor(0.7, 0.7, 0.7, 0.8)
+    methodIndicator:SetJustifyH("RIGHT")
+    
+    self.methodIndicator = methodIndicator
+    self.label = label
+    
     if addon.DEBUG then
-        print("Label created")
+        print("Label and method indicator created")
     end
 
     -- Store frame reference
@@ -336,6 +348,19 @@ function BaseMeterWindow:UpdateDisplay()
     -- Update main number
     if self.frame.mainText then
         self.frame.mainText:SetText(addon.CombatTracker:FormatNumber(mainValue))
+    end
+    
+    -- Update calculation method indicator
+    if self.methodIndicator and addon.CombatData and addon.CombatData:GetCalculator() then
+        local calculator = addon.CombatData:GetCalculator()
+        local currentMethod = calculator:GetCalculationMethod()
+        local methods = addon.UnifiedCalculator.CALCULATION_METHODS
+        
+        local methodText = currentMethod == methods.ROLLING_AVERAGE and "Rolling" or
+                          currentMethod == methods.FINAL_TOTAL and "Final" or
+                          currentMethod == methods.HYBRID and "Hybrid" or "Unknown"
+        
+        self.methodIndicator:SetText(methodText)
     end
 
     -- Update secondary stats with inline labels (no floating labels)

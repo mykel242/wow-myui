@@ -166,8 +166,17 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
     end
 
     local duration = combatData.endTime - combatData.startTime
-    local avgDPS = duration > 0 and (combatData.finalDamage / duration) or 0
-    local avgHPS = duration > 0 and (combatData.finalHealing / duration) or 0
+    -- Use unified calculator for consistent calculations
+    local calculator = addon.CombatData:GetCalculator()
+    local avgDPS, avgHPS
+    if calculator then
+        avgDPS = calculator:_GetFinalDPS(false)
+        avgHPS = calculator:_GetFinalHPS(false)
+    else
+        -- Fallback to direct calculation
+        avgDPS = duration > 0 and (combatData.finalDamage / duration) or 0
+        avgHPS = duration > 0 and (combatData.finalHealing / duration) or 0
+    end
 
     local sessionData = {
         sessionId = GenerateSessionId(),
@@ -182,8 +191,8 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
         totalAbsorb = combatData.finalAbsorb,
         avgDPS = avgDPS,
         avgHPS = avgHPS,
-        peakDPS = combatData.finalMaxDPS,
-        peakHPS = combatData.finalMaxHPS,
+        peakDPS = calculator and calculator:GetMaxDPS() or combatData.finalMaxDPS,
+        peakHPS = calculator and calculator:GetMaxHPS() or combatData.finalMaxHPS,
 
         -- Metadata
         location = GetZoneText() or "Unknown",

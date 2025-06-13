@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-09d2dd3"
-addon.BUILD_DATE = "2025-06-12-21:16"
+addon.VERSION = "feature-hps-dps-reconciliation-3d99ccd"
+addon.BUILD_DATE = "2025-06-13-08:48"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -257,6 +257,9 @@ function addon:OnInitialize()
     self.DEBUG = self.db.debugMode
 
     -- Initialize all modules IN THE CORRECT ORDER
+    -- 0. Unified calculator must be available before combat data
+    -- (UnifiedCalculator is loaded via file inclusion - no init needed)
+    
     -- 1. Core combat tracking first
     if self.CombatData then
         self.CombatData:Initialize()
@@ -293,6 +296,11 @@ function addon:OnInitialize()
     end
     if self.HPSWindow then
         self.HPSWindow:Initialize()
+    end
+    
+    -- 8. Configuration interfaces
+    if self.CalculationConfig then
+        self.CalculationConfig:Initialize()
     end
 
     -- Load session history for current character/spec
@@ -442,6 +450,14 @@ function addon:CreateMainFrame()
     if addon.FocusManager then
         addon.FocusManager:RegisterWindow(frame, nil, "HIGH")
     end
+    
+    -- Standard close button (top-right)
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+    closeButton:SetScript("OnClick", function()
+        frame:Hide()
+        addon.db.showMainWindow = false
+    end)
 
     -- === CURRENT COMBAT PANEL ===
     local combatPanel = CreateFrame("Frame", nil, frame)
@@ -717,7 +733,7 @@ function addon:CreateMainFrame()
 
     -- === CONTROL PANEL ===
     local controlPanel = CreateFrame("Frame", nil, frame)
-    controlPanel:SetSize(400, 50)
+    controlPanel:SetSize(400, 75)
     controlPanel:SetPoint("TOP", chartPanel, "BOTTOM", 0, -5)
 
     local controlBg = controlPanel:CreateTexture(nil, "BACKGROUND")
@@ -761,6 +777,82 @@ function addon:CreateMainFrame()
         print(addonName .. " debug: " .. (addon.DEBUG and "ON" or "OFF"))
     end)
 
+    -- Calculation method dropdown (positioned on second row)
+    local calcLabel = controlPanel:CreateFontString(nil, "OVERLAY")
+    calcLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    calcLabel:SetPoint("LEFT", controlPanel, "LEFT", 10, -40)
+    calcLabel:SetText("Calc Method:")
+    calcLabel:SetTextColor(0.8, 0.8, 0.8, 1)
+    
+    local calcDropdown = CreateFrame("Frame", nil, controlPanel, "UIDropDownMenuTemplate")
+    calcDropdown:SetPoint("LEFT", calcLabel, "RIGHT", -15, 2)
+    
+    -- Initialize dropdown
+    UIDropDownMenu_Initialize(calcDropdown, function(self, level)
+        if not addon.CombatData or not addon.CombatData:GetCalculator() then
+            return
+        end
+        
+        local calculator = addon.CombatData:GetCalculator()
+        local methods = addon.UnifiedCalculator.CALCULATION_METHODS
+        local currentMethod = calculator:GetCalculationMethod()
+        
+        -- Rolling Average option
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = "Rolling Average"
+        info.func = function()
+            local success = calculator:SetCalculationMethod(methods.ROLLING_AVERAGE)
+            print("Switched to Rolling Average calculation")
+            UIDropDownMenu_SetText(calcDropdown, "Rolling")
+        end
+        info.checked = (currentMethod == methods.ROLLING_AVERAGE)
+        UIDropDownMenu_AddButton(info)
+        
+        -- Final Total option
+        info = UIDropDownMenu_CreateInfo()
+        info.text = "Final Total"
+        info.func = function()
+            local success = calculator:SetCalculationMethod(methods.FINAL_TOTAL)
+            print("Switched to Final Total calculation")
+            UIDropDownMenu_SetText(calcDropdown, "Final")
+        end
+        info.checked = (currentMethod == methods.FINAL_TOTAL)
+        UIDropDownMenu_AddButton(info)
+        
+        -- Hybrid option
+        info = UIDropDownMenu_CreateInfo()
+        info.text = "Hybrid"
+        info.func = function()
+            local success = calculator:SetCalculationMethod(methods.HYBRID)
+            print("Switched to Hybrid calculation")
+            UIDropDownMenu_SetText(calcDropdown, "Hybrid")
+        end
+        info.checked = (currentMethod == methods.HYBRID)
+        UIDropDownMenu_AddButton(info)
+    end)
+    
+    -- Update dropdown text based on current method
+    local function UpdateCalcDropdownText()
+        if addon.CombatData and addon.CombatData:GetCalculator() and addon.UnifiedCalculator then
+            local calculator = addon.CombatData:GetCalculator()
+            local currentMethod = calculator:GetCalculationMethod()
+            local methods = addon.UnifiedCalculator.CALCULATION_METHODS
+            
+            local methodText = currentMethod == methods.ROLLING_AVERAGE and "Rolling" or
+                              currentMethod == methods.FINAL_TOTAL and "Final" or
+                              currentMethod == methods.HYBRID and "Hybrid" or "Unknown"
+            
+            UIDropDownMenu_SetText(calcDropdown, methodText)
+        else
+            UIDropDownMenu_SetText(calcDropdown, "N/A")
+        end
+    end
+    
+    UIDropDownMenu_SetWidth(calcDropdown, 70)
+    UIDropDownMenu_SetText(calcDropdown, "Rolling")
+    frame.calcDropdown = calcDropdown
+    frame.updateCalcDropdown = UpdateCalcDropdownText
+    
     local sessionCount = controlPanel:CreateFontString(nil, "OVERLAY")
     sessionCount:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
     sessionCount:SetPoint("BOTTOM", controlPanel, "BOTTOM", 0, 5)
@@ -911,6 +1003,11 @@ function addon:UpdateSessionTable()
         else
             row:Hide()
         end
+    end
+    
+    -- Update calculation method dropdown
+    if self.mainFrame.updateCalcDropdown then
+        self.mainFrame.updateCalcDropdown()
     end
 end
 
@@ -1240,6 +1337,72 @@ function SlashCmdList.MYUI(msg, editBox)
             print("  Damage Taken:", addon.db.trackDamageTaken and "ON" or "OFF")
             print("  Group Damage:", addon.db.trackGroupDamage and "ON" or "OFF")
         end
+    elseif command:match("^calc") then
+        local calcArg = command:match("^calc%s*(.*)$")
+        
+        if not addon.CombatData or not addon.CombatData:GetCalculator() then
+            print("Calculator not available - CombatData:", addon.CombatData and "exists" or "nil", "Calculator:", addon.CombatData and addon.CombatData:GetCalculator() and "exists" or "nil")
+            print("UnifiedCalculator:", addon.UnifiedCalculator and "exists" or "nil")
+            return
+        end
+        
+        local calculator = addon.CombatData:GetCalculator()
+        local methods = addon.UnifiedCalculator.CALCULATION_METHODS
+        
+        if calcArg == "" then
+            -- Show current method and validation
+            local currentMethod = calculator:GetCalculationMethod()
+            local methodName = currentMethod == methods.ROLLING_AVERAGE and "Rolling Average" or
+                              currentMethod == methods.FINAL_TOTAL and "Final Total" or
+                              currentMethod == methods.HYBRID and "Hybrid" or "Unknown"
+            print("Current calculation method:", methodName)
+            
+            -- Quick validation
+            if calculator:ValidateCalculations() then
+                local validation = calculator:GetValidationResults()
+                if validation.inCombat then
+                    print(string.format("Live variance: DPS %.1f%%, HPS %.1f%%", 
+                        validation.dpsPercentageVariance, validation.hpsPercentageVariance))
+                else
+                    print("Not in combat - no variance to show")
+                end
+            end
+        elseif calcArg == "rolling" then
+            if calculator:SetCalculationMethod(methods.ROLLING_AVERAGE) then
+                print("Calculation method changed to: Rolling Average (5-second window)")
+            end
+        elseif calcArg == "final" then
+            if calculator:SetCalculationMethod(methods.FINAL_TOTAL) then
+                print("Calculation method changed to: Final Total (damage/time)")
+            end
+        elseif calcArg == "hybrid" then
+            if calculator:SetCalculationMethod(methods.HYBRID) then
+                print("Calculation method changed to: Hybrid (70% rolling, 30% final)")
+            end
+        elseif calcArg == "validate" then
+            if calculator:ValidateCalculations() then
+                local validation = calculator:GetValidationResults()
+                print("=== CALCULATION VALIDATION ===")
+                if validation.inCombat then
+                    print("Status: IN COMBAT")
+                    print(string.format("Rolling: %.0f DPS, %.0f HPS", validation.rollingDPS, validation.rollingHPS))
+                    print(string.format("Final: %.0f DPS, %.0f HPS", validation.finalDPS, validation.finalHPS))
+                    print(string.format("Variance: %.1f%% DPS, %.1f%% HPS", 
+                        validation.dpsPercentageVariance, validation.hpsPercentageVariance))
+                else
+                    print("Status: OUT OF COMBAT")
+                    print(string.format("Final: %.0f DPS, %.0f HPS", validation.finalDPS, validation.finalHPS))
+                    print("Start combat to see method differences")
+                end
+            end
+        else
+            print("Calculation Commands:")
+            print("  /myui calc - Show current method")
+            print("  /myui calc rolling - Use rolling average")
+            print("  /myui calc final - Use final total")
+            print("  /myui calc hybrid - Use hybrid method")
+            print("  /myui calc validate - Compare methods")
+        end
     else
         print("MyUI Commands:")
         print("  /myui [ show | hide | toggle ] - Main window")
@@ -1256,6 +1419,7 @@ function SlashCmdList.MYUI(msg, editBox)
         print("  /myui meterinfo - Show current meter status")
         print("  /myui enhancedlog - Enhanced logging status")
         print("  /myui enhancedconfig <all|damage|group> - Enhanced config")
+        print("  /myui calc [rolling|final|hybrid|validate] - Calculation methods")
         print("  /myui debug - Toggle debug mode")
     end
 end

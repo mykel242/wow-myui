@@ -14,7 +14,7 @@ function SessionDetailWindow:Create(sessionData)
     end
 
     local frame = CreateFrame("Frame", addonName .. "SessionDetailFrame", UIParent)
-    frame:SetSize(600, 450)
+    frame:SetSize(600, 490)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 
     -- Background
@@ -40,6 +40,13 @@ function SessionDetailWindow:Create(sessionData)
     if addon.FocusManager then
         addon.FocusManager:RegisterWindow(frame, nil)
     end
+    
+    -- Standard close button (top-right)
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+    closeButton:SetScript("OnClick", function()
+        self:Hide()
+    end)
 
     -- === HEADER SECTION ===
     local headerPanel = CreateFrame("Frame", nil, frame)
@@ -115,11 +122,56 @@ function SessionDetailWindow:Create(sessionData)
     peakHpsCol:SetPoint("TOPLEFT", summaryPanel, "TOPLEFT", 405, -25)
     peakHpsCol:SetText(string.format("Peak HPS\n%s", addon.CombatTracker:FormatNumber(sessionData.peakHPS)))
     peakHpsCol:SetTextColor(0.5, 1, 0.5, 1)
+    
+    -- === CALCULATION METHOD COMPARISON ===
+    local comparisonPanel = CreateFrame("Frame", nil, frame)
+    comparisonPanel:SetSize(580, 40)
+    comparisonPanel:SetPoint("TOP", summaryPanel, "BOTTOM", 0, -5)
+    
+    local compBg = comparisonPanel:CreateTexture(nil, "BACKGROUND")
+    compBg:SetAllPoints(comparisonPanel)
+    compBg:SetColorTexture(0.05, 0.05, 0.15, 0.7)
+    
+    -- Calculate alternative method values for comparison
+    local altDPS, altHPS = sessionData.avgDPS, sessionData.avgHPS
+    local methodNote = "Session stored with unified calculation"
+    
+    if sessionData.totalDamage and sessionData.totalHealing and sessionData.duration > 0 then
+        altDPS = sessionData.totalDamage / sessionData.duration
+        altHPS = sessionData.totalHealing / sessionData.duration
+        
+        local dpsVariance = math.abs(sessionData.avgDPS - altDPS)
+        local hpsVariance = math.abs(sessionData.avgHPS - altHPS)
+        local dpsPercent = sessionData.avgDPS > 0 and (dpsVariance / sessionData.avgDPS) * 100 or 0
+        local hpsPercent = sessionData.avgHPS > 0 and (hpsVariance / sessionData.avgHPS) * 100 or 0
+        
+        if dpsPercent > 5 or hpsPercent > 5 then
+            methodNote = string.format("Raw calc differs: %.1f%% DPS, %.1f%% HPS variance", dpsPercent, hpsPercent)
+        else
+            methodNote = "Raw calculation matches stored values"
+        end
+    end
+    
+    local comparisonText = comparisonPanel:CreateFontString(nil, "OVERLAY")
+    comparisonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    comparisonText:SetPoint("CENTER", comparisonPanel, "CENTER", 0, 5)
+    comparisonText:SetText(string.format("Stored: %s DPS, %s HPS | Raw: %s DPS, %s HPS",
+        addon.CombatTracker:FormatNumber(sessionData.avgDPS),
+        addon.CombatTracker:FormatNumber(sessionData.avgHPS),
+        addon.CombatTracker:FormatNumber(altDPS),
+        addon.CombatTracker:FormatNumber(altHPS)))
+    comparisonText:SetTextColor(0.8, 0.8, 1, 1)
+    
+    local methodText = comparisonPanel:CreateFontString(nil, "OVERLAY")
+    methodText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    methodText:SetPoint("CENTER", comparisonPanel, "CENTER", 0, -10)
+    methodText:SetText(methodNote)
+    methodText:SetTextColor(0.6, 0.6, 0.8, 1)
 
     -- === TIMELINE CHART ===
     local chartPanel = CreateFrame("Frame", nil, frame)
     chartPanel:SetSize(580, 220)
-    chartPanel:SetPoint("TOP", summaryPanel, "BOTTOM", 0, -5)
+    chartPanel:SetPoint("TOP", comparisonPanel, "BOTTOM", 0, -5)
 
     local chartBg = chartPanel:CreateTexture(nil, "BACKGROUND")
     chartBg:SetAllPoints(chartPanel)
@@ -158,17 +210,10 @@ function SessionDetailWindow:Create(sessionData)
     controlPanel:SetSize(580, 40)
     controlPanel:SetPoint("BOTTOM", frame, "BOTTOM", 0, 10)
 
-    local closeBtn = CreateFrame("Button", nil, controlPanel, "GameMenuButtonTemplate")
-    closeBtn:SetSize(80, 25)
-    closeBtn:SetPoint("RIGHT", controlPanel, "RIGHT", -10, 0)
-    closeBtn:SetText("Close")
-    closeBtn:SetScript("OnClick", function()
-        self:Hide()
-    end)
 
     local exportBtn = CreateFrame("Button", nil, controlPanel, "GameMenuButtonTemplate")
     exportBtn:SetSize(80, 25)
-    exportBtn:SetPoint("RIGHT", closeBtn, "LEFT", -5, 0)
+    exportBtn:SetPoint("RIGHT", controlPanel, "RIGHT", -10, 0)
     exportBtn:SetText("Export")
     exportBtn:SetScript("OnClick", function()
         self:ExportSession(sessionData)
