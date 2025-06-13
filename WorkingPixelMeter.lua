@@ -43,8 +43,17 @@ function WorkingPixelMeter:Create()
     -- Create main window frame - match parent width
     local frame = CreateFrame("Frame", nil, UIParent)
     frame:SetSize(220, totalHeight + 8)                  -- Match the 220px window width
-    frame:SetPoint("CENTER", UIParent, "CENTER", 200, 0) -- Right of center
-    -- frame:SetFrameStrata("HIGH")
+    
+    -- Restore saved position or use default
+    local positionKey = self.meterName .. "Position"
+    if addon.db and addon.db[positionKey] then
+        local pos = addon.db[positionKey]
+        frame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
+    else
+        frame:SetPoint("CENTER", UIParent, "CENTER", 200, 0) -- Default: Right of center
+    end
+    
+    frame:SetFrameStrata("MEDIUM")
 
     -- Cleaner background to match existing meters
     local bg = frame:CreateTexture(nil, "BACKGROUND")
@@ -80,9 +89,29 @@ function WorkingPixelMeter:Create()
         end
     end
 
-    -- Make it non-draggable (it should follow its parent window)
-    frame:SetMovable(false)
-    frame:EnableMouse(false) -- Disable mouse interaction entirely
+    -- Make it draggable like other meter windows
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    
+    -- Save position when dragging stops
+    local meterInstance = self
+    frame:SetScript("OnDragStop", function(dragFrame)
+        dragFrame:StopMovingOrSizing()
+        local point, relativeTo, relativePoint, xOfs, yOfs = dragFrame:GetPoint()
+        
+        -- Save position to addon database
+        local positionKey = meterInstance.meterName .. "Position"
+        if addon.db then
+            addon.db[positionKey] = {
+                point = point,
+                relativePoint = relativePoint,
+                xOfs = xOfs,
+                yOfs = yOfs
+            }
+        end
+    end)
 
     self.frame = frame
     self.gridFrame = gridFrame

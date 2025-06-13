@@ -304,12 +304,13 @@ function CombatData:EndCombat()
                 participantCount = participantCount + 1
             end
         end
-        print(string.format("Enhanced Data: %d participants, %d cooldowns, %d deaths",
-            participantCount,
-            #(enhancedData.cooldownUsage or {}),
-            #(enhancedData.deaths or {})))
+        if addon.DEBUG then
+            addon:DebugPrint(string.format("Enhanced Data: %d participants, %d cooldowns, %d deaths",
+                participantCount,
+                #(enhancedData.cooldownUsage or {}),
+                #(enhancedData.deaths or {})))
+        end
     end
-    print("--------------------")
 
     -- Create and store session record WITH enhanced data
     if addon.SessionManager then

@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-enhanced-logging-participants-view-00e3a55"
-addon.BUILD_DATE = "2025-06-12-20:34"
+addon.VERSION = "feature-enhanced-logging-participants-view-bd3a581"
+addon.BUILD_DATE = "2025-06-12-20:41"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -31,6 +31,8 @@ addon.defaults = {
     showDPSWindow = false,
     hpsWindowPosition = nil,
     showHPSWindow = false,
+    DPSPosition = nil,  -- Pixel meter positions
+    HPSPosition = nil,
     debugMode = false,
     showMainWindow = false,
     enhancedLogging = true,
@@ -184,13 +186,19 @@ function addon:OnEnable()
         self:CreateMainFrame()
 
         -- Debug the state
-        print("showMainWindow value:", self.db.showMainWindow)
+        if addon.DEBUG then
+            addon:DebugPrint("showMainWindow value: " .. tostring(self.db.showMainWindow))
+        end
 
         if self.db.showMainWindow then
-            print("Showing main window")
+            if addon.DEBUG then
+                addon:DebugPrint("Showing main window")
+            end
             self.mainFrame:Show()
         else
-            print("Not showing main window")
+            if addon.DEBUG then
+                addon:DebugPrint("Not showing main window")
+            end
         end
 
         -- Restore other windows...
@@ -202,7 +210,9 @@ function addon:OnEnable()
             self.HPSWindow:Show()
         end
 
-        print(addonName .. " is now active!")
+        if addon.DEBUG then
+            addon:DebugPrint(addonName .. " is now active!")
+        end
     end
 end
 
