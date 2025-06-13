@@ -38,9 +38,13 @@ local timelineData = {
 -- =============================================================================
 
 -- Sample data structure
-local function CreateSample(timestamp, deltaTime)
-    local currentTime = timestamp or GetTime()
+local function CreateSample(deltaTime)
     local dt = deltaTime or SAMPLE_INTERVAL
+
+    -- UNIFIED TIMESTAMP: Use only TimestampManager for all time calculations
+    if not addon.TimestampManager or not addon.TimestampManager:IsActive() then
+        return nil  -- Cannot create samples without active timestamp manager
+    end
 
     local combatData = addon.CombatData:GetRawCombatData()
 
@@ -74,9 +78,12 @@ local function CreateSample(timestamp, deltaTime)
         overhealPercent = (overhealDelta / healingDelta) * 100
     end
 
+    -- UNIFIED TIMESTAMP: Get elapsed time from TimestampManager only
+    local elapsed = addon.TimestampManager:GetCurrentRelativeTime()
+
     return {
-        timestamp = currentTime,
-        elapsed = currentTime - (combatData.startTime or currentTime),
+        -- REMOVED: No more storing absolute timestamps, only relative time
+        elapsed = elapsed,
         -- Cumulative totals
         totalDamage = combatData.damage,
         totalHealing = combatData.healing,
@@ -130,13 +137,21 @@ end
 -- Calculate rolling averages
 local function CalculateRollingAverages()
     local validSamples = {}
-    local currentTime = GetTime()
-    local windowStart = currentTime - ROLLING_WINDOW_SIZE
+    
+    -- UNIFIED TIMESTAMP: Use TimestampManager for rolling window calculation
+    if not addon.TimestampManager or not addon.TimestampManager:IsActive() then
+        return {
+            dps = 0, hps = 0, effectiveHPS = 0, overhealPercent = 0, absorbRate = 0, sampleCount = 0
+        }
+    end
+    
+    local currentRelativeTime = addon.TimestampManager:GetCurrentRelativeTime()
+    local windowStart = currentRelativeTime - ROLLING_WINDOW_SIZE
 
-    -- Collect valid samples from rolling window
+    -- Collect valid samples from rolling window (using relative time)
     for i = 1, rollingData.size do
         local sample = rollingData.samples[i]
-        if sample and sample.timestamp >= windowStart then
+        if sample and sample.elapsed >= windowStart then
             table.insert(validSamples, sample)
         end
     end
@@ -180,27 +195,38 @@ end
 
 -- Sample combat data
 local function SampleCombatData()
+    -- Only sample when in combat and TimestampManager is active
     if not addon.CombatData:IsInCombat() then return end
+    if not addon.TimestampManager or not addon.TimestampManager:IsActive() then return end
 
     local combatData = addon.CombatData:GetRawCombatData()
-    local currentTime = GetTime()
-    local deltaTime = currentTime - combatData.lastSampleTime
+    
+    -- UNIFIED TIMESTAMP: Calculate delta time using TimestampManager
+    local currentRelativeTime = addon.TimestampManager:GetCurrentRelativeTime()
+    local deltaTime = currentRelativeTime - (combatData.lastSampleRelativeTime or 0)
+    
+    -- Ensure reasonable delta time
+    if deltaTime < 0.1 or deltaTime > 2.0 then
+        deltaTime = SAMPLE_INTERVAL
+    end
 
     -- Create sample
-    local sample = CreateSample(currentTime, deltaTime)
+    local sample = CreateSample(deltaTime)
+    
+    if sample then
+        -- Add to both rolling window and timeline
+        AddToRollingWindow(sample)
+        AddToTimeline(sample)
 
-    -- Add to both rolling window and timeline
-    AddToRollingWindow(sample)
-    AddToTimeline(sample)
+        -- Update tracking values in combat data
+        combatData.lastSampleRelativeTime = currentRelativeTime
+        combatData.lastSampleDamage = combatData.damage
+        combatData.lastSampleHealing = combatData.healing
+        combatData.lastSampleOverheal = combatData.overheal
+        combatData.lastSampleAbsorb = combatData.absorb
+    end
 
-    -- Update tracking values in combat data
-    combatData.lastSampleTime = currentTime
-    combatData.lastSampleDamage = combatData.damage
-    combatData.lastSampleHealing = combatData.healing
-    combatData.lastSampleOverheal = combatData.overheal
-    combatData.lastSampleAbsorb = combatData.absorb
-
-    if addon.DEBUG then
+    if addon.VERBOSE_DEBUG then
         local rolling = CalculateRollingAverages()
         addon:DebugPrint(string.format("Sample: DPS=%.0f, HPS=%.0f (%.0f effective), OH=%.1f%%, Samples=%d",
             rolling.dps, rolling.hps, rolling.effectiveHPS, rolling.overhealPercent, rolling.sampleCount))
@@ -291,8 +317,9 @@ end
 function TimelineTracker:GetTimelineForSession(duration, enhancedData)
     local sessionTimeline = {}
 
-    -- Dynamic: 2 points per second, min 120 points (1 min), max 1200 points (10 min)
-    local maxTimelinePoints = math.min(1200, math.max(120, math.floor(duration * 2)))
+    -- REDUCED for memory management: 1 point per second, min 60 points (1 min), max 300 points (5 min)
+    -- This reduces memory usage by ~75% while maintaining good chart resolution
+    local maxTimelinePoints = math.min(300, math.max(60, math.floor(duration * 1)))
     local step = math.max(1, math.floor(#timelineData.samples / maxTimelinePoints))
 
     for i = 1, #timelineData.samples, step do

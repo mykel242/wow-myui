@@ -13,11 +13,13 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-enhanced-combat-chart-f97ea21"
-addon.BUILD_DATE = "2025-06-13-09:43"
+addon.VERSION = "feature-enhanced-combat-chart-1c8458a"
+addon.BUILD_DATE = "2025-06-13-13:52"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
+-- Separate flag for very spammy debug messages (timers, frequent updates)
+addon.VERBOSE_DEBUG = false
 
 -- Addon variables
 addon.db = {}
@@ -259,6 +261,11 @@ function addon:OnInitialize()
     -- Initialize all modules IN THE CORRECT ORDER
     -- 0. Unified calculator must be available before combat data
     -- (UnifiedCalculator is loaded via file inclusion - no init needed)
+    
+    -- 0.5. Initialize TimestampManager first (single source of truth for timing)
+    if self.TimestampManager then
+        self.TimestampManager:Initialize()
+    end
     
     -- 1. Core combat tracking first
     if self.CombatData then
@@ -874,6 +881,15 @@ function addon:UpdateMainWindow()
     if not self.mainFrame or not self.mainFrame:IsShown() then return end
 
     local inCombat = self.CombatTracker and self.CombatTracker:IsInCombat()
+    
+    -- Reduce update frequency when out of combat to save resources
+    if not inCombat and self.lastMainWindowUpdate then
+        local timeSinceLastUpdate = GetTime() - self.lastMainWindowUpdate
+        if timeSinceLastUpdate < 2.0 then  -- Only update every 2 seconds when out of combat
+            return
+        end
+    end
+    self.lastMainWindowUpdate = GetTime()
 
     if inCombat then
         self.mainFrame.combatHeader:SetText("Current Combat")
@@ -1337,6 +1353,86 @@ function SlashCmdList.MYUI(msg, editBox)
             print("  Damage Taken:", addon.db.trackDamageTaken and "ON" or "OFF")
             print("  Group Damage:", addon.db.trackGroupDamage and "ON" or "OFF")
         end
+    elseif command == "memory" then
+        if addon.SessionManager then
+            print("=== MEMORY CLEANUP ===")
+            local sessions = addon.SessionManager:GetSessionHistory()
+            print(string.format("Current sessions: %d", #sessions))
+            
+            -- Force cleanup
+            addon.SessionManager:CleanupMemory()
+            
+            local newCount = #addon.SessionManager:GetSessionHistory()
+            print(string.format("After cleanup: %d sessions", newCount))
+            
+            -- Calculate memory usage estimate
+            local memoryEstimate = 0
+            for _, session in ipairs(addon.SessionManager:GetSessionHistory()) do
+                memoryEstimate = memoryEstimate + (session.timelineData and #session.timelineData or 0)
+                if session.enhancedData and not session.enhancedData.memoryReduced then
+                    memoryEstimate = memoryEstimate + 100 -- Rough estimate for full enhanced data
+                end
+            end
+            print(string.format("Estimated timeline data points: %d", memoryEstimate))
+            print("=====================")
+        else
+            print("SessionManager not loaded")
+        end
+    elseif command == "timers" then
+        print("=== ACTIVE TIMER STATUS ===")
+        local inCombat = addon.CombatTracker and addon.CombatTracker:IsInCombat()
+        print("Combat State:", inCombat and "IN COMBAT" or "OUT OF COMBAT")
+        print("")
+        
+        -- Main window timer
+        print("Main Window Update: 0.5s (optimized for out-of-combat)")
+        
+        -- CombatData timer
+        if addon.CombatData and addon.CombatData.updateTimer then
+            print("CombatData Update: 0.1s" .. (inCombat and " (full rate)" or " (1s effective)"))
+        end
+        
+        -- Timeline tracker
+        print("Timeline Sampling: 0.5s (combat-only)")
+        
+        -- Spec check timer
+        if addon.CombatTracker and addon.CombatTracker.specCheckTimer then
+            print("Spec Change Check: 10s")
+        end
+        
+        -- Pixel meter timers
+        local dpsActive = addon.dpsPixelMeter and addon.dpsPixelMeter.updateTimer
+        local hpsActive = addon.hpsPixelMeter and addon.hpsPixelMeter.updateTimer
+        if dpsActive then
+            print("DPS Meter Update: 0.1s" .. (inCombat and " (full rate)" or " (2s effective)"))
+        end
+        if hpsActive then
+            print("HPS Meter Update: 0.1s" .. (inCombat and " (full rate)" or " (2s effective)"))
+        end
+        
+        print("==========================")
+    elseif command == "timestamps" then
+        if addon.TimestampManager then
+            print(addon.TimestampManager:GetDebugSummary())
+        else
+            print("TimestampManager not loaded")
+        end
+    elseif command == "cleardata" then
+        print("=== CLEARING ALL SESSION DATA ===")
+        print("This will clear all stored sessions due to timestamp system changes")
+        if addon.CombatTracker then
+            addon.CombatTracker:ClearHistory()
+            print("Session history cleared")
+        end
+        if addon.db and addon.db.sessionHistoryBySpec then
+            addon.db.sessionHistoryBySpec = {}
+            print("Saved session data cleared")
+        end
+        if addon.db and addon.db.sessionHistory then
+            addon.db.sessionHistory = {}
+            print("Legacy session data cleared")
+        end
+        print("=== DATA CLEARED - FRESH START ===")
     elseif command:match("^calc") then
         local calcArg = command:match("^calc%s*(.*)$")
         
@@ -1415,11 +1511,15 @@ function SlashCmdList.MYUI(msg, editBox)
         print("  /myui ids - Show recent session IDs")
         print("  /myui mark <id> [ rep | ignore | keep ] - Mark sessions")
         print("  /myui clear - Clear all session data")
+        print("  /myui cleardata - Clear all data (for timestamp system upgrade)")
         print("  /myui resetcombat - Reset all combat data")
         print("  /myui meterinfo - Show current meter status")
         print("  /myui enhancedlog - Enhanced logging status")
         print("  /myui enhancedconfig <all|damage|group> - Enhanced config")
         print("  /myui calc [rolling|final|hybrid|validate] - Calculation methods")
+        print("  /myui memory - Check and cleanup memory usage")
+        print("  /myui timers - Show active timer status")
+        print("  /myui timestamps - Show TimestampManager debug info")
         print("  /myui debug - Toggle debug mode")
     end
 end

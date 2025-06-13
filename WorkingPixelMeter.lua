@@ -145,10 +145,25 @@ function WorkingPixelMeter:Create()
     self.frame = frame
     self.gridFrame = gridFrame
 
-    -- Start update timer
+    -- Start update timer - optimized for combat state
     if not self.updateTimer then
         self.updateTimer = C_Timer.NewTicker(0.1, function()
-            self:Update()
+            -- Only run frequent updates during combat
+            local inCombat = addon.CombatTracker and addon.CombatTracker:IsInCombat()
+            if inCombat then
+                self:Update()
+            else
+                -- When out of combat, run much less frequently (every 20 ticks = 2 seconds)
+                if not self.outOfCombatCounter then
+                    self.outOfCombatCounter = 0
+                end
+                self.outOfCombatCounter = self.outOfCombatCounter + 1
+                
+                if self.outOfCombatCounter >= 20 then -- Every 2 seconds when out of combat
+                    self:Update()
+                    self.outOfCombatCounter = 0
+                end
+            end
         end)
     end
 
@@ -207,12 +222,17 @@ function WorkingPixelMeter:Update()
     local value = self.getValue() or 0
     local currentMax = self:GetCurrentMaxValue()
 
-    -- Only auto-scale if no manual override is set
+    -- Only auto-scale if no manual override is set AND we're in combat
+    -- This avoids unnecessary scaling calculations when out of combat
     if not self.manualMaxValue then
-        -- Enhanced approach: use content-specific session pools
-        local autoScale = self:GetAutoScale()
-        self.maxValue = autoScale
-        currentMax = autoScale
+        local inCombat = addon.CombatTracker and addon.CombatTracker:IsInCombat()
+        if inCombat then
+            -- Enhanced approach: use content-specific session pools
+            local autoScale = self:GetAutoScale()
+            self.maxValue = autoScale
+            currentMax = autoScale
+        end
+        -- When out of combat, keep current scaling to avoid recalculation
     end
 
     local percent = math.min(1.0, currentMax > 0 and (value / currentMax) or 0)
@@ -277,7 +297,7 @@ function WorkingPixelMeter:GetAutoScale()
     -- Calculate weighted average from session pool
     local autoScale = self:CalculateWeightedScale(sessions, contentType)
 
-    if addon.DEBUG then
+    if addon.VERBOSE_DEBUG then
         print(string.format("%s: Using %d %s sessions -> %.0f",
             self.meterName, #sessions, contentType, autoScale))
     end
@@ -364,7 +384,7 @@ function WorkingPixelMeter:CalculateWeightedScale(sessions, contentType)
     autoScale = math.max(autoScale, 500)      -- Don't go below 500 DPS
     autoScale = math.min(autoScale, 50000000) -- 50M cap
 
-    if addon.DEBUG then
+    if addon.VERBOSE_DEBUG then
         print(string.format("%s Auto-scale (%s): %.0f avg * %.1f headroom = %.0f (from %d sessions)",
             self.meterName, contentType, weightedAverage, headroomMultiplier, autoScale, #values))
     end

@@ -11,7 +11,7 @@ local SessionManager = addon.SessionManager
 -- CONFIGURATION & CONSTANTS
 -- =============================================================================
 
-local SESSION_HISTORY_LIMIT = 100 -- Maximum sessions to store
+local SESSION_HISTORY_LIMIT = 50 -- Maximum sessions to store (reduced from 100 for memory management)
 
 -- =============================================================================
 -- DATA STRUCTURES
@@ -301,9 +301,37 @@ function SessionManager:AddSessionToHistory(session)
     -- Add to beginning of array (most recent first)
     table.insert(sessionHistory, 1, session)
 
-    -- Trim to limit
+    -- Trim to limit and clean up memory-heavy data from older sessions
     while #sessionHistory > SESSION_HISTORY_LIMIT do
         table.remove(sessionHistory)
+    end
+    
+    -- MEMORY MANAGEMENT: Clean up enhanced data from sessions older than 25 to save memory
+    -- Keep basic session data but remove memory-heavy timeline and enhanced data
+    for i = 26, #sessionHistory do
+        local session = sessionHistory[i]
+        if session then
+            -- Keep essential data for scaling calculations
+            session.timelineData = nil  -- Remove detailed timeline (biggest memory user)
+            
+            -- Reduce enhanced data to just summary info
+            if session.enhancedData then
+                local participantCount = 0
+                if session.enhancedData.participants then
+                    for _ in pairs(session.enhancedData.participants) do
+                        participantCount = participantCount + 1
+                    end
+                end
+                
+                -- Replace heavy enhanced data with lightweight summary
+                session.enhancedData = {
+                    participantCount = participantCount,
+                    cooldownCount = session.enhancedData.cooldownUsage and #session.enhancedData.cooldownUsage or 0,
+                    deathCount = session.enhancedData.deaths and #session.enhancedData.deaths or 0,
+                    memoryReduced = true
+                }
+            end
+        end
     end
 
     -- Save to database per-character-spec
@@ -343,6 +371,51 @@ function SessionManager:GetSession(sessionId)
         end
     end
     return nil
+end
+
+-- Force memory cleanup (can be called manually)
+function SessionManager:CleanupMemory()
+    local cleaned = 0
+    local before = #sessionHistory
+    
+    -- Remove sessions older than limit
+    while #sessionHistory > SESSION_HISTORY_LIMIT do
+        table.remove(sessionHistory)
+        cleaned = cleaned + 1
+    end
+    
+    -- Clean up memory-heavy data from older sessions (keep only first 25 with full data)
+    for i = 26, #sessionHistory do
+        local session = sessionHistory[i]
+        if session and (session.timelineData or (session.enhancedData and not session.enhancedData.memoryReduced)) then
+            -- Remove detailed timeline data
+            session.timelineData = nil
+            
+            -- Reduce enhanced data to summary
+            if session.enhancedData and not session.enhancedData.memoryReduced then
+                local participantCount = 0
+                if session.enhancedData.participants then
+                    for _ in pairs(session.enhancedData.participants) do
+                        participantCount = participantCount + 1
+                    end
+                end
+                
+                session.enhancedData = {
+                    participantCount = participantCount,
+                    cooldownCount = session.enhancedData.cooldownUsage and #session.enhancedData.cooldownUsage or 0,
+                    deathCount = session.enhancedData.deaths and #session.enhancedData.deaths or 0,
+                    memoryReduced = true
+                }
+                cleaned = cleaned + 1
+            end
+        end
+    end
+    
+    if addon.DEBUG then
+        addon:DebugPrint(string.format("Memory cleanup: %d operations, %d->%d sessions", cleaned, before, #sessionHistory))
+    end
+    
+    return cleaned
 end
 
 -- Mark session with user preference
@@ -467,7 +540,7 @@ function SessionManager:GetScalingSessions(contentType, maxCount)
         table.insert(result, filteredSessions[i])
     end
 
-    if addon.DEBUG then
+    if addon.VERBOSE_DEBUG then
         print(string.format("GetScalingSessions(%s): Found %d sessions, returning %d",
             contentType, #filteredSessions, #result))
     end

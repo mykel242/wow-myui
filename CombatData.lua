@@ -35,13 +35,19 @@ local combatData = {
     finalMaxHPS = 0,
     finalDPS = 0,
     finalHPS = 0,
-    -- Last sample time
+    -- Last sample time (legacy GetTime() for internal use)
     lastSampleTime = 0,
+    -- UNIFIED TIMESTAMP: Last sample time in relative domain for TimelineTracker
+    lastSampleRelativeTime = 0,
     -- Previous sample values for calculating deltas
     lastSampleDamage = 0,
     lastSampleHealing = 0,
     lastSampleOverheal = 0,
-    lastSampleAbsorb = 0
+    lastSampleAbsorb = 0,
+    -- Extended combat detection
+    lastActivityTime = nil,
+    playerRegenTime = nil,
+    endCombatTimer = nil
 }
 
 -- Combat action counter
@@ -140,8 +146,14 @@ function CombatData:GetCombatTime()
     return self:GetElapsed()
 end
 
--- Get elapsed combat time
+-- Get elapsed combat time - UNIFIED TIMESTAMP: Delegate to TimestampManager
 function CombatData:GetElapsed()
+    -- UNIFIED TIMESTAMP: Use TimestampManager as single source of truth for elapsed time
+    if addon.TimestampManager and addon.TimestampManager:IsActive() then
+        return addon.TimestampManager:GetCombatDuration()
+    end
+    
+    -- Fallback to internal calculation (compatibility)
     if not combatData.startTime then
         return 0
     end
@@ -220,9 +232,16 @@ end
 -- =============================================================================
 
 -- Start combat tracking
-function CombatData:StartCombat()
+function CombatData:StartCombat(logTimestamp)
+    -- Initialize TimestampManager as single source of truth
+    if addon.TimestampManager then
+        addon.TimestampManager:StartCombat(logTimestamp)
+        combatData.startTime = addon.TimestampManager:GetTimestampData().combatStartTime
+    else
+        combatData.startTime = GetTime()
+    end
+    
     combatData.inCombat = true
-    combatData.startTime = GetTime()
     combatData.endTime = nil
     combatData.damage = 0
     combatData.healing = 0
@@ -234,6 +253,7 @@ function CombatData:StartCombat()
 
     -- Reset sampling data
     combatData.lastSampleTime = combatData.startTime
+    combatData.lastSampleRelativeTime = 0  -- Start at relative time 0
     combatData.lastSampleDamage = 0
     combatData.lastSampleHealing = 0
     combatData.lastSampleOverheal = 0
@@ -241,6 +261,14 @@ function CombatData:StartCombat()
 
     -- Reset action counter
     combatActionCount = 0
+    
+    -- Clean up any pending combat end timer
+    if combatData.endCombatTimer then
+        combatData.endCombatTimer:Cancel()
+        combatData.endCombatTimer = nil
+    end
+    combatData.playerRegenTime = nil
+    combatData.lastActivityTime = GetTime()
 
     -- Tell timeline tracker to reset
     if addon.TimelineTracker then
@@ -255,9 +283,77 @@ function CombatData:StartCombat()
     addon:DebugPrint("Combat started!")
 end
 
--- End combat tracking
+-- Check for continued combat activity after PLAYER_REGEN_ENABLED
+function CombatData:CheckCombatActivity()
+    if not combatData.inCombat or not combatData.playerRegenTime then
+        return
+    end
+    
+    local timeSinceRegen = GetTime() - combatData.playerRegenTime
+    local activityTimeout = 5.0 -- End combat if no activity for 5 seconds after player regen
+    
+    -- Check if we've received any combat events recently
+    local recentActivity = false
+    if combatData.lastActivityTime and (GetTime() - combatData.lastActivityTime) < 3.0 then
+        recentActivity = true
+    end
+    
+    if recentActivity then
+        -- Reset the regen timer - combat is still ongoing
+        combatData.playerRegenTime = GetTime()
+        if addon.DEBUG then
+            addon:DebugPrint("Combat extended - player activity detected within 3 seconds")
+        end
+    elseif timeSinceRegen >= activityTimeout then
+        -- No activity for timeout period - end combat for real
+        if addon.DEBUG then
+            addon:DebugPrint(string.format("Combat ending after %.1fs of inactivity", timeSinceRegen))
+        end
+        
+        -- Cancel the timer and end combat
+        if combatData.endCombatTimer then
+            combatData.endCombatTimer:Cancel()
+            combatData.endCombatTimer = nil
+        end
+        combatData.playerRegenTime = nil
+        
+        self:ForceCombatEnd()
+    end
+end
+
+-- Force combat end (called after activity timeout)
+function CombatData:ForceCombatEnd()
+    if not combatData.inCombat then return end
+    
+    -- This is the actual combat end logic, moved from EndCombat()
+    self:DoEndCombat()
+end
+
+-- End combat tracking (called by PLAYER_REGEN_ENABLED)
 function CombatData:EndCombat()
     if not combatData.inCombat then return end
+    
+    -- ENHANCED COMBAT DETECTION: Don't end combat immediately on PLAYER_REGEN_ENABLED
+    -- Instead, set a timer to check for continued activity
+    if not combatData.endCombatTimer then
+        combatData.playerRegenTime = GetTime()
+        combatData.endCombatTimer = C_Timer.NewTicker(1.0, function()
+            self:CheckCombatActivity()
+        end)
+        
+        if addon.DEBUG then
+            addon:DebugPrint("Player regen enabled - starting combat activity check")
+        end
+        return -- Don't end combat yet, wait for activity check
+    end
+end
+
+-- Actual combat end logic
+function CombatData:DoEndCombat()
+    -- Notify TimestampManager of combat end
+    if addon.TimestampManager then
+        addon.TimestampManager:EndCombat()
+    end
 
     combatData.endTime = GetTime()
 
@@ -392,11 +488,12 @@ function CombatData:ParseCombatLog(timestamp, subevent, _, sourceGUID, sourceNam
         return
     end
 
-    -- Count relevant combat actions
+    -- Count relevant combat actions AND track activity for extended combat detection
     if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or
         subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_DAMAGE" or
         subevent == "SPELL_PERIODIC_HEAL" then
         combatActionCount = combatActionCount + 1
+        combatData.lastActivityTime = GetTime() -- Track recent activity for extended combat
     end
 
     -- Damage events with reasonable limits
@@ -488,7 +585,9 @@ end
 -- Event handler
 function CombatData:OnEvent(event, ...)
     if event == "PLAYER_REGEN_DISABLED" then
-        self:StartCombat()
+        -- Get the current combat log timestamp for TimestampManager
+        local logTimestamp = select(1, CombatLogGetCurrentEventInfo())
+        self:StartCombat(logTimestamp)
     elseif event == "PLAYER_REGEN_ENABLED" then
         self:EndCombat()
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
@@ -517,19 +616,19 @@ function CombatData:UpdateDisplays()
             -- Track peaks of rolling averages (more stable than overall DPS)
             if rollingDPS > combatData.maxDPS then
                 combatData.maxDPS = rollingDPS
-                if addon.DEBUG then
+                if addon.VERBOSE_DEBUG then
                     addon:DebugPrint(string.format("NEW ROLLING DPS PEAK: %.0f", rollingDPS))
                 end
             end
 
             if rollingHPS > combatData.maxHPS then
                 combatData.maxHPS = rollingHPS
-                if addon.DEBUG then
+                if addon.VERBOSE_DEBUG then
                     addon:DebugPrint(string.format("NEW ROLLING HPS PEAK: %.0f", rollingHPS))
                 end
             end
         else
-            if addon.DEBUG then
+            if addon.VERBOSE_DEBUG then
                 addon:DebugPrint(string.format("Peak tracking disabled: elapsed=%.2f < 1.5 seconds", elapsed))
             end
         end
@@ -569,6 +668,7 @@ function CombatData:ResetDisplayStats()
         combatData.finalHPS = 0
         combatData.startTime = nil
         combatData.endTime = nil
+        combatData.lastSampleRelativeTime = 0
 
         -- Clear timeline data
         if addon.TimelineTracker then
@@ -656,9 +756,23 @@ function CombatData:Initialize()
         calculator:SetTimelineTracker(addon.TimelineTracker)
     end
 
-    -- Update timer (for displays and max tracking)
+    -- Update timer (for displays and max tracking) - optimized for combat state
     self.updateTimer = C_Timer.NewTicker(0.1, function()
-        CombatData:UpdateDisplays()
+        -- Only run frequent updates during combat
+        if combatData.inCombat then
+            CombatData:UpdateDisplays()
+        else
+            -- When out of combat, run much less frequently (every 10 ticks = 1 second)
+            if not CombatData.outOfCombatCounter then
+                CombatData.outOfCombatCounter = 0
+            end
+            CombatData.outOfCombatCounter = CombatData.outOfCombatCounter + 1
+            
+            if CombatData.outOfCombatCounter >= 10 then -- Every 1 second when out of combat
+                CombatData:UpdateDisplays()
+                CombatData.outOfCombatCounter = 0
+            end
+        end
     end)
 
     if addon.DEBUG then

@@ -49,9 +49,15 @@ local enhancedSessionData = {
 local function TrackParticipant(guid, name, flags)
     if not guid or not name then return end
 
+    -- UNIFIED TIMESTAMP: Use TimestampManager for participant tracking
+    local currentRelativeTime = 0
+    if addon.TimestampManager then
+        currentRelativeTime = addon.TimestampManager:GetCurrentRelativeTime()
+    end
+
     -- Skip if we already have this participant
     if enhancedSessionData.participants[guid] then
-        enhancedSessionData.participants[guid].lastSeen = GetTime()
+        enhancedSessionData.participants[guid].lastSeen = currentRelativeTime
         return
     end
 
@@ -65,8 +71,9 @@ local function TrackParticipant(guid, name, flags)
         isPlayer = isPlayer,
         isNPC = isNPC,
         isPet = isPet,
-        firstSeen = GetTime(),
-        lastSeen = GetTime(),
+        -- UNIFIED TIMESTAMP: Store relative time instead of absolute GetTime()
+        firstSeen = currentRelativeTime,
+        lastSeen = currentRelativeTime,
         damageDealt = 0,
         healingDealt = 0,
         damageTaken = 0
@@ -74,7 +81,9 @@ local function TrackParticipant(guid, name, flags)
 
     if addon.DEBUG and math.random() < 0.2 then -- 20% sample rate for debug
         local typeStr = isPlayer and "Player" or (isPet and "Pet" or "NPC")
-        addon:DebugPrint(string.format("Enhanced: Tracked %s (%s)", name, typeStr))
+        if addon.VERBOSE_DEBUG then
+            addon:DebugPrint(string.format("Enhanced: Tracked %s (%s)", name, typeStr))
+        end
     end
 end
 
@@ -83,9 +92,15 @@ local function TrackDamageTaken(timestamp, sourceGUID, sourceName, destGUID, des
     local playerGUID = UnitGUID("player")
 
     if destGUID == playerGUID then
+        -- UNIFIED TIMESTAMP: Use TimestampManager for consistent time calculation
+        local elapsed = 0
+        if addon.TimestampManager then
+            elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+        end
+        
         table.insert(enhancedSessionData.damageTaken, {
-            timestamp = timestamp,
-            elapsed = timestamp - (addon.CombatData:GetRawCombatData().startTime or timestamp),
+            -- REMOVED: No longer store absolute timestamps, only relative time
+            elapsed = elapsed,
             sourceGUID = sourceGUID,
             sourceName = sourceName,
             spellId = spellId,
@@ -121,9 +136,15 @@ local function TrackGroupDamage(timestamp, sourceGUID, sourceName, destGUID, des
     end
 
     if isGroupMember then
+        -- UNIFIED TIMESTAMP: Use TimestampManager for consistent time calculation
+        local elapsed = 0
+        if addon.TimestampManager then
+            elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+        end
+        
         table.insert(enhancedSessionData.groupDamage, {
-            timestamp = timestamp,
-            elapsed = timestamp - (addon.CombatData:GetRawCombatData().startTime or timestamp),
+            -- REMOVED: No longer store absolute timestamps, only relative time
+            elapsed = elapsed,
             sourceGUID = sourceGUID,
             sourceName = sourceName,
             destGUID = destGUID,
@@ -139,9 +160,15 @@ end
 local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, spellId, spellName)
     local cooldownInfo = NOTABLE_BUFFS[spellId]
     if cooldownInfo then
+        -- UNIFIED TIMESTAMP: Use TimestampManager for consistent time calculation
+        local elapsed = 0
+        if addon.TimestampManager then
+            elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+        end
+        
         table.insert(enhancedSessionData.cooldownUsage, {
-            timestamp = timestamp,
-            elapsed = timestamp - (addon.CombatData:GetRawCombatData().startTime or timestamp),
+            -- REMOVED: No longer store absolute timestamps, only relative time
+            elapsed = elapsed,
             sourceGUID = sourceGUID,
             sourceName = sourceName,
             spellId = spellId,
@@ -152,23 +179,35 @@ local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, spellId, sp
 
         if addon.DEBUG then
             addon:DebugPrint(string.format("Cooldown tracked: %s used %s at %.1fs",
-                sourceName, spellName, timestamp - (addon.CombatData:GetRawCombatData().startTime or timestamp)))
+                sourceName, spellName, elapsed))
         end
     end
 end
 
 -- Track deaths
 local function TrackDeath(timestamp, destGUID, destName)
+    -- Use TimestampManager for consistent time calculations
+    local elapsed = 0
+    if addon.TimestampManager then
+        elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+    else
+        -- Fallback to old method
+        local combatData = addon.CombatData:GetRawCombatData()
+        local combatStartTime = combatData.startTime
+        local currentTime = GetTime()
+        elapsed = currentTime - combatStartTime
+    end
+    
     table.insert(enhancedSessionData.deaths, {
-        timestamp = timestamp,
-        elapsed = timestamp - (addon.CombatData:GetRawCombatData().startTime or timestamp),
+        timestamp = timestamp,           -- Original combat log timestamp
+        elapsed = elapsed,               -- Time since combat start (from TimestampManager)
         destGUID = destGUID,
         destName = destName
     })
 
     if addon.DEBUG then
-        addon:DebugPrint(string.format("Death tracked: %s died at %.1fs",
-            destName, timestamp - (addon.CombatData:GetRawCombatData().startTime or timestamp)))
+        addon:DebugPrint(string.format("Death tracked: %s died at %.3fs (logTime: %.3f)",
+            destName, elapsed, timestamp))
     end
 end
 
@@ -207,8 +246,10 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
                 TrackDamageTaken(timestamp, sourceGUID, sourceName, destGUID, destName, spellId, spellName, amount)
 
                 if addon.DEBUG and math.random() < 0.1 then -- 10% sample rate for debug
-                    addon:DebugPrint(string.format("Enhanced: Player took %s damage from %s",
-                        addon.CombatTracker:FormatNumber(amount), sourceName or "Unknown"))
+                    if addon.VERBOSE_DEBUG then
+                        addon:DebugPrint(string.format("Enhanced: Player took %s damage from %s",
+                            addon.CombatTracker:FormatNumber(amount), sourceName or "Unknown"))
+                    end
                 end
             end
 
@@ -221,21 +262,33 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
             if enhancedSessionData.participants[sourceGUID] then
                 enhancedSessionData.participants[sourceGUID].damageDealt =
                     (enhancedSessionData.participants[sourceGUID].damageDealt or 0) + amount
-                enhancedSessionData.participants[sourceGUID].lastSeen = timestamp
+                -- UNIFIED TIMESTAMP: Use relative time for lastSeen
+                if addon.TimestampManager then
+                    enhancedSessionData.participants[sourceGUID].lastSeen = addon.TimestampManager:GetRelativeTime(timestamp)
+                end
             end
             if enhancedSessionData.participants[destGUID] then
                 enhancedSessionData.participants[destGUID].damageTaken =
                     (enhancedSessionData.participants[destGUID].damageTaken or 0) + amount
-                enhancedSessionData.participants[destGUID].lastSeen = timestamp
+                -- UNIFIED TIMESTAMP: Use relative time for lastSeen
+                if addon.TimestampManager then
+                    enhancedSessionData.participants[destGUID].lastSeen = addon.TimestampManager:GetRelativeTime(timestamp)
+                end
             end
         end
     elseif subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_HEAL" then
         local spellId, spellName, spellSchool, amount = select(1, ...)
 
         if amount and amount > 0 then
+            -- UNIFIED TIMESTAMP: Use TimestampManager for consistent time calculation
+            local elapsed = 0
+            if addon.TimestampManager then
+                elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+            end
+            
             table.insert(enhancedSessionData.healingEvents, {
-                timestamp = timestamp,
-                elapsed = timestamp - (addon.CombatData:GetRawCombatData().startTime or timestamp),
+                -- REMOVED: No longer store absolute timestamps, only relative time
+                elapsed = elapsed,
                 sourceGUID = sourceGUID,
                 sourceName = sourceName,
                 destGUID = destGUID,
@@ -249,7 +302,10 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
             if enhancedSessionData.participants[sourceGUID] then
                 enhancedSessionData.participants[sourceGUID].healingDealt =
                     (enhancedSessionData.participants[sourceGUID].healingDealt or 0) + amount
-                enhancedSessionData.participants[sourceGUID].lastSeen = timestamp
+                -- UNIFIED TIMESTAMP: Use relative time for lastSeen
+                if addon.TimestampManager then
+                    enhancedSessionData.participants[sourceGUID].lastSeen = addon.TimestampManager:GetRelativeTime(timestamp)
+                end
             end
         end
     elseif subevent == "SPELL_AURA_APPLIED" then

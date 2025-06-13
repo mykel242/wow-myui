@@ -232,7 +232,7 @@ function EnhancedSessionDetailWindow:CreateTabbedInterface(frame, sessionData)
 
     -- Content area
     local contentArea = CreateFrame("Frame", nil, frame)
-    contentArea:SetSize(780, 450)
+    contentArea:SetSize(780, 480)
     contentArea:SetPoint("TOP", tabBar, "BOTTOM", 0, -5)
 
     local contentBg = contentArea:CreateTexture(nil, "BACKGROUND")
@@ -282,8 +282,8 @@ function EnhancedSessionDetailWindow:CreateTimelineTab()
 
     -- Chart area
     local chartArea = CreateFrame("Frame", nil, content)
-    chartArea:SetSize(740, 300)
-    chartArea:SetPoint("TOP", content, "TOP", 0, -20)
+    chartArea:SetSize(740, 320)
+    chartArea:SetPoint("TOP", content, "TOP", 0, -10)
 
     local chartBg = chartArea:CreateTexture(nil, "BACKGROUND")
     chartBg:SetAllPoints(chartArea)
@@ -294,8 +294,8 @@ function EnhancedSessionDetailWindow:CreateTimelineTab()
 
     -- Chart controls
     local controlsFrame = CreateFrame("Frame", nil, content)
-    controlsFrame:SetSize(740, 100)
-    controlsFrame:SetPoint("BOTTOM", content, "BOTTOM", 0, 20)
+    controlsFrame:SetSize(740, 90)
+    controlsFrame:SetPoint("BOTTOM", content, "BOTTOM", 0, 10)
 
     self:CreateChartControls(controlsFrame)
 
@@ -318,7 +318,7 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
 
     -- Chart configuration
     local chartWidth = 740
-    local chartHeight = 280
+    local chartHeight = 300
     local pointWidth = chartWidth / math.max(1, #timelineData - 1)
 
     -- Find max values for scaling
@@ -341,9 +341,35 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
     end
 
     -- Draw death markers if enhanced data is available
-    if sessionData.enhancedData and sessionData.enhancedData.deaths then
+    if sessionData.enhancedData and sessionData.enhancedData.deaths and #sessionData.enhancedData.deaths > 0 then
+        print("Drawing", #sessionData.enhancedData.deaths, "death markers")
         self:DrawDeathMarkers(chartArea, sessionData.enhancedData.deaths, sessionData.duration, chartWidth, chartHeight)
+    else
+        -- One-time debug for enhanced data structure (only when opening chart)
+        print("=== ENHANCED DATA DEBUG ===")
+        if sessionData.enhancedData then
+            print("Enhanced data keys available:")
+            for k, v in pairs(sessionData.enhancedData) do
+                if type(v) == "table" then
+                    print("  " .. tostring(k) .. ": table with " .. #v .. " items")
+                    if k == "deaths" and #v > 0 then
+                        print("    First death event keys:", table.concat(addon:GetTableKeys(v[1]), ", "))
+                        print("    First death event:")
+                        for dk, dv in pairs(v[1]) do
+                            print("      " .. tostring(dk) .. ": " .. tostring(dv))
+                        end
+                    end
+                else
+                    print("  " .. tostring(k) .. ": " .. tostring(v))
+                end
+            end
+        else
+            print("No enhanced data found in session")
+        end
+        print("========================")
     end
+
+    -- TEST: Temporarily removed - test markers were working
 
     -- Chart legend
     self:CreateChartLegend(chartArea, maxDPS, maxHPS)
@@ -533,42 +559,213 @@ function EnhancedSessionDetailWindow:DrawLine(parent, x1, y1, x2, y2, color)
     end
 end
 
--- Draw cooldown markers
+-- Draw enhanced cooldown markers with improved visibility and tooltips
 function EnhancedSessionDetailWindow:DrawCooldownMarkers(chartArea, cooldowns, duration, width, height)
     for _, cooldown in ipairs(cooldowns) do
         if cooldown.elapsed and cooldown.elapsed >= 0 and cooldown.elapsed <= duration then
             local x = (cooldown.elapsed / duration) * width
 
-            -- Vertical line
+            -- Enhanced vertical line with glow effect
             local line = chartArea:CreateTexture(nil, "OVERLAY")
-            line:SetSize(2, height)
-            line:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", x, 0)
-            line:SetColorTexture(cooldown.color[1], cooldown.color[2], cooldown.color[3], 0.8)
+            line:SetSize(3, height) -- Slightly thicker for better visibility
+            line:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", x - 1, 0) -- Center the thicker line
+            line:SetColorTexture(cooldown.color[1], cooldown.color[2], cooldown.color[3], 0.9)
 
-            -- Cooldown label
-            local label = chartArea:CreateFontString(nil, "OVERLAY")
-            label:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
-            label:SetPoint("BOTTOM", chartArea, "BOTTOMLEFT", x, height - 15)
-            label:SetText(cooldown.spellName)
-            label:SetTextColor(cooldown.color[1], cooldown.color[2], cooldown.color[3], 1)
-            label:SetRotation(math.rad(-45)) -- Diagonal text
+            -- Glow effect background for the line
+            local lineGlow = chartArea:CreateTexture(nil, "BACKGROUND")
+            lineGlow:SetSize(5, height)
+            lineGlow:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", x - 2, 0)
+            lineGlow:SetColorTexture(cooldown.color[1], cooldown.color[2], cooldown.color[3], 0.3)
+
+            -- Enhanced marker icon at top of line
+            local markerIcon = chartArea:CreateTexture(nil, "OVERLAY")
+            markerIcon:SetSize(12, 12) -- Larger, more visible marker
+            markerIcon:SetPoint("BOTTOM", chartArea, "BOTTOMLEFT", x, height - 15)
+            markerIcon:SetColorTexture(cooldown.color[1], cooldown.color[2], cooldown.color[3], 1)
+            
+            -- Create interactive frame for tooltip
+            local markerFrame = CreateFrame("Frame", nil, chartArea)
+            markerFrame:SetSize(16, height) -- Wider hit area
+            markerFrame:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", x - 8, 0)
+            markerFrame:EnableMouse(true)
+            
+            -- Enhanced tooltip with detailed information
+            markerFrame:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(cooldown.spellName, 1, 1, 1, 1, true)
+                GameTooltip:AddLine(string.format("Used by: %s", cooldown.sourceName or "Unknown"), 0.8, 0.8, 1, true)
+                GameTooltip:AddLine(string.format("Time: %.1f seconds", cooldown.elapsed), 1, 1, 0.8, true)
+                if cooldown.spellID then
+                    GameTooltip:AddLine(string.format("Spell ID: %d", cooldown.spellID), 0.6, 0.6, 0.6, true)
+                end
+                GameTooltip:Show()
+                
+                -- Highlight effect on hover
+                line:SetAlpha(1.0)
+                markerIcon:SetSize(14, 14) -- Slightly larger on hover
+            end)
+            
+            markerFrame:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+                
+                -- Reset highlight effect
+                line:SetAlpha(0.9)
+                markerIcon:SetSize(12, 12)
+            end)
+
+            -- Abbreviated spell name label (only show if not too crowded)
+            if #cooldowns <= 8 then -- Only show labels if 8 or fewer cooldowns
+                local label = chartArea:CreateFontString(nil, "OVERLAY")
+                label:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 8, "OUTLINE")
+                label:SetPoint("BOTTOM", chartArea, "BOTTOMLEFT", x, height - 30)
+                
+                -- Abbreviate long spell names
+                local displayName = cooldown.spellName
+                if string.len(displayName) > 12 then
+                    displayName = string.sub(displayName, 1, 9) .. "..."
+                end
+                
+                label:SetText(displayName)
+                label:SetTextColor(cooldown.color[1], cooldown.color[2], cooldown.color[3], 0.9)
+                label:SetRotation(math.rad(-45)) -- Diagonal text
+            end
         end
     end
 end
 
--- Draw death markers
+-- Draw enhanced death markers with improved visibility and tooltips
 function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duration, width, height)
-    for _, death in ipairs(deaths) do
-        if death.elapsed and death.elapsed >= 0 and death.elapsed <= duration then
-            local x = (death.elapsed / duration) * width
+    print("=== DEATH MARKER DEBUG ===")
+    print("Chart duration:", duration, "Chart width:", width)
+    print("Total deaths to process:", #deaths)
+    
+    -- Get combat start time for timestamp conversion
+    local combatStartTime = self.sessionData.startTime
+    print("Combat start time:", combatStartTime)
+    
+    for i, death in ipairs(deaths) do
+        print("Death", i, "- elapsed:", death.elapsed, "destName:", death.destName)
+        
+        -- UNIFIED: death.elapsed now calculated by TimestampManager for consistency
+        local relativeTime = death.elapsed
+        
+        -- Debug the unified time calculation
+        print("  Death.elapsed (TimestampManager):", death.elapsed)
+        print("  Combat duration:", duration)
+        -- REMOVED: death.timestamp no longer stored (unified timestamp system)
+        
+        if relativeTime and relativeTime >= 0 and relativeTime <= duration then
+            local x = (relativeTime / duration) * width
+            print("  Positioning death marker at x =", x, "(", relativeTime, "/", duration, "* ", width, ")")
+            print("  Chart area size:", width, "x", height, "px")
 
-            -- Death marker (skull symbol)
-            local marker = chartArea:CreateFontString(nil, "OVERLAY")
-            marker:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
-            marker:SetPoint("BOTTOM", chartArea, "BOTTOMLEFT", x, height - 30)
-            marker:SetText("💀")
-            marker:SetTextColor(1, 0.2, 0.2, 1)
+            -- Background warning line
+            local warningLine = chartArea:CreateTexture(nil, "BORDER")
+            warningLine:SetSize(2, height)
+            warningLine:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", x, 0)
+            warningLine:SetColorTexture(1, 1, 1, 0.8) -- White warning line
+
+            -- Enhanced death marker with WoW skull raid target texture (positioned at top)
+            local marker = chartArea:CreateTexture(nil, "OVERLAY")
+            marker:SetSize(16, 16)
+            marker:SetPoint("CENTER", chartArea, "TOPLEFT", x, -8) -- Top of chart, centered on line
+            marker:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_8") -- Skull raid marker
+            marker:SetVertexColor(1, 0.2, 0.2, 1) -- Red tint
+            
+            -- Glow effect for death marker
+            local markerGlow = chartArea:CreateTexture(nil, "BACKGROUND")
+            markerGlow:SetSize(20, 20)
+            markerGlow:SetPoint("CENTER", chartArea, "TOPLEFT", x, -8) -- Same position as main marker
+            markerGlow:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_8") -- Skull raid marker
+            markerGlow:SetVertexColor(1, 0, 0, 0.3) -- Red glow
+            
+            -- Create interactive frame for tooltip (positioned at top with marker)
+            local deathFrame = CreateFrame("Frame", nil, chartArea)
+            deathFrame:SetSize(20, 20) -- Hit area around the skull
+            deathFrame:SetPoint("CENTER", chartArea, "TOPLEFT", x, -8)
+            deathFrame:EnableMouse(true)
+            
+            -- Enhanced tooltip with death details (use converted time for display)
+            deathFrame:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(string.format("Victim: %s", death.destName or "Unknown"), 1, 0.8, 0.8, true)
+                GameTooltip:AddLine(string.format("Time: %.1f seconds", relativeTime), 1, 1, 0.8, true)
+                
+                if death.spellName and death.spellName ~= "" then
+                    GameTooltip:AddLine(string.format("Killed by: %s", death.spellName), 1, 0.6, 0.6, true)
+                end
+                
+                if death.sourceName and death.sourceName ~= "" then
+                    GameTooltip:AddLine(string.format("Source: %s", death.sourceName), 1, 0.6, 0.6, true)
+                end
+                
+                if death.amount and death.amount > 0 then
+                    GameTooltip:AddLine(string.format("Damage: %s", addon.CombatTracker:FormatNumber(death.amount)), 1, 0.7, 0.7, true)
+                end
+                
+                GameTooltip:Show()
+                
+                -- Highlight effect on hover
+                marker:SetVertexColor(1, 0.4, 0.4, 1) -- Slightly brighter on hover
+                markerGlow:SetVertexColor(1, 0.2, 0.2, 0.5) -- Brighter glow
+            end)
+            
+            deathFrame:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+                
+                -- Reset highlight effect
+                marker:SetVertexColor(1, 0.2, 0.2, 1)
+                markerGlow:SetVertexColor(1, 0, 0, 0.3)
+            end)
+        else
+            print("  Death", i, "SKIPPED - relativeTime:", relativeTime, "duration:", duration)
+            print("    Reason: relativeTime outside bounds [0,", duration, "]")
         end
+    end
+    
+    -- Summary  
+    local drawnCount = 0
+    for i, death in ipairs(deaths) do
+        if death.elapsed and death.elapsed >= 0 and death.elapsed <= duration then
+            drawnCount = drawnCount + 1
+        end
+    end
+    print("Summary: Drew", drawnCount, "out of", #deaths, "death markers")
+    print("All death times calculated by unified TimestampManager")
+    print("=== END DEATH MARKER DEBUG ===")
+end
+
+-- TEST: Draw test markers to verify chart functionality
+function EnhancedSessionDetailWindow:DrawTestMarkers(chartArea, duration, width, height)
+    -- Test cooldown marker at 25% through the fight
+    local testX = (duration * 0.25 / duration) * width
+    
+    local testLine = chartArea:CreateTexture(nil, "OVERLAY")
+    testLine:SetSize(3, height)
+    testLine:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", testX - 1, 0)
+    testLine:SetColorTexture(0, 1, 1, 0.8) -- Cyan test line
+    
+    local testMarker = chartArea:CreateTexture(nil, "OVERLAY")
+    testMarker:SetSize(12, 12)
+    testMarker:SetPoint("BOTTOM", chartArea, "BOTTOMLEFT", testX, height - 15)
+    testMarker:SetColorTexture(0, 1, 1, 1) -- Cyan marker
+    
+    -- Test death marker at 75% through the fight
+    local testDeathX = (duration * 0.75 / duration) * width
+    
+    local testDeathLine = chartArea:CreateTexture(nil, "OVERLAY")
+    testDeathLine:SetSize(2, height)
+    testDeathLine:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", testDeathX, 0)
+    testDeathLine:SetColorTexture(1, 0, 1, 0.8) -- Magenta test line
+    
+    local testDeathMarker = chartArea:CreateTexture(nil, "OVERLAY")
+    testDeathMarker:SetSize(16, 16)
+    testDeathMarker:SetPoint("CENTER", chartArea, "TOPLEFT", testDeathX, -8) -- Top of chart, centered
+    testDeathMarker:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_8") -- Skull raid marker
+    testDeathMarker:SetVertexColor(1, 0, 1, 1) -- Magenta skull
+    
+    if addon.DEBUG then
+        print("Drew test markers at", testX, "and", testDeathX)
     end
 end
 
