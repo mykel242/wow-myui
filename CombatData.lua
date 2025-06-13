@@ -206,7 +206,7 @@ function CombatData:StartCombat()
         addon.EnhancedCombatLogger:StartEnhancedTracking()
     end
 
-    print("Combat started!")
+    addon:DebugPrint("Combat started!")
 end
 
 -- End combat tracking
@@ -259,7 +259,7 @@ function CombatData:EndCombat()
                     participantCount = participantCount + 1
                 end
             end
-            print(string.format("Enhanced data collected: %d participants, %d cooldowns, %d deaths",
+            addon:DebugPrint(string.format("Enhanced data collected: %d participants, %d cooldowns, %d deaths",
                 participantCount,
                 #(enhancedData.cooldownUsage or {}),
                 #(enhancedData.deaths or {})))
@@ -276,22 +276,24 @@ function CombatData:EndCombat()
         addon.TimelineTracker:EndCombat()
     end
 
-    -- Print detailed combat summary
-    print("Combat Ended")
-    print("--------------------")
-    print(string.format("Start: %s", startTime))
-    print(string.format("End:   %s", endTime))
-    print(string.format("Elapsed: %02d:%02d", elapsedMin, elapsedSec))
-    print("--------------------")
-    print(string.format("Max DPS: %s", addon.CombatTracker:FormatNumber(maxDPS)))
-    print(string.format("Total Damage: %s", addon.CombatTracker:FormatNumber(totalDamage)))
-    print(string.format("Max HPS: %s", addon.CombatTracker:FormatNumber(maxHPS)))
-    print(string.format("Total Healing: %s", addon.CombatTracker:FormatNumber(totalHealing)))
-    print(string.format("Total Overheal: %s", addon.CombatTracker:FormatNumber(combatData.finalOverheal)))
-    print(string.format("Total Absorbs: %s", addon.CombatTracker:FormatNumber(combatData.finalAbsorb)))
-    if addon.TimelineTracker then
-        local timelineData = addon.TimelineTracker:GetTimelineData()
-        print(string.format("Timeline Samples: %d", #timelineData))
+    -- Debug combat summary (only when debug enabled)
+    if addon.DEBUG then
+        addon:DebugPrint("Combat Ended")
+        addon:DebugPrint("--------------------")
+        addon:DebugPrint(string.format("Start: %s", startTime))
+        addon:DebugPrint(string.format("End:   %s", endTime))
+        addon:DebugPrint(string.format("Elapsed: %02d:%02d", elapsedMin, elapsedSec))
+        addon:DebugPrint("--------------------")
+        addon:DebugPrint(string.format("Max DPS: %s", addon.CombatTracker:FormatNumber(maxDPS)))
+        addon:DebugPrint(string.format("Total Damage: %s", addon.CombatTracker:FormatNumber(totalDamage)))
+        addon:DebugPrint(string.format("Max HPS: %s", addon.CombatTracker:FormatNumber(maxHPS)))
+        addon:DebugPrint(string.format("Total Healing: %s", addon.CombatTracker:FormatNumber(totalHealing)))
+        addon:DebugPrint(string.format("Total Overheal: %s", addon.CombatTracker:FormatNumber(combatData.finalOverheal)))
+        addon:DebugPrint(string.format("Total Absorbs: %s", addon.CombatTracker:FormatNumber(combatData.finalAbsorb)))
+        if addon.TimelineTracker then
+            local timelineData = addon.TimelineTracker:GetTimelineData()
+            addon:DebugPrint(string.format("Timeline Samples: %d", #timelineData))
+        end
     end
 
     -- Enhanced data summary
@@ -302,12 +304,13 @@ function CombatData:EndCombat()
                 participantCount = participantCount + 1
             end
         end
-        print(string.format("Enhanced Data: %d participants, %d cooldowns, %d deaths",
-            participantCount,
-            #(enhancedData.cooldownUsage or {}),
-            #(enhancedData.deaths or {})))
+        if addon.DEBUG then
+            addon:DebugPrint(string.format("Enhanced Data: %d participants, %d cooldowns, %d deaths",
+                participantCount,
+                #(enhancedData.cooldownUsage or {}),
+                #(enhancedData.deaths or {})))
+        end
     end
-    print("--------------------")
 
     -- Create and store session record WITH enhanced data
     if addon.SessionManager then

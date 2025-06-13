@@ -511,7 +511,7 @@ function EnhancedSessionDetailWindow:CreateChartControls(controlsFrame)
     end
 end
 
--- Create participants tab - FIXED VERSION
+-- Create participants tab - ENHANCED VERSION
 function EnhancedSessionDetailWindow:CreateParticipantsTab()
     local content = CreateFrame("Frame", nil, self.frame.contentArea)
     content:SetAllPoints(self.frame.contentArea)
@@ -542,147 +542,546 @@ function EnhancedSessionDetailWindow:CreateParticipantsTab()
         return
     end
 
-    -- Create header row
-    local headerRow = CreateFrame("Frame", nil, content)
-    headerRow:SetSize(740, 25)
-    headerRow:SetPoint("TOP", content, "TOP", 0, -50)
-
-    local headerBg = headerRow:CreateTexture(nil, "BACKGROUND")
-    headerBg:SetAllPoints(headerRow)
-    headerBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
-
-    -- Column headers
-    local nameHeader = headerRow:CreateFontString(nil, "OVERLAY")
-    nameHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    nameHeader:SetPoint("LEFT", headerRow, "LEFT", 10, 0)
-    nameHeader:SetSize(150, 0)
-    nameHeader:SetText("Name")
-    nameHeader:SetJustifyH("LEFT")
-    nameHeader:SetTextColor(1, 1, 1, 1)
-
-    local typeHeader = headerRow:CreateFontString(nil, "OVERLAY")
-    typeHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    typeHeader:SetPoint("LEFT", headerRow, "LEFT", 170, 0)
-    typeHeader:SetSize(80, 0)
-    typeHeader:SetText("Type")
-    typeHeader:SetJustifyH("CENTER")
-    typeHeader:SetTextColor(1, 1, 1, 1)
-
-    local damageHeader = headerRow:CreateFontString(nil, "OVERLAY")
-    damageHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    damageHeader:SetPoint("LEFT", headerRow, "LEFT", 260, 0)
-    damageHeader:SetSize(100, 0)
-    damageHeader:SetText("Damage Dealt")
-    damageHeader:SetJustifyH("RIGHT")
-    damageHeader:SetTextColor(1, 1, 1, 1)
-
-    local healingHeader = headerRow:CreateFontString(nil, "OVERLAY")
-    healingHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    healingHeader:SetPoint("LEFT", headerRow, "LEFT", 370, 0)
-    healingHeader:SetSize(100, 0)
-    healingHeader:SetText("Healing Dealt")
-    healingHeader:SetJustifyH("RIGHT")
-    healingHeader:SetTextColor(1, 1, 1, 1)
-
-    local takenHeader = headerRow:CreateFontString(nil, "OVERLAY")
-    takenHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    takenHeader:SetPoint("LEFT", headerRow, "LEFT", 480, 0)
-    takenHeader:SetSize(100, 0)
-    takenHeader:SetText("Damage Taken")
-    takenHeader:SetJustifyH("RIGHT")
-    takenHeader:SetTextColor(1, 1, 1, 1)
-
-    -- Participants list (scrollable)
-    local scrollFrame = CreateFrame("ScrollFrame", nil, content, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetSize(740, 340)
-    scrollFrame:SetPoint("TOP", headerRow, "BOTTOM", -20, -5)
-
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetSize(720, 400)
-    scrollFrame:SetScrollChild(scrollChild)
-
-    -- Convert participants table to array and sort
+    -- Store reference for filtering
+    self.participantsContent = content
+    
+    -- Convert participants table to array (keep all for filtering)
     local participants = {}
     for guid, participant in pairs(self.sessionData.enhancedData.participants) do
         table.insert(participants, participant)
     end
-
+    
     -- Sort by total damage/healing dealt
     table.sort(participants, function(a, b)
         return (a.damageDealt + a.healingDealt) > (b.damageDealt + b.healingDealt)
     end)
+    
+    self.allParticipants = participants
+    self.filteredParticipants = participants
+    
+    -- Create filter controls
+    self:CreateParticipantFilters(content)
+    
+    -- Create the participants list
+    self:CreateParticipantsList(content)
 
-    -- Create participant rows
-    for i, participant in ipairs(participants) do
-        if i <= 20 then -- Limit display
-            local row = CreateFrame("Frame", nil, scrollChild)
-            row:SetSize(720, 25)
-            row:SetPoint("TOP", scrollChild, "TOP", 0, -(i - 1) * 27)
-
-            local rowBg = row:CreateTexture(nil, "BACKGROUND")
-            rowBg:SetAllPoints(row)
-            rowBg:SetColorTexture(i % 2 == 0 and 0.1 or 0.05, i % 2 == 0 and 0.1 or 0.05, i % 2 == 0 and 0.1 or 0.05, 0.5)
-
-            -- Name
-            local nameText = row:CreateFontString(nil, "OVERLAY")
-            nameText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-            nameText:SetPoint("LEFT", row, "LEFT", 10, 0)
-            nameText:SetSize(150, 0)
-            nameText:SetText(participant.name)
-            nameText:SetJustifyH("LEFT")
-
-            -- Color code by type
-            if participant.isPlayer then
-                nameText:SetTextColor(0.3, 1, 0.3, 1)
-            elseif participant.isPet then
-                nameText:SetTextColor(0.8, 0.8, 0.3, 1)
-            else
-                nameText:SetTextColor(1, 0.5, 0.5, 1)
-            end
-
-            -- Type
-            local typeText = row:CreateFontString(nil, "OVERLAY")
-            typeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-            typeText:SetPoint("LEFT", row, "LEFT", 170, 0)
-            typeText:SetSize(80, 0)
-            local typeStr = participant.isPlayer and "Player" or (participant.isPet and "Pet" or "NPC")
-            typeText:SetText(typeStr)
-            typeText:SetJustifyH("CENTER")
-            typeText:SetTextColor(0.7, 0.7, 0.7, 1)
-
-            -- Damage dealt
-            local damageText = row:CreateFontString(nil, "OVERLAY")
-            damageText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-            damageText:SetPoint("LEFT", row, "LEFT", 260, 0)
-            damageText:SetSize(100, 0)
-            damageText:SetText(addon.CombatTracker:FormatNumber(participant.damageDealt or 0))
-            damageText:SetJustifyH("RIGHT")
-            damageText:SetTextColor(1, 0.4, 0.4, 1)
-
-            -- Healing dealt
-            local healingText = row:CreateFontString(nil, "OVERLAY")
-            healingText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-            healingText:SetPoint("LEFT", row, "LEFT", 370, 0)
-            healingText:SetSize(100, 0)
-            healingText:SetText(addon.CombatTracker:FormatNumber(participant.healingDealt or 0))
-            healingText:SetJustifyH("RIGHT")
-            healingText:SetTextColor(0.4, 1, 0.4, 1)
-
-            -- Damage taken
-            local takenText = row:CreateFontString(nil, "OVERLAY")
-            takenText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-            takenText:SetPoint("LEFT", row, "LEFT", 480, 0)
-            takenText:SetSize(100, 0)
-            takenText:SetText(addon.CombatTracker:FormatNumber(participant.damageTaken or 0))
-            takenText:SetJustifyH("RIGHT")
-            takenText:SetTextColor(1, 0.8, 0.4, 1)
-        end
-    end
-
-    scrollChild:SetHeight(math.max(400, #participants * 27))
-
+    
     content:Show()
     self.frame.currentContent = content
+end
+
+-- Create participant filter controls
+function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
+    local filterFrame = CreateFrame("Frame", nil, parent)
+    filterFrame:SetSize(740, 50)
+    filterFrame:SetPoint("TOP", parent, "TOP", 0, -45)
+    
+    local filterBg = filterFrame:CreateTexture(nil, "BACKGROUND")
+    filterBg:SetAllPoints(filterFrame)
+    filterBg:SetColorTexture(0.15, 0.15, 0.15, 0.8)
+    
+    -- Reorganize controls in a more compact layout
+    
+    -- Search box
+    local searchBox = CreateFrame("EditBox", nil, filterFrame, "InputBoxTemplate")
+    searchBox:SetSize(180, 20)
+    searchBox:SetPoint("LEFT", filterFrame, "LEFT", 10, 5)
+    searchBox:SetAutoFocus(false)
+    searchBox:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    
+    local searchLabel = filterFrame:CreateFontString(nil, "OVERLAY")
+    searchLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    searchLabel:SetPoint("BOTTOMLEFT", searchBox, "TOPLEFT", 0, 2)
+    searchLabel:SetText("Search:")
+    searchLabel:SetTextColor(0.8, 0.8, 0.8, 1)
+    
+    -- Type filter dropdown
+    local typeFilter = CreateFrame("Frame", nil, filterFrame, "UIDropDownMenuTemplate")
+    typeFilter:SetPoint("LEFT", searchBox, "RIGHT", 10, 5)
+    UIDropDownMenu_SetWidth(typeFilter, 90)
+    UIDropDownMenu_SetText(typeFilter, "All Types")
+    
+    local typeLabel = filterFrame:CreateFontString(nil, "OVERLAY")
+    typeLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    typeLabel:SetPoint("BOTTOMLEFT", typeFilter, "TOPLEFT", 20, 2)
+    typeLabel:SetText("Type:")
+    typeLabel:SetTextColor(0.8, 0.8, 0.8, 1)
+    
+    -- Show zero contributors toggle
+    local showZeroBtn = CreateFrame("CheckButton", nil, filterFrame, "UICheckButtonTemplate")
+    showZeroBtn:SetSize(14, 14)
+    showZeroBtn:SetPoint("LEFT", typeFilter, "RIGHT", 10, 5)
+    showZeroBtn:SetChecked(false)
+    
+    local showZeroLabel = filterFrame:CreateFontString(nil, "OVERLAY")
+    showZeroLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    showZeroLabel:SetPoint("LEFT", showZeroBtn, "RIGHT", 3, 0)
+    showZeroLabel:SetText("Show Zero")
+    showZeroLabel:SetTextColor(0.8, 0.8, 0.8, 1)
+    
+    -- Clear filters button
+    local clearBtn = CreateFrame("Button", nil, filterFrame)
+    clearBtn:SetSize(45, 18)
+    clearBtn:SetPoint("LEFT", showZeroLabel, "RIGHT", 8, 0)
+    clearBtn:SetNormalFontObject("GameFontNormalSmall")
+    clearBtn:SetText("Clear")
+    clearBtn:GetFontString():SetTextColor(0.8, 0.8, 0.8, 1)
+    
+    local clearBg = clearBtn:CreateTexture(nil, "BACKGROUND")
+    clearBg:SetAllPoints(clearBtn)
+    clearBg:SetColorTexture(0.3, 0.3, 0.3, 0.6)
+    
+    -- Store references
+    self.participantFilters = {
+        searchBox = searchBox,
+        typeFilter = typeFilter,
+        clearBtn = clearBtn,
+        showZeroBtn = showZeroBtn
+    }
+    
+    -- Set up filter functionality
+    self:SetupParticipantFilters()
+end
+
+-- Set up participant filter functionality
+function EnhancedSessionDetailWindow:SetupParticipantFilters()
+    local filters = self.participantFilters
+    local window = self  -- Store reference to avoid context issues
+    
+    -- Search box functionality
+    filters.searchBox:SetScript("OnTextChanged", function(editBox, userInput)
+        if userInput then
+            window:FilterParticipants()
+        end
+    end)
+    
+    -- Type filter dropdown
+    UIDropDownMenu_Initialize(filters.typeFilter, function(frame, level)
+        local info = UIDropDownMenu_CreateInfo()
+        
+        info.text = "All Types"
+        info.value = "all"
+        info.func = function() 
+            UIDropDownMenu_SetSelectedValue(filters.typeFilter, "all")
+            UIDropDownMenu_SetText(filters.typeFilter, "All Types")
+            window:FilterParticipants()
+        end
+        info.checked = UIDropDownMenu_GetSelectedValue(filters.typeFilter) == "all"
+        UIDropDownMenu_AddButton(info)
+        
+        info.text = "Players"
+        info.value = "player"
+        info.func = function() 
+            UIDropDownMenu_SetSelectedValue(filters.typeFilter, "player")
+            UIDropDownMenu_SetText(filters.typeFilter, "Players")
+            window:FilterParticipants()
+        end
+        info.checked = UIDropDownMenu_GetSelectedValue(filters.typeFilter) == "player"
+        UIDropDownMenu_AddButton(info)
+        
+        info.text = "Pets"
+        info.value = "pet"
+        info.func = function() 
+            UIDropDownMenu_SetSelectedValue(filters.typeFilter, "pet")
+            UIDropDownMenu_SetText(filters.typeFilter, "Pets")
+            window:FilterParticipants()
+        end
+        info.checked = UIDropDownMenu_GetSelectedValue(filters.typeFilter) == "pet"
+        UIDropDownMenu_AddButton(info)
+        
+        info.text = "NPCs"
+        info.value = "npc"
+        info.func = function() 
+            UIDropDownMenu_SetSelectedValue(filters.typeFilter, "npc")
+            UIDropDownMenu_SetText(filters.typeFilter, "NPCs")
+            window:FilterParticipants()
+        end
+        info.checked = UIDropDownMenu_GetSelectedValue(filters.typeFilter) == "npc"
+        UIDropDownMenu_AddButton(info)
+    end)
+    
+    UIDropDownMenu_SetSelectedValue(filters.typeFilter, "all")
+    
+    -- Show zero contributors toggle
+    filters.showZeroBtn:SetScript("OnClick", function()
+        window:FilterParticipants()
+    end)
+    
+    -- Clear button
+    filters.clearBtn:SetScript("OnClick", function()
+        filters.searchBox:SetText("")
+        UIDropDownMenu_SetSelectedValue(filters.typeFilter, "all")
+        UIDropDownMenu_SetText(filters.typeFilter, "All Types")
+        filters.showZeroBtn:SetChecked(false)
+        window:FilterParticipants()
+    end)
+    
+end
+
+-- Filter participants based on current filter settings
+function EnhancedSessionDetailWindow:FilterParticipants()
+    local searchText = self.participantFilters.searchBox:GetText():lower()
+    local typeFilter = UIDropDownMenu_GetSelectedValue(self.participantFilters.typeFilter) or "all"
+    local showZeroContributors = self.participantFilters.showZeroBtn:GetChecked()
+    
+    self.filteredParticipants = {}
+    
+    for _, participant in ipairs(self.allParticipants) do
+        local matchesSearch = searchText == "" or participant.name:lower():find(searchText, 1, true)
+        local matchesType = typeFilter == "all" or 
+                           (typeFilter == "player" and participant.isPlayer) or
+                           (typeFilter == "pet" and participant.isPet) or
+                           (typeFilter == "npc" and not participant.isPlayer and not participant.isPet)
+        
+        -- Zero contribution filter
+        local totalContribution = (participant.damageDealt or 0) + (participant.healingDealt or 0) + (participant.damageTaken or 0)
+        local matchesContribution = showZeroContributors or totalContribution > 0
+        
+        if matchesSearch and matchesType and matchesContribution then
+            table.insert(self.filteredParticipants, participant)
+        end
+    end
+    
+    self:RefreshParticipantsList()
+end
+
+-- Create the virtualized participants list
+function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
+    -- Create header row
+    local headerRow = CreateFrame("Frame", nil, parent)
+    headerRow:SetSize(740, 25)
+    headerRow:SetPoint("TOP", parent, "TOP", 0, -100)
+    
+    local headerBg = headerRow:CreateTexture(nil, "BACKGROUND")
+    headerBg:SetAllPoints(headerRow)
+    headerBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
+    
+    -- Initialize sorting state
+    self.sortColumn = "total"  -- default sort by total damage + healing
+    self.sortDirection = "desc"  -- descending by default
+    
+    -- Clickable column headers with sorting
+    local nameHeaderBtn = CreateFrame("Button", nil, headerRow)
+    nameHeaderBtn:SetSize(150, 25)
+    nameHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 10, 0)
+    nameHeaderBtn:SetScript("OnClick", function() self:SortParticipants("name") end)
+    
+    local nameHeader = nameHeaderBtn:CreateFontString(nil, "OVERLAY")
+    nameHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    nameHeader:SetAllPoints(nameHeaderBtn)
+    nameHeader:SetText("Name")
+    nameHeader:SetJustifyH("LEFT")
+    nameHeader:SetTextColor(1, 1, 1, 1)
+    nameHeaderBtn.text = nameHeader
+    
+    local typeHeaderBtn = CreateFrame("Button", nil, headerRow)
+    typeHeaderBtn:SetSize(80, 25)
+    typeHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 170, 0)
+    typeHeaderBtn:SetScript("OnClick", function() self:SortParticipants("type") end)
+    
+    local typeHeader = typeHeaderBtn:CreateFontString(nil, "OVERLAY")
+    typeHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    typeHeader:SetAllPoints(typeHeaderBtn)
+    typeHeader:SetText("Type")
+    typeHeader:SetJustifyH("CENTER")
+    typeHeader:SetTextColor(1, 1, 1, 1)
+    typeHeaderBtn.text = typeHeader
+    
+    local damageHeaderBtn = CreateFrame("Button", nil, headerRow)
+    damageHeaderBtn:SetSize(100, 25)
+    damageHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 260, 0)
+    damageHeaderBtn:SetScript("OnClick", function() self:SortParticipants("damage") end)
+    
+    local damageHeader = damageHeaderBtn:CreateFontString(nil, "OVERLAY")
+    damageHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    damageHeader:SetAllPoints(damageHeaderBtn)
+    damageHeader:SetText("Damage Dealt")
+    damageHeader:SetJustifyH("RIGHT")
+    damageHeader:SetTextColor(1, 1, 1, 1)
+    damageHeaderBtn.text = damageHeader
+    
+    local healingHeaderBtn = CreateFrame("Button", nil, headerRow)
+    healingHeaderBtn:SetSize(100, 25)
+    healingHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 370, 0)
+    healingHeaderBtn:SetScript("OnClick", function() self:SortParticipants("healing") end)
+    
+    local healingHeader = healingHeaderBtn:CreateFontString(nil, "OVERLAY")
+    healingHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    healingHeader:SetAllPoints(healingHeaderBtn)
+    healingHeader:SetText("Healing Dealt")
+    healingHeader:SetJustifyH("RIGHT")
+    healingHeader:SetTextColor(1, 1, 1, 1)
+    healingHeaderBtn.text = healingHeader
+    
+    local takenHeaderBtn = CreateFrame("Button", nil, headerRow)
+    takenHeaderBtn:SetSize(100, 25)
+    takenHeaderBtn:SetPoint("LEFT", headerRow, "LEFT", 480, 0)
+    takenHeaderBtn:SetScript("OnClick", function() self:SortParticipants("taken") end)
+    
+    local takenHeader = takenHeaderBtn:CreateFontString(nil, "OVERLAY")
+    takenHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    takenHeader:SetAllPoints(takenHeaderBtn)
+    takenHeader:SetText("Damage Taken")
+    takenHeader:SetJustifyH("RIGHT")
+    takenHeader:SetTextColor(1, 1, 1, 1)
+    takenHeaderBtn.text = takenHeader
+    
+    -- Store header references for sorting indicators
+    self.columnHeaders = {
+        name = nameHeaderBtn,
+        type = typeHeaderBtn,
+        damage = damageHeaderBtn,
+        healing = healingHeaderBtn,
+        taken = takenHeaderBtn
+    }
+    
+    -- Virtualized scrollable list
+    local scrollFrame = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetSize(740, 300)
+    scrollFrame:SetPoint("TOP", headerRow, "BOTTOM", -20, -5)
+    
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetSize(720, 300)
+    scrollFrame:SetScrollChild(scrollChild)
+    
+    -- Store references for virtualization
+    self.participantsList = {
+        scrollFrame = scrollFrame,
+        scrollChild = scrollChild,
+        headerRow = headerRow,
+        visibleRows = {},
+        rowHeight = 27,
+        maxVisibleRows = 13
+    }
+    
+    -- Create reusable row frames for virtualization
+    for i = 1, self.participantsList.maxVisibleRows do
+        local row = self:CreateParticipantRow(scrollChild, i)
+        table.insert(self.participantsList.visibleRows, row)
+    end
+    
+    -- Set up scroll handling
+    scrollFrame:SetScript("OnVerticalScroll", function(frame, delta)
+        self:UpdateVisibleParticipants()
+    end)
+    
+    -- Initial sorting indicators
+    self:UpdateSortingIndicators()
+    
+    -- Initial population
+    self:RefreshParticipantsList()
+end
+
+-- Create a reusable participant row frame
+function EnhancedSessionDetailWindow:CreateParticipantRow(parent, index)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(720, 25)
+    row:Hide()
+    
+    local rowBg = row:CreateTexture(nil, "BACKGROUND")
+    rowBg:SetAllPoints(row)
+    row.bg = rowBg
+    
+    -- Name
+    local nameText = row:CreateFontString(nil, "OVERLAY")
+    nameText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    nameText:SetPoint("LEFT", row, "LEFT", 10, 0)
+    nameText:SetSize(150, 0)
+    nameText:SetJustifyH("LEFT")
+    row.nameText = nameText
+    
+    -- Type
+    local typeText = row:CreateFontString(nil, "OVERLAY")
+    typeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    typeText:SetPoint("LEFT", row, "LEFT", 170, 0)
+    typeText:SetSize(80, 0)
+    typeText:SetJustifyH("CENTER")
+    typeText:SetTextColor(0.7, 0.7, 0.7, 1)
+    row.typeText = typeText
+    
+    -- Damage dealt
+    local damageText = row:CreateFontString(nil, "OVERLAY")
+    damageText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    damageText:SetPoint("LEFT", row, "LEFT", 260, 0)
+    damageText:SetSize(100, 0)
+    damageText:SetJustifyH("RIGHT")
+    damageText:SetTextColor(1, 0.4, 0.4, 1)
+    row.damageText = damageText
+    
+    -- Healing dealt
+    local healingText = row:CreateFontString(nil, "OVERLAY")
+    healingText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    healingText:SetPoint("LEFT", row, "LEFT", 370, 0)
+    healingText:SetSize(100, 0)
+    healingText:SetJustifyH("RIGHT")
+    healingText:SetTextColor(0.4, 1, 0.4, 1)
+    row.healingText = healingText
+    
+    -- Damage taken
+    local takenText = row:CreateFontString(nil, "OVERLAY")
+    takenText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    takenText:SetPoint("LEFT", row, "LEFT", 480, 0)
+    takenText:SetSize(100, 0)
+    takenText:SetJustifyH("RIGHT")
+    takenText:SetTextColor(1, 0.8, 0.4, 1)
+    row.takenText = takenText
+    
+    return row
+end
+
+-- Refresh the participants list display
+function EnhancedSessionDetailWindow:RefreshParticipantsList()
+    local list = self.participantsList
+    local numParticipants = #self.filteredParticipants
+    
+    -- Update scroll child height for proper scrolling
+    local totalHeight = math.max(300, numParticipants * list.rowHeight)
+    list.scrollChild:SetHeight(totalHeight)
+    
+    -- Update visible participants
+    self:UpdateVisibleParticipants()
+end
+
+-- Update which participants are visible in the virtualized list
+function EnhancedSessionDetailWindow:UpdateVisibleParticipants()
+    local list = self.participantsList
+    local numParticipants = #self.filteredParticipants
+    
+    if numParticipants == 0 then
+        -- Hide all rows
+        for _, row in ipairs(list.visibleRows) do
+            row:Hide()
+        end
+        return
+    end
+    
+    -- Calculate which participants should be visible
+    local scrollOffset = list.scrollFrame:GetVerticalScroll()
+    local startIndex = math.floor(scrollOffset / list.rowHeight) + 1
+    
+    -- Update visible rows
+    for i, row in ipairs(list.visibleRows) do
+        local participantIndex = startIndex + i - 1
+        
+        if participantIndex <= numParticipants then
+            local participant = self.filteredParticipants[participantIndex]
+            
+            -- Position the row
+            row:SetPoint("TOP", list.scrollChild, "TOP", 0, -(participantIndex - 1) * list.rowHeight)
+            
+            -- Update row data
+            self:UpdateParticipantRowData(row, participant, participantIndex)
+            row:Show()
+        else
+            row:Hide()
+        end
+    end
+end
+
+-- Update a single participant row with data
+function EnhancedSessionDetailWindow:UpdateParticipantRowData(row, participant, index)
+    -- Alternating row background
+    local alpha = index % 2 == 0 and 0.1 or 0.05
+    row.bg:SetColorTexture(alpha, alpha, alpha, 0.5)
+    
+    -- Name with color coding
+    row.nameText:SetText(participant.name)
+    if participant.isPlayer then
+        row.nameText:SetTextColor(0.3, 1, 0.3, 1)
+    elseif participant.isPet then
+        row.nameText:SetTextColor(0.8, 0.8, 0.3, 1)
+    else
+        row.nameText:SetTextColor(1, 0.5, 0.5, 1)
+    end
+    
+    -- Type
+    local typeStr = participant.isPlayer and "Player" or (participant.isPet and "Pet" or "NPC")
+    row.typeText:SetText(typeStr)
+    
+    -- Stats
+    row.damageText:SetText(addon.CombatTracker:FormatNumber(participant.damageDealt or 0))
+    row.healingText:SetText(addon.CombatTracker:FormatNumber(participant.healingDealt or 0))
+    row.takenText:SetText(addon.CombatTracker:FormatNumber(participant.damageTaken or 0))
+end
+
+-- Sort participants by column
+function EnhancedSessionDetailWindow:SortParticipants(column)
+    -- Toggle direction if clicking same column, otherwise default to desc
+    if self.sortColumn == column then
+        self.sortDirection = self.sortDirection == "desc" and "asc" or "desc"
+    else
+        self.sortColumn = column
+        self.sortDirection = "desc"
+    end
+    
+    -- Sort the participants array
+    table.sort(self.allParticipants, function(a, b)
+        local valueA, valueB
+        
+        if column == "name" then
+            valueA = a.name:lower()
+            valueB = b.name:lower()
+        elseif column == "type" then
+            -- Sort order: Player, Pet, NPC
+            local function getTypeOrder(participant)
+                if participant.isPlayer then return 1
+                elseif participant.isPet then return 2
+                else return 3 end
+            end
+            valueA = getTypeOrder(a)
+            valueB = getTypeOrder(b)
+        elseif column == "damage" then
+            valueA = a.damageDealt or 0
+            valueB = b.damageDealt or 0
+        elseif column == "healing" then
+            valueA = a.healingDealt or 0
+            valueB = b.healingDealt or 0
+        elseif column == "taken" then
+            valueA = a.damageTaken or 0
+            valueB = b.damageTaken or 0
+        else -- total (default)
+            valueA = (a.damageDealt or 0) + (a.healingDealt or 0)
+            valueB = (b.damageDealt or 0) + (b.healingDealt or 0)
+        end
+        
+        if self.sortDirection == "asc" then
+            return valueA < valueB
+        else
+            return valueA > valueB
+        end
+    end)
+    
+    -- Update column header indicators
+    self:UpdateSortingIndicators()
+    
+    -- Refresh the filtered view
+    self:FilterParticipants()
+end
+
+-- Update sorting indicators in column headers
+function EnhancedSessionDetailWindow:UpdateSortingIndicators()
+    -- Reset all headers to base names
+    local baseNames = {
+        name = "Name",
+        type = "Type", 
+        damage = "Damage Dealt",
+        healing = "Healing Dealt",
+        taken = "Damage Taken"
+    }
+    
+    for column, header in pairs(self.columnHeaders) do
+        header.text:SetText(baseNames[column] or "")
+        header.text:SetTextColor(1, 1, 1, 1)
+    end
+    
+    -- Add arrow to current sort column
+    if self.columnHeaders[self.sortColumn] then
+        local header = self.columnHeaders[self.sortColumn]
+        local baseName = baseNames[self.sortColumn] or ""
+        local arrow = self.sortDirection == "asc" and " ↑" or " ↓"
+        header.text:SetText(baseName .. arrow)
+        header.text:SetTextColor(0.8, 0.8, 1, 1)  -- Highlight sorted column
+    end
 end
 
 -- Create damage analysis tab - FIXED VERSION

@@ -7,15 +7,14 @@ local addonName, addon = ...
 -- Force reload flag for development
 if not addon.devMode then
     addon.devMode = true
-    print("Development mode enabled - caching disabled")
 end
 
 -- Initialize addon
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "bug-claude-debugging-sessions-not-created-6e2a7e2"
-addon.BUILD_DATE = "2025-06-12-19:17"
+addon.VERSION = "feature-enhanced-logging-participants-view-7e4f039"
+addon.BUILD_DATE = "2025-06-12-20:47"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -111,9 +110,6 @@ addon.frame:SetScript("OnEvent", OnEvent)
 
 -- Initialize function
 function addon:OnInitialize()
-    -- Print version info to confirm new code loaded
-    print(string.format("%s v%s (Build: %s) loaded!", addonName, addon.VERSION, addon.BUILD_DATE))
-
     -- Load saved variables or set defaults
     if MyUIDB == nil then
         MyUIDB = {}
@@ -135,59 +131,45 @@ function addon:OnInitialize()
     -- 1. Core combat tracking first
     if self.CombatData then
         self.CombatData:Initialize()
-        print("✓ CombatData initialized")
     end
 
     -- 2. Timeline tracker (depends on CombatData)
     if self.TimelineTracker then
         self.TimelineTracker:Initialize()
-        print("✓ TimelineTracker initialized")
     end
 
     -- 3. Enhanced logger (depends on CombatData)
     if self.EnhancedCombatLogger then
         self.EnhancedCombatLogger:Initialize()
-        print("✓ EnhancedCombatLogger initialized")
-    else
-        print("✗ EnhancedCombatLogger not found!")
     end
 
     -- 4. Content detection
     if self.ContentDetection then
         self.ContentDetection:Initialize()
-        print("✓ ContentDetection initialized")
     end
 
     -- 5. Session manager (depends on others)
     if self.SessionManager then
         self.SessionManager:Initialize()
-        print("✓ SessionManager initialized")
     end
 
     -- 6. Main combat tracker (coordinator)
     if self.CombatTracker then
         self.CombatTracker:Initialize()
-        print("✓ CombatTracker initialized")
     end
 
     -- 7. UI windows
     if self.DPSWindow then
         self.DPSWindow:Initialize()
-        print("✓ DPSWindow initialized")
     end
     if self.HPSWindow then
         self.HPSWindow:Initialize()
-        print("✓ HPSWindow initialized")
     end
 
     -- Load session history for current character/spec
     if self.SessionManager then
         self.SessionManager:InitializeSessionHistory()
-        print("✓ Session history loaded")
     end
-
-    print(addonName .. " loaded successfully!")
-    print("Use /myui to toggle the main configuration window")
 
     -- Debug enhanced logging status
     if self.DEBUG and self.EnhancedCombatLogger then
@@ -202,13 +184,19 @@ function addon:OnEnable()
         self:CreateMainFrame()
 
         -- Debug the state
-        print("showMainWindow value:", self.db.showMainWindow)
+        if addon.DEBUG then
+            addon:DebugPrint("showMainWindow value: " .. tostring(self.db.showMainWindow))
+        end
 
         if self.db.showMainWindow then
-            print("Showing main window")
+            if addon.DEBUG then
+                addon:DebugPrint("Showing main window")
+            end
             self.mainFrame:Show()
         else
-            print("Not showing main window")
+            if addon.DEBUG then
+                addon:DebugPrint("Not showing main window")
+            end
         end
 
         -- Restore other windows...
@@ -220,7 +208,9 @@ function addon:OnEnable()
             self.HPSWindow:Show()
         end
 
-        print(addonName .. " is now active!")
+        if addon.DEBUG then
+            addon:DebugPrint(addonName .. " is now active!")
+        end
     end
 end
 
@@ -830,7 +820,6 @@ end
 
 -- Main slash command handler
 SLASH_MYUI1 = "/myui"
-SLASH_MYUI2 = "/m"
 
 function SlashCmdList.MYUI(msg, editBox)
     local command = string.lower(msg)

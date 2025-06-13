@@ -72,7 +72,7 @@ local function CalculateQualityScore(sessionData)
     local combatActionCount = addon.CombatData:GetActionCount()
 
     if addon.DEBUG then
-        print(string.format("Quality Debug: Duration=%.1f, Damage=%.0f, Healing=%.0f, DPS=%.0f, HPS=%.0f, Actions=%d",
+        addon:DebugPrint(string.format("Quality Debug: Duration=%.1f, Damage=%.0f, Healing=%.0f, DPS=%.0f, HPS=%.0f, Actions=%d",
             sessionData.duration, sessionData.totalDamage, sessionData.totalHealing,
             sessionData.avgDPS, sessionData.avgHPS, combatActionCount))
     end
@@ -81,16 +81,16 @@ local function CalculateQualityScore(sessionData)
     if sessionData.duration < 3 then
         score = score - 40 -- Really short fights are questionable
         flags.tooShort = true
-        if addon.DEBUG then print("Quality: Too short (-40)") end
+        if addon.DEBUG then addon:DebugPrint("Quality: Too short (-40)") end
     elseif sessionData.duration < 6 then
         score = score - 15 -- Short fights are less reliable
-        if addon.DEBUG then print("Quality: Short (-15)") end
+        if addon.DEBUG then addon:DebugPrint("Quality: Short (-15)") end
     elseif sessionData.duration > 30 then
         score = score + 10 -- Long fights are high quality
-        if addon.DEBUG then print("Quality: Long fight (+10)") end
+        if addon.DEBUG then addon:DebugPrint("Quality: Long fight (+10)") end
     else
         -- Normal duration 6-30s, no penalty
-        if addon.DEBUG then print("Quality: Normal duration (0)") end
+        if addon.DEBUG then addon:DebugPrint("Quality: Normal duration (0)") end
     end
 
     -- Activity check - based on actions per second (relative to duration)
@@ -98,13 +98,13 @@ local function CalculateQualityScore(sessionData)
     if actionsPerSecond < 0.3 then -- Less than 1 action per 3 seconds
         score = score - 25
         flags.lowActivity = true
-        if addon.DEBUG then print(string.format("Quality: Low activity %.2f APS (-25)", actionsPerSecond)) end
+        if addon.DEBUG then addon:DebugPrint(string.format("Quality: Low activity %.2f APS (-25)", actionsPerSecond)) end
     elseif actionsPerSecond > 1.5 then -- More than 1.5 actions per second
         score = score + 15             -- High activity bonus
-        if addon.DEBUG then print(string.format("Quality: High activity %.2f APS (+15)", actionsPerSecond)) end
+        if addon.DEBUG then addon:DebugPrint(string.format("Quality: High activity %.2f APS (+15)", actionsPerSecond)) end
     else
         score = score + 5 -- Normal activity
-        if addon.DEBUG then print(string.format("Quality: Normal activity %.2f APS (+5)", actionsPerSecond)) end
+        if addon.DEBUG then addon:DebugPrint(string.format("Quality: Normal activity %.2f APS (+5)", actionsPerSecond)) end
     end
 
     -- Performance consistency check - DPS should be reasonable relative to duration
@@ -113,12 +113,12 @@ local function CalculateQualityScore(sessionData)
         score = score - 20
         flags.lowDPS = true
         if addon.DEBUG then
-            print(string.format("Quality: DPS too low %.0f < %.0f (-20)", sessionData.avgDPS,
+            addon:DebugPrint(string.format("Quality: DPS too low %.0f < %.0f (-20)", sessionData.avgDPS,
                 expectedMinDPS))
         end
     else
         score = score + 10 -- Meeting minimum performance
-        if addon.DEBUG then print("Quality: DPS acceptable (+10)") end
+        if addon.DEBUG then addon:DebugPrint("Quality: DPS acceptable (+10)") end
     end
 
     -- Healing appropriateness (only matters if they did substantial healing relative to damage)
