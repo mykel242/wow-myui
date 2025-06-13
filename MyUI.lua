@@ -14,8 +14,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-enhanced-logging-participants-view-3836c08"
-addon.BUILD_DATE = "2025-06-12-20:21"
+addon.VERSION = "feature-enhanced-logging-participants-view-7b49f72"
+addon.BUILD_DATE = "2025-06-12-20:25"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -830,7 +830,6 @@ end
 
 -- Main slash command handler
 SLASH_MYUI1 = "/myui"
-SLASH_MYUI2 = "/m"
 
 function SlashCmdList.MYUI(msg, editBox)
     local command = string.lower(msg)
