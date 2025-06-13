@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-0a78fcb"
-addon.BUILD_DATE = "2025-06-12-21:11"
+addon.VERSION = "main-09d2dd3"
+addon.BUILD_DATE = "2025-06-12-21:16"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -53,17 +53,21 @@ addon.FocusManager = {
     registeredWindows = {}
 }
 
-function addon.FocusManager:RegisterWindow(frame, pixelMeter)
+function addon.FocusManager:RegisterWindow(frame, pixelMeter, defaultStrata)
     if not frame then return end
     
-    -- Set default strata
-    frame:SetFrameStrata("MEDIUM")
+    -- Set default strata (allow override for special windows like main config)
+    defaultStrata = defaultStrata or "MEDIUM"
+    frame:SetFrameStrata(defaultStrata)
     
     -- Store registration
     self.registeredWindows[frame] = {
         pixelMeter = pixelMeter,
-        defaultStrata = "MEDIUM"
+        defaultStrata = defaultStrata
     }
+    
+    -- Propagate strata to children immediately
+    self:PropagateStrataToChildren(frame, defaultStrata)
     
     -- Sync pixel meter strata if it exists
     if pixelMeter and pixelMeter.SyncStrataWithParent then
@@ -124,6 +128,9 @@ function addon.FocusManager:SetFocus(frame)
     self.focusedWindow = frame
     frame:SetFrameStrata("HIGH")
     
+    -- Propagate strata to all child frames
+    self:PropagateStrataToChildren(frame, "HIGH")
+    
     -- Sync pixel meter strata
     local windowInfo = self.registeredWindows[frame]
     if windowInfo and windowInfo.pixelMeter and windowInfo.pixelMeter.SyncStrataWithParent then
@@ -143,9 +150,28 @@ function addon.FocusManager:RevertWindowStrata(frame)
     if windowInfo then
         frame:SetFrameStrata(windowInfo.defaultStrata)
         
+        -- Propagate strata to all child frames
+        self:PropagateStrataToChildren(frame, windowInfo.defaultStrata)
+        
         -- Sync pixel meter strata
         if windowInfo.pixelMeter and windowInfo.pixelMeter.SyncStrataWithParent then
             windowInfo.pixelMeter:SyncStrataWithParent()
+        end
+    end
+end
+
+-- Recursively propagate frame strata to all child frames
+function addon.FocusManager:PropagateStrataToChildren(parentFrame, strata)
+    if not parentFrame then return end
+    
+    -- Get all child frames
+    local children = { parentFrame:GetChildren() }
+    
+    for _, child in ipairs(children) do
+        if child and child.SetFrameStrata then
+            child:SetFrameStrata(strata)
+            -- Recursively apply to grandchildren
+            self:PropagateStrataToChildren(child, strata)
         end
     end
 end
@@ -412,9 +438,9 @@ function addon:CreateMainFrame()
         }
     end)
     
-    -- Register with focus management  
+    -- Register with focus management (main config uses HIGH default strata)
     if addon.FocusManager then
-        addon.FocusManager:RegisterWindow(frame, nil)
+        addon.FocusManager:RegisterWindow(frame, nil, "HIGH")
     end
 
     -- === CURRENT COMBAT PANEL ===

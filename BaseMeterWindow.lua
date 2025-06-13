@@ -131,9 +131,9 @@ function BaseMeterWindow:Create()
     -- Store frame reference
     self.frame = frame
     
-    -- Register with focus management system
+    -- Register with focus management system (meter windows use LOW default strata)
     if addon.FocusManager then
-        addon.FocusManager:RegisterWindow(frame, nil)
+        addon.FocusManager:RegisterWindow(frame, nil, "LOW")
     end
 
     -- Meter mode indicator (small text showing current max and mode)
