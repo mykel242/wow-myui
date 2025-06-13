@@ -326,8 +326,8 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
         maxHPS = math.max(maxHPS, point.instantHPS or point.averageHPS or 0)
     end
 
-    -- Draw grid lines
-    self:DrawChartGrid(chartArea, chartWidth, chartHeight)
+    -- Draw grid lines with time axis and Y-axis labels
+    self:DrawChartGrid(chartArea, chartWidth, chartHeight, sessionData.duration, maxDPS, maxHPS)
 
     -- Draw performance lines
     self:DrawPerformanceLines(chartArea, timelineData, chartWidth, chartHeight, maxDPS, maxHPS)
@@ -347,8 +347,8 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
     self:CreateChartLegend(chartArea, maxDPS, maxHPS)
 end
 
--- Draw chart grid
-function EnhancedSessionDetailWindow:DrawChartGrid(chartArea, width, height)
+-- Draw chart grid with time axis and Y-axis labels
+function EnhancedSessionDetailWindow:DrawChartGrid(chartArea, width, height, duration, maxDPS, maxHPS)
     -- Horizontal grid lines
     for i = 1, 4 do
         local line = chartArea:CreateTexture(nil, "BORDER")
@@ -356,13 +356,129 @@ function EnhancedSessionDetailWindow:DrawChartGrid(chartArea, width, height)
         line:SetPoint("BOTTOM", chartArea, "BOTTOM", 0, (i * height / 5))
         line:SetColorTexture(0.3, 0.3, 0.3, 0.3)
     end
+    
+    -- Y-axis labels for DPS (left side, red)
+    self:CreateDPSAxis(chartArea, height, maxDPS)
+    
+    -- Y-axis labels for HPS (right side, green)  
+    self:CreateHPSAxis(chartArea, width, height, maxHPS)
 
-    -- Vertical grid lines (time markers)
-    for i = 1, 9 do
-        local line = chartArea:CreateTexture(nil, "BORDER")
-        line:SetSize(1, height)
-        line:SetPoint("LEFT", chartArea, "LEFT", (i * width / 10), 0)
-        line:SetColorTexture(0.3, 0.3, 0.3, 0.2)
+    -- Calculate time intervals based on duration
+    local timeInterval = self:CalculateTimeInterval(duration)
+    local numIntervals = math.floor(duration / timeInterval)
+    
+    -- Vertical grid lines with time labels
+    for i = 0, numIntervals do
+        local timePos = i * timeInterval
+        local x = (timePos / duration) * width
+        
+        -- Only draw if within chart bounds
+        if x <= width then
+            -- Vertical grid line
+            local line = chartArea:CreateTexture(nil, "BORDER")
+            line:SetSize(1, height)
+            line:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", x, 0)
+            line:SetColorTexture(0.4, 0.4, 0.4, 0.5)
+            
+            -- Time label
+            local timeLabel = chartArea:CreateFontString(nil, "OVERLAY")
+            timeLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+            timeLabel:SetPoint("BOTTOM", chartArea, "BOTTOMLEFT", x, -15)
+            timeLabel:SetText(string.format("%.0fs", timePos))
+            timeLabel:SetTextColor(0.8, 0.8, 0.8, 1)
+            timeLabel:SetJustifyH("CENTER")
+        end
+    end
+    
+    -- Add final time marker if duration doesn't align with interval
+    if numIntervals * timeInterval < duration then
+        local x = width
+        local timeLabel = chartArea:CreateFontString(nil, "OVERLAY")
+        timeLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        timeLabel:SetPoint("BOTTOM", chartArea, "BOTTOMRIGHT", 0, -15)
+        timeLabel:SetText(string.format("%.1fs", duration))
+        timeLabel:SetTextColor(0.8, 0.8, 0.8, 1)
+        timeLabel:SetJustifyH("CENTER")
+    end
+end
+
+-- Calculate appropriate time interval for grid
+function EnhancedSessionDetailWindow:CalculateTimeInterval(duration)
+    if duration <= 30 then
+        return 5  -- 5-second intervals for short fights
+    elseif duration <= 60 then
+        return 10 -- 10-second intervals for medium fights
+    elseif duration <= 180 then
+        return 15 -- 15-second intervals for longer fights
+    else
+        return 30 -- 30-second intervals for very long fights
+    end
+end
+
+-- Create DPS axis (left side, red)
+function EnhancedSessionDetailWindow:CreateDPSAxis(chartArea, height, maxDPS)
+    if maxDPS <= 0 then return end
+    
+    local numLabels = 5
+    for i = 0, numLabels do
+        local value = (i / numLabels) * maxDPS
+        local y = (i / numLabels) * height
+        
+        -- DPS axis label
+        local dpsLabel = chartArea:CreateFontString(nil, "OVERLAY")
+        dpsLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+        dpsLabel:SetPoint("RIGHT", chartArea, "BOTTOMLEFT", -5, y)
+        dpsLabel:SetText(self:FormatAxisValue(value))
+        dpsLabel:SetTextColor(1, 0.3, 0.3, 0.9) -- Red to match DPS line
+        dpsLabel:SetJustifyH("RIGHT")
+    end
+    
+    -- DPS axis title
+    local dpsTitle = chartArea:CreateFontString(nil, "OVERLAY")
+    dpsTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    dpsTitle:SetPoint("RIGHT", chartArea, "LEFT", -25, height/2)
+    dpsTitle:SetText("DPS")
+    dpsTitle:SetTextColor(1, 0.3, 0.3, 1)
+    dpsTitle:SetJustifyH("CENTER")
+    dpsTitle:SetRotation(math.rad(90)) -- Vertical text
+end
+
+-- Create HPS axis (right side, green)
+function EnhancedSessionDetailWindow:CreateHPSAxis(chartArea, width, height, maxHPS)
+    if maxHPS <= 0 then return end
+    
+    local numLabels = 5
+    for i = 0, numLabels do
+        local value = (i / numLabels) * maxHPS
+        local y = (i / numLabels) * height
+        
+        -- HPS axis label
+        local hpsLabel = chartArea:CreateFontString(nil, "OVERLAY")
+        hpsLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+        hpsLabel:SetPoint("LEFT", chartArea, "BOTTOMRIGHT", 5, y)
+        hpsLabel:SetText(self:FormatAxisValue(value))
+        hpsLabel:SetTextColor(0.3, 1, 0.3, 0.9) -- Green to match HPS line
+        hpsLabel:SetJustifyH("LEFT")
+    end
+    
+    -- HPS axis title
+    local hpsTitle = chartArea:CreateFontString(nil, "OVERLAY")
+    hpsTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    hpsTitle:SetPoint("LEFT", chartArea, "RIGHT", 25, height/2)
+    hpsTitle:SetText("HPS")
+    hpsTitle:SetTextColor(0.3, 1, 0.3, 1)
+    hpsTitle:SetJustifyH("CENTER")
+    hpsTitle:SetRotation(math.rad(90)) -- Vertical text
+end
+
+-- Format axis values for readability
+function EnhancedSessionDetailWindow:FormatAxisValue(value)
+    if value >= 1000000 then
+        return string.format("%.1fM", value / 1000000)
+    elseif value >= 1000 then
+        return string.format("%.0fK", value / 1000)
+    else
+        return string.format("%.0f", value)
     end
 end
 

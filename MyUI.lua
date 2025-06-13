@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-hps-dps-reconciliation-3d99ccd"
-addon.BUILD_DATE = "2025-06-13-08:48"
+addon.VERSION = "feature-enhanced-combat-chart-c6be044"
+addon.BUILD_DATE = "2025-06-13-09:12"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
