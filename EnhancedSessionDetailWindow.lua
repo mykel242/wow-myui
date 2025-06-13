@@ -133,41 +133,43 @@ function EnhancedSessionDetailWindow:CreateHeaderSection(frame, sessionData)
     headerBg:SetAllPoints(headerPanel)
     headerBg:SetColorTexture(0.1, 0.1, 0.1, 0.8)
 
-    -- Session title
+    -- Session title (left-aligned)
     local title = headerPanel:CreateFontString(nil, "OVERLAY")
     title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 16, "OUTLINE")
-    title:SetPoint("TOP", headerPanel, "TOP", 0, -8)
+    title:SetPoint("TOPLEFT", headerPanel, "TOPLEFT", 10, -8)
     title:SetText(string.format("Enhanced Combat Analysis: %s", sessionData.sessionId))
     title:SetTextColor(1, 1, 1, 1)
+    title:SetJustifyH("LEFT")
 
-    -- Metadata in columns
+    -- Row 1: Start, Location, Quality
     local startTime = date("%H:%M:%S", time() + (sessionData.startTime - GetTime()))
 
-    local leftMeta = headerPanel:CreateFontString(nil, "OVERLAY")
-    leftMeta:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    leftMeta:SetPoint("TOPLEFT", headerPanel, "TOPLEFT", 10, -25)
-    leftMeta:SetText(string.format("Start: %s | Duration: %.1fs | Location: %s",
-        startTime, sessionData.duration, sessionData.location or "Unknown"))
-    leftMeta:SetJustifyH("LEFT")
+    local row1 = headerPanel:CreateFontString(nil, "OVERLAY")
+    row1:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    row1:SetPoint("TOPLEFT", headerPanel, "TOPLEFT", 10, -25)
+    row1:SetText(string.format("Start: %s | Location: %s | Quality: %d",
+        startTime, sessionData.location or "Unknown", sessionData.qualityScore))
+    row1:SetJustifyH("LEFT")
 
-    local rightMeta = headerPanel:CreateFontString(nil, "OVERLAY")
-    rightMeta:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    rightMeta:SetPoint("TOPRIGHT", headerPanel, "TOPRIGHT", -10, -25)
-    local enhancedStatus = sessionData.enhancedData and "Enhanced" or "Basic"
-    rightMeta:SetText(string.format("Quality: %d | Content: %s | Data: %s",
-        sessionData.qualityScore, sessionData.contentType or "normal", enhancedStatus))
-    rightMeta:SetJustifyH("RIGHT")
+    -- Row 2: Duration, Content/Scale type
+    local row2 = headerPanel:CreateFontString(nil, "OVERLAY")
+    row2:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    row2:SetPoint("TOPLEFT", headerPanel, "TOPLEFT", 10, -40)
+    row2:SetText(string.format("Duration: %.1fs | Content: %s",
+        sessionData.duration, sessionData.contentType or "normal"))
+    row2:SetJustifyH("LEFT")
 
-    -- Performance summary line
+    -- Performance summary line (left-aligned)
     local perfSummary = headerPanel:CreateFontString(nil, "OVERLAY")
     perfSummary:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
-    perfSummary:SetPoint("BOTTOM", headerPanel, "BOTTOM", 0, 8)
+    perfSummary:SetPoint("BOTTOMLEFT", headerPanel, "BOTTOMLEFT", 10, 8)
     perfSummary:SetText(string.format("DPS: %s (Peak: %s) | HPS: %s (Peak: %s)",
         addon.CombatTracker:FormatNumber(sessionData.avgDPS),
         addon.CombatTracker:FormatNumber(sessionData.peakDPS),
         addon.CombatTracker:FormatNumber(sessionData.avgHPS),
         addon.CombatTracker:FormatNumber(sessionData.peakHPS)))
     perfSummary:SetTextColor(0.9, 0.9, 0.9, 1)
+    perfSummary:SetJustifyH("LEFT")
 
     frame.headerPanel = headerPanel
 end
@@ -424,23 +426,22 @@ function EnhancedSessionDetailWindow:CreateDPSAxis(chartArea, height, maxDPS)
         local value = (i / numLabels) * maxDPS
         local y = (i / numLabels) * height
         
-        -- DPS axis label
+        -- DPS axis label (positioned inside chart area)
         local dpsLabel = chartArea:CreateFontString(nil, "OVERLAY")
         dpsLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
-        dpsLabel:SetPoint("RIGHT", chartArea, "BOTTOMLEFT", -5, y)
+        dpsLabel:SetPoint("LEFT", chartArea, "BOTTOMLEFT", 5, y)
         dpsLabel:SetText(self:FormatAxisValue(value))
         dpsLabel:SetTextColor(1, 0.3, 0.3, 0.9) -- Red to match DPS line
-        dpsLabel:SetJustifyH("RIGHT")
+        dpsLabel:SetJustifyH("LEFT")
     end
     
-    -- DPS axis title
+    -- DPS axis title (positioned inside chart area)
     local dpsTitle = chartArea:CreateFontString(nil, "OVERLAY")
     dpsTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    dpsTitle:SetPoint("RIGHT", chartArea, "LEFT", -25, height/2)
+    dpsTitle:SetPoint("TOPLEFT", chartArea, "TOPLEFT", 5, -5)
     dpsTitle:SetText("DPS")
     dpsTitle:SetTextColor(1, 0.3, 0.3, 1)
-    dpsTitle:SetJustifyH("CENTER")
-    dpsTitle:SetRotation(math.rad(90)) -- Vertical text
+    dpsTitle:SetJustifyH("LEFT")
 end
 
 -- Create HPS axis (right side, green)
@@ -452,23 +453,22 @@ function EnhancedSessionDetailWindow:CreateHPSAxis(chartArea, width, height, max
         local value = (i / numLabels) * maxHPS
         local y = (i / numLabels) * height
         
-        -- HPS axis label
+        -- HPS axis label (positioned inside chart area on the right side)
         local hpsLabel = chartArea:CreateFontString(nil, "OVERLAY")
         hpsLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
-        hpsLabel:SetPoint("LEFT", chartArea, "BOTTOMRIGHT", 5, y)
+        hpsLabel:SetPoint("RIGHT", chartArea, "BOTTOMRIGHT", -5, y)
         hpsLabel:SetText(self:FormatAxisValue(value))
         hpsLabel:SetTextColor(0.3, 1, 0.3, 0.9) -- Green to match HPS line
-        hpsLabel:SetJustifyH("LEFT")
+        hpsLabel:SetJustifyH("RIGHT")
     end
     
-    -- HPS axis title
+    -- HPS axis title (positioned inside chart area at top-right corner)
     local hpsTitle = chartArea:CreateFontString(nil, "OVERLAY")
     hpsTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    hpsTitle:SetPoint("LEFT", chartArea, "RIGHT", 25, height/2)
+    hpsTitle:SetPoint("TOPRIGHT", chartArea, "TOPRIGHT", -5, -5)
     hpsTitle:SetText("HPS")
     hpsTitle:SetTextColor(0.3, 1, 0.3, 1)
-    hpsTitle:SetJustifyH("CENTER")
-    hpsTitle:SetRotation(math.rad(90)) -- Vertical text
+    hpsTitle:SetJustifyH("RIGHT")
 end
 
 -- Format axis values for readability
@@ -572,16 +572,9 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
     end
 end
 
--- Create chart legend
+-- Create chart legend (removed - was the light gray summary data)
 function EnhancedSessionDetailWindow:CreateChartLegend(chartArea, maxDPS, maxHPS)
-    local legend = chartArea:CreateFontString(nil, "OVERLAY")
-    legend:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    legend:SetPoint("TOPRIGHT", chartArea, "TOPRIGHT", -10, -10)
-    legend:SetText(string.format("Max: %s DPS | %s HPS\nRed: DPS | Green: HPS | Lines: Cooldowns | 💀: Deaths",
-        addon.CombatTracker:FormatNumber(maxDPS),
-        addon.CombatTracker:FormatNumber(maxHPS)))
-    legend:SetTextColor(0.8, 0.8, 0.8, 1)
-    legend:SetJustifyH("RIGHT")
+    -- Legend removed per user feedback - was the unwanted light gray summary data
 end
 
 -- Create chart controls
@@ -590,10 +583,11 @@ function EnhancedSessionDetailWindow:CreateChartControls(controlsFrame)
     controlsBg:SetAllPoints(controlsFrame)
     controlsBg:SetColorTexture(0.1, 0.1, 0.1, 0.7)
 
-    local title = controlsFrame:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    title:SetPoint("TOP", controlsFrame, "TOP", 0, -5)
-    title:SetText("Chart Controls & Event Timeline")
+    -- Title removed per user feedback
+    -- local title = controlsFrame:CreateFontString(nil, "OVERLAY")
+    -- title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    -- title:SetPoint("TOP", controlsFrame, "TOP", 0, -5)
+    -- title:SetText("Chart Controls & Event Timeline")
 
     -- Display recent events if available
     if self.sessionData.enhancedData then
@@ -1605,15 +1599,10 @@ function EnhancedSessionDetailWindow:CreateGroupDamageSection(parent, groupDamag
     end
 end
 
--- Close button and controls
+-- Close button and controls (bottom-right close button removed per user feedback)
 function EnhancedSessionDetailWindow:CreateCloseButton(frame)
-    local closeBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    closeBtn:SetSize(80, 25)
-    closeBtn:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 20)
-    closeBtn:SetText("Close")
-    closeBtn:SetScript("OnClick", function()
-        self:Hide()
-    end)
+    -- Bottom-right close button removed per user feedback
+    -- Only the standard top-right X button remains
 end
 
 -- Show enhanced session detail window
@@ -1643,7 +1632,8 @@ function EnhancedSessionDetailWindow:Show(sessionData)
     end
 
     self:Create(sessionData)
-    self:CreateCloseButton(self.frame)
+    -- Bottom-right close button removed per user feedback
+    -- self:CreateCloseButton(self.frame)
 end
 
 -- Hide window
