@@ -285,8 +285,8 @@ function CombatTracker:Initialize()
         addon.SessionManager:InitializeSessionHistory()
     end
 
-    -- Spec change check timer (check every 2 seconds)
-    self.specCheckTimer = C_Timer.NewTicker(2.0, function()
+    -- Spec change check timer (check every 10 seconds - spec changes are rare)
+    self.specCheckTimer = C_Timer.NewTicker(10.0, function()
         CombatTracker:CheckSpecChange()
     end)
 

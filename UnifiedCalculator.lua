@@ -254,6 +254,10 @@ function UnifiedCalculator:SetCalculationMethod(method)
     
     if validMethod then
         self.config.method = method
+        -- Save to persistent storage
+        if addon and addon.db then
+            addon.db.calculationMethod = method
+        end
         return true
     end
     return false
