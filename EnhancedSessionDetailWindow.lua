@@ -1449,11 +1449,11 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
         self.shareWindow = nil
     end
 
-    -- Create share window (larger size to accommodate all elements)
+    -- Create share window
     local shareWindow = CreateFrame("Frame", nil, UIParent)
-    shareWindow:SetSize(600, 500)
+    shareWindow:SetSize(500, 400)
     shareWindow:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    shareWindow:SetFrameStrata("DIALOG")
+    shareWindow:SetFrameStrata("FULLSCREEN_DIALOG")
 
     -- Background and border
     local bg = shareWindow:CreateTexture(nil, "BACKGROUND")
@@ -1469,16 +1469,9 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
     -- Title
     local title = shareWindow:CreateFontString(nil, "OVERLAY")
     title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
-    title:SetPoint("TOP", shareWindow, "TOP", 0, -20)
+    title:SetPoint("TOP", shareWindow, "TOP", 0, -15)
     title:SetText("Share Blacklist Configuration")
     title:SetTextColor(1, 1, 1, 1)
-
-    -- Description
-    local descText = shareWindow:CreateFontString(nil, "OVERLAY")
-    descText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    descText:SetPoint("TOP", shareWindow, "TOP", 0, -50)
-    descText:SetText("Copy the encoded data below to share your blacklist configuration with other users.")
-    descText:SetTextColor(0.8, 0.8, 0.8, 1)
 
     -- Serialize and encode blacklist data
     local blacklistData = {
@@ -1490,7 +1483,7 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
     -- Simple serialization to string
     local function serializeTable(t, depth)
         depth = depth or 0
-        if depth > 10 then return "{}" end -- Prevent infinite recursion
+        if depth > 10 then return "{}" end
         
         local parts = {}
         for k, v in pairs(t) do
@@ -1533,7 +1526,37 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
 
     local encodedData = base64Encode(serializedData)
 
-    -- Create text area for encoded data with improved margins (space for close button)
+    -- COPY ALL button - first priority
+    local copyButton = CreateFrame("Button", nil, shareWindow)
+    copyButton:SetSize(120, 35)
+    copyButton:SetPoint("TOP", shareWindow, "TOP", -70, -50)
+
+    local copyBg = copyButton:CreateTexture(nil, "BACKGROUND") 
+    copyBg:SetAllPoints(copyButton)
+    copyBg:SetColorTexture(0.2, 0.6, 0.2, 1)
+
+    local copyText = copyButton:CreateFontString(nil, "OVERLAY")
+    copyText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    copyText:SetPoint("CENTER", copyButton, "CENTER", 0, 0)
+    copyText:SetText("COPY ALL")
+    copyText:SetTextColor(1, 1, 1, 1)
+
+    -- CLOSE button - second priority  
+    local closeButton = CreateFrame("Button", nil, shareWindow)
+    closeButton:SetSize(100, 35)
+    closeButton:SetPoint("TOP", shareWindow, "TOP", 70, -50)
+
+    local closeBg = closeButton:CreateTexture(nil, "BACKGROUND")
+    closeBg:SetAllPoints(closeButton)
+    closeBg:SetColorTexture(0.8, 0.2, 0.2, 1)
+
+    local closeText = closeButton:CreateFontString(nil, "OVERLAY")
+    closeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    closeText:SetPoint("CENTER", closeButton, "CENTER", 0, 0)
+    closeText:SetText("CLOSE")
+    closeText:SetTextColor(1, 1, 1, 1)
+
+    -- Text area
     local textAreaFrame = CreateFrame("Frame", nil, shareWindow)
     textAreaFrame:SetPoint("TOPLEFT", shareWindow, "TOPLEFT", 20, -100)
     textAreaFrame:SetPoint("BOTTOMRIGHT", shareWindow, "BOTTOMRIGHT", -20, 50)
@@ -1555,48 +1578,40 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
     editBox:SetCursorPosition(0)
     scrollFrame:SetScrollChild(editBox)
 
-    -- Auto-select all text when window opens
-    editBox:HighlightText()
-
-    -- Make the text auto-select when clicked
-    editBox:SetScript("OnClick", function()
+    -- Button click handlers
+    copyButton:SetScript("OnClick", function()
         editBox:HighlightText()
+        editBox:SetFocus()
+        print("MyUI2: Text selected - use Ctrl+C to copy to clipboard")
     end)
 
-    -- Simple instructions at bottom
-    local instructText = shareWindow:CreateFontString(nil, "OVERLAY")
-    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 15)
-    instructText:SetText("Text is selected. Use Ctrl+C to copy, then click CLOSE button above.")
-    instructText:SetTextColor(1, 1, 0.5, 1)
+    copyButton:SetScript("OnEnter", function()
+        copyBg:SetColorTexture(0.3, 0.7, 0.3, 1)
+    end)
 
-    -- Add large, obvious close button at the top
-    local bigCloseButton = CreateFrame("Button", nil, shareWindow)
-    bigCloseButton:SetSize(100, 30)
-    bigCloseButton:SetPoint("TOP", shareWindow, "TOP", 0, -60)
+    copyButton:SetScript("OnLeave", function()
+        copyBg:SetColorTexture(0.2, 0.6, 0.2, 1)
+    end)
 
-    local bigCloseBg = bigCloseButton:CreateTexture(nil, "BACKGROUND")
-    bigCloseBg:SetAllPoints(bigCloseButton)
-    bigCloseBg:SetColorTexture(0.8, 0.2, 0.2, 1)
-
-    local bigCloseText = bigCloseButton:CreateFontString(nil, "OVERLAY")
-    bigCloseText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    bigCloseText:SetPoint("CENTER", bigCloseButton, "CENTER", 0, 0)
-    bigCloseText:SetText("CLOSE")
-    bigCloseText:SetTextColor(1, 1, 1, 1)
-
-    bigCloseButton:SetScript("OnClick", function()
+    closeButton:SetScript("OnClick", function()
         shareWindow:Hide()
         self.shareWindow = nil
     end)
 
-    bigCloseButton:SetScript("OnEnter", function()
-        bigCloseBg:SetColorTexture(1, 0.3, 0.3, 1)
+    closeButton:SetScript("OnEnter", function()
+        closeBg:SetColorTexture(1, 0.3, 0.3, 1)
     end)
 
-    bigCloseButton:SetScript("OnLeave", function()
-        bigCloseBg:SetColorTexture(0.8, 0.2, 0.2, 1)
+    closeButton:SetScript("OnLeave", function()
+        closeBg:SetColorTexture(0.8, 0.2, 0.2, 1)
     end)
+
+    -- Instructions at bottom
+    local instructText = shareWindow:CreateFontString(nil, "OVERLAY")
+    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 15)
+    instructText:SetText("Click COPY ALL to select text, then use Ctrl+C to copy. Click CLOSE when done.")
+    instructText:SetTextColor(1, 1, 0.5, 1)
 
     -- Make draggable
     shareWindow:SetMovable(true)
