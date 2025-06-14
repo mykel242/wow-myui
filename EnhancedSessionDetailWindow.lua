@@ -1661,6 +1661,43 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
     instructText:SetText("Text is auto-selected. Use Ctrl+C to copy.")
     instructText:SetTextColor(0.7, 0.7, 0.7, 1)
 
+    -- Add emergency close button in top-right corner
+    local emergencyCloseButton = CreateFrame("Button", nil, shareWindow)
+    emergencyCloseButton:SetSize(30, 30)
+    emergencyCloseButton:SetPoint("TOPRIGHT", shareWindow, "TOPRIGHT", -10, -10)
+
+    local emergencyCloseBg = emergencyCloseButton:CreateTexture(nil, "BACKGROUND")
+    emergencyCloseBg:SetAllPoints(emergencyCloseButton)
+    emergencyCloseBg:SetColorTexture(0.8, 0.2, 0.2, 0.9)
+
+    local emergencyCloseText = emergencyCloseButton:CreateFontString(nil, "OVERLAY")
+    emergencyCloseText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    emergencyCloseText:SetPoint("CENTER", emergencyCloseButton, "CENTER", 0, 0)
+    emergencyCloseText:SetText("✖")
+    emergencyCloseText:SetTextColor(1, 1, 1, 1)
+
+    emergencyCloseButton:SetScript("OnClick", function()
+        shareWindow:Hide()
+        self.shareWindow = nil
+    end)
+
+    emergencyCloseButton:SetScript("OnEnter", function()
+        emergencyCloseBg:SetColorTexture(1, 0.3, 0.3, 0.9)
+    end)
+
+    emergencyCloseButton:SetScript("OnLeave", function()
+        emergencyCloseBg:SetColorTexture(0.8, 0.2, 0.2, 0.9)
+    end)
+
+    -- Add escape key handler
+    shareWindow:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            shareWindow:Hide()
+            self.shareWindow = nil
+        end
+    end)
+    shareWindow:SetPropagateKeyboardInput(true)
+
     -- Make draggable
     shareWindow:SetMovable(true)
     shareWindow:EnableMouse(true)
