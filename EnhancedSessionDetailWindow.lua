@@ -48,6 +48,17 @@ function EnhancedSessionDetailWindow:Create(sessionData)
         self.frame:Hide()
         self.frame = nil
     end
+    
+    -- Clean up any open share/import windows
+    if self.shareWindow then
+        self.shareWindow:Hide()
+        self.shareWindow = nil
+    end
+    
+    if self.importWindow then
+        self.importWindow:Hide()
+        self.importWindow = nil
+    end
 
     -- Debug the incoming session data
     DebugSessionData(sessionData)
@@ -106,7 +117,7 @@ function EnhancedSessionDetailWindow:Create(sessionData)
     local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
     closeButton:SetScript("OnClick", function()
-        frame:Hide()
+        self:Hide()
     end)
 
     -- === HEADER SECTION ===
@@ -259,9 +270,10 @@ function EnhancedSessionDetailWindow:ShowTab(tabId)
         end
     end
 
-    -- Clear content area
+    -- Clear content area properly
     if self.frame.currentContent then
         self.frame.currentContent:Hide()
+        self.frame.currentContent:SetParent(nil)
         self.frame.currentContent = nil
     end
 
@@ -2868,8 +2880,21 @@ function EnhancedSessionDetailWindow:Show(sessionData)
     -- self:CreateCloseButton(self.frame)
 end
 
--- Hide window
+-- Hide window with proper cleanup
 function EnhancedSessionDetailWindow:Hide()
+    -- Clean up share window
+    if self.shareWindow then
+        self.shareWindow:Hide()
+        self.shareWindow = nil
+    end
+    
+    -- Clean up import window
+    if self.importWindow then
+        self.importWindow:Hide()
+        self.importWindow = nil
+    end
+    
+    -- Hide main window
     if self.frame then
         self.frame:Hide()
         self.frame = nil
