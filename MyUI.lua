@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-enhanced-session-detail-updates-f28513c"
-addon.BUILD_DATE = "2025-06-14-12:00"
+addon.VERSION = "feature-enhanced-session-detail-updates-1cca6bc"
+addon.BUILD_DATE = "2025-06-14-12:09"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false

@@ -286,6 +286,17 @@ end
 
 -- Create timeline tab with enhanced charting
 function EnhancedSessionDetailWindow:CreateTimelineTab()
+    -- Initialize chart filters if not already set
+    if not self.chartFilters then
+        self.chartFilters = {
+            showHPS = true,
+            showDPS = true,
+            showCooldowns = true,
+            showPlayerDeaths = true,
+            showMinionDeaths = true
+        }
+    end
+
     local content = CreateFrame("Frame", nil, self.frame.contentArea)
     content:SetAllPoints(self.frame.contentArea)
 
@@ -522,6 +533,17 @@ end
 
 -- Draw performance lines
 function EnhancedSessionDetailWindow:DrawPerformanceLines(chartArea, timelineData, width, height, maxDPS, maxHPS)
+    -- Initialize chart filters if not set (safety check)
+    if not self.chartFilters then
+        self.chartFilters = {
+            showHPS = true,
+            showDPS = true,
+            showCooldowns = true,
+            showPlayerDeaths = true,
+            showMinionDeaths = true
+        }
+    end
+
     local pointWidth = width / math.max(1, #timelineData - 1)
     local previousDPSPoint, previousHPSPoint = nil, nil
 
@@ -1129,12 +1151,17 @@ end
 
 -- Redraw chart with current filter settings
 function EnhancedSessionDetailWindow:RedrawChart()
-    if not self.frame or not self.frame.currentContent or self.currentTab ~= "overview" then
+    if not self.frame or self.currentTab ~= "overview" then
         return
     end
 
-    -- Simply recreate the timeline tab completely
-    -- This ensures everything is properly cleared and redrawn
+    -- Clear current content properly and recreate timeline tab
+    if self.frame.currentContent then
+        self.frame.currentContent:Hide()
+        self.frame.currentContent = nil
+    end
+    
+    -- Recreate the timeline tab
     self:CreateTimelineTab()
 end
 
