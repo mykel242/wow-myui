@@ -1533,10 +1533,10 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
 
     local encodedData = base64Encode(serializedData)
 
-    -- Create text area for encoded data with improved margins (more space for buttons)
+    -- Create text area for encoded data with improved margins (space for close button)
     local textAreaFrame = CreateFrame("Frame", nil, shareWindow)
-    textAreaFrame:SetPoint("TOPLEFT", shareWindow, "TOPLEFT", 20, -90)
-    textAreaFrame:SetPoint("BOTTOMRIGHT", shareWindow, "BOTTOMRIGHT", -20, 130)
+    textAreaFrame:SetPoint("TOPLEFT", shareWindow, "TOPLEFT", 20, -100)
+    textAreaFrame:SetPoint("BOTTOMRIGHT", shareWindow, "BOTTOMRIGHT", -20, 50)
     
     local textAreaBg = textAreaFrame:CreateTexture(nil, "BACKGROUND")
     textAreaBg:SetAllPoints(textAreaFrame)
@@ -1563,140 +1563,40 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
         editBox:HighlightText()
     end)
 
-    -- Button container (higher up to be visible)
-    local buttonContainer = CreateFrame("Frame", nil, shareWindow)
-    buttonContainer:SetSize(560, 40)
-    buttonContainer:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 55)
-
-    -- Select All button
-    local selectAllButton = CreateFrame("Button", nil, buttonContainer)
-    selectAllButton:SetSize(100, 30)
-    selectAllButton:SetPoint("LEFT", buttonContainer, "LEFT", 20, 0)
-
-    local selectAllBg = selectAllButton:CreateTexture(nil, "BACKGROUND")
-    selectAllBg:SetAllPoints(selectAllButton)
-    selectAllBg:SetColorTexture(0.2, 0.5, 0.8, 0.8)
-
-    local selectAllText = selectAllButton:CreateFontString(nil, "OVERLAY")
-    selectAllText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    selectAllText:SetPoint("CENTER", selectAllButton, "CENTER", 0, 0)
-    selectAllText:SetText("Select All")
-    selectAllText:SetTextColor(1, 1, 1, 1)
-
-    selectAllButton:SetScript("OnClick", function()
-        editBox:HighlightText()
-        editBox:SetFocus()
-    end)
-
-    selectAllButton:SetScript("OnEnter", function()
-        selectAllBg:SetColorTexture(0.3, 0.6, 0.9, 0.8)
-    end)
-
-    selectAllButton:SetScript("OnLeave", function()
-        selectAllBg:SetColorTexture(0.2, 0.5, 0.8, 0.8)
-    end)
-
-    -- Copy to Clipboard button (if supported)
-    local copyButton = CreateFrame("Button", nil, buttonContainer)
-    copyButton:SetSize(120, 30)
-    copyButton:SetPoint("CENTER", buttonContainer, "CENTER", -40, 0)
-
-    local copyBg = copyButton:CreateTexture(nil, "BACKGROUND")
-    copyBg:SetAllPoints(copyButton)
-    copyBg:SetColorTexture(0.2, 0.7, 0.2, 0.8)
-
-    local copyText = copyButton:CreateFontString(nil, "OVERLAY")
-    copyText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    copyText:SetPoint("CENTER", copyButton, "CENTER", 0, 0)
-    copyText:SetText("Copy to Clipboard")
-    copyText:SetTextColor(1, 1, 1, 1)
-
-    copyButton:SetScript("OnClick", function()
-        editBox:HighlightText()
-        editBox:SetFocus()
-        -- Note: Actual clipboard copying requires special handling in WoW
-        print("MyUI2: Text selected - use Ctrl+C to copy to clipboard")
-    end)
-
-    copyButton:SetScript("OnEnter", function()
-        copyBg:SetColorTexture(0.3, 0.8, 0.3, 0.8)
-    end)
-
-    copyButton:SetScript("OnLeave", function()
-        copyBg:SetColorTexture(0.2, 0.7, 0.2, 0.8)
-    end)
-
-    -- Close button
-    local closeButton = CreateFrame("Button", nil, buttonContainer)
-    closeButton:SetSize(80, 30)
-    closeButton:SetPoint("RIGHT", buttonContainer, "RIGHT", -20, 0)
-
-    local closeBg = closeButton:CreateTexture(nil, "BACKGROUND")
-    closeBg:SetAllPoints(closeButton)
-    closeBg:SetColorTexture(0.6, 0.2, 0.2, 0.8)
-
-    local closeText = closeButton:CreateFontString(nil, "OVERLAY")
-    closeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    closeText:SetPoint("CENTER", closeButton, "CENTER", 0, 0)
-    closeText:SetText("Close")
-    closeText:SetTextColor(1, 1, 1, 1)
-
-    closeButton:SetScript("OnClick", function()
-        shareWindow:Hide()
-        self.shareWindow = nil
-    end)
-
-    closeButton:SetScript("OnEnter", function()
-        closeBg:SetColorTexture(0.7, 0.3, 0.3, 0.8)
-    end)
-
-    closeButton:SetScript("OnLeave", function()
-        closeBg:SetColorTexture(0.6, 0.2, 0.2, 0.8)
-    end)
-
-    -- Instructions (below buttons)
+    -- Simple instructions at bottom
     local instructText = shareWindow:CreateFontString(nil, "OVERLAY")
-    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 20)
-    instructText:SetText("Text is auto-selected. Use Ctrl+C to copy.")
-    instructText:SetTextColor(0.7, 0.7, 0.7, 1)
+    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 15)
+    instructText:SetText("Text is selected. Use Ctrl+C to copy, then click CLOSE button above.")
+    instructText:SetTextColor(1, 1, 0.5, 1)
 
-    -- Add emergency close button in top-right corner
-    local emergencyCloseButton = CreateFrame("Button", nil, shareWindow)
-    emergencyCloseButton:SetSize(30, 30)
-    emergencyCloseButton:SetPoint("TOPRIGHT", shareWindow, "TOPRIGHT", -10, -10)
+    -- Add large, obvious close button at the top
+    local bigCloseButton = CreateFrame("Button", nil, shareWindow)
+    bigCloseButton:SetSize(100, 30)
+    bigCloseButton:SetPoint("TOP", shareWindow, "TOP", 0, -60)
 
-    local emergencyCloseBg = emergencyCloseButton:CreateTexture(nil, "BACKGROUND")
-    emergencyCloseBg:SetAllPoints(emergencyCloseButton)
-    emergencyCloseBg:SetColorTexture(0.8, 0.2, 0.2, 0.9)
+    local bigCloseBg = bigCloseButton:CreateTexture(nil, "BACKGROUND")
+    bigCloseBg:SetAllPoints(bigCloseButton)
+    bigCloseBg:SetColorTexture(0.8, 0.2, 0.2, 1)
 
-    local emergencyCloseText = emergencyCloseButton:CreateFontString(nil, "OVERLAY")
-    emergencyCloseText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
-    emergencyCloseText:SetPoint("CENTER", emergencyCloseButton, "CENTER", 0, 0)
-    emergencyCloseText:SetText("✖")
-    emergencyCloseText:SetTextColor(1, 1, 1, 1)
+    local bigCloseText = bigCloseButton:CreateFontString(nil, "OVERLAY")
+    bigCloseText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    bigCloseText:SetPoint("CENTER", bigCloseButton, "CENTER", 0, 0)
+    bigCloseText:SetText("CLOSE")
+    bigCloseText:SetTextColor(1, 1, 1, 1)
 
-    emergencyCloseButton:SetScript("OnClick", function()
+    bigCloseButton:SetScript("OnClick", function()
         shareWindow:Hide()
         self.shareWindow = nil
     end)
 
-    emergencyCloseButton:SetScript("OnEnter", function()
-        emergencyCloseBg:SetColorTexture(1, 0.3, 0.3, 0.9)
+    bigCloseButton:SetScript("OnEnter", function()
+        bigCloseBg:SetColorTexture(1, 0.3, 0.3, 1)
     end)
 
-    emergencyCloseButton:SetScript("OnLeave", function()
-        emergencyCloseBg:SetColorTexture(0.8, 0.2, 0.2, 0.9)
+    bigCloseButton:SetScript("OnLeave", function()
+        bigCloseBg:SetColorTexture(0.8, 0.2, 0.2, 1)
     end)
-
-    -- Add escape key handler
-    shareWindow:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            shareWindow:Hide()
-            self.shareWindow = nil
-        end
-    end)
-    shareWindow:SetPropagateKeyboardInput(true)
 
     -- Make draggable
     shareWindow:SetMovable(true)
