@@ -316,13 +316,28 @@ local function TrackDeath(timestamp, destGUID, destName, destFlags)
         -- Method 2: Check target classification if this is the target
         if not isBoss and UnitExists("target") and UnitName("target") == destName then
             local classification = UnitClassification("target")
-            isBoss = (classification == "worldboss" or classification == "elite" or classification == "rareelite")
+            local instanceType = select(2, GetInstanceInfo())
+            
+            -- Only consider worldboss as automatic boss classification
+            -- Elite/rareelite only count as bosses in dungeons/raids, not open world
+            if classification == "worldboss" then
+                isBoss = true
+            elseif (classification == "elite" or classification == "rareelite") and 
+                   (instanceType == "party" or instanceType == "raid") then
+                isBoss = true
+            end
         end
         
-        -- Method 3: Heuristic - very high health suggests boss
+        -- Method 3: Heuristic - very high health suggests boss (but only in dungeons/raids)
         if not isBoss and UnitExists("target") and UnitName("target") == destName then
             local maxHealth = UnitHealthMax("target")
-            isBoss = maxHealth and maxHealth > 1000000 -- 1M+ health suggests boss
+            local instanceType = select(2, GetInstanceInfo())
+            
+            -- High health only suggests boss in dungeons/raids, not open world
+            if maxHealth and maxHealth > 1000000 and 
+               (instanceType == "party" or instanceType == "raid") then
+                isBoss = true
+            end
         end
         
         entityType = isBoss and "boss" or "minion"
