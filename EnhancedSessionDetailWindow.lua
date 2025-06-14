@@ -1647,7 +1647,7 @@ function EnhancedSessionDetailWindow:ShowBlacklistImportWindow()
     local importWindow = CreateFrame("Frame", nil, UIParent)
     importWindow:SetSize(500, 400)
     importWindow:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    importWindow:SetFrameStrata("DIALOG")
+    importWindow:SetFrameStrata("FULLSCREEN_DIALOG")
 
     -- Background and border
     local bg = importWindow:CreateTexture(nil, "BACKGROUND")
