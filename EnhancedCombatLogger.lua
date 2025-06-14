@@ -10,6 +10,9 @@ local EnhancedCombatLogger = addon.EnhancedCombatLogger
 -- CONFIGURATION & TRACKING DATA
 -- =============================================================================
 
+-- Dead targets tracking to prevent damage events after death
+local deadTargets = {}
+
 -- Notable buff/debuff tracking
 local NOTABLE_BUFFS = {
     -- Bloodlust effects
@@ -18,13 +21,68 @@ local NOTABLE_BUFFS = {
     [80353] = { name = "Time Warp", type = "major_cooldown", color = { 0.4, 0.4, 1 } },
     [90355] = { name = "Ancient Hysteria", type = "major_cooldown", color = { 0.8, 0.2, 0.8 } },
 
-    -- Major defensive cooldowns
+    -- PRIEST COOLDOWNS
+    -- Shadow Priest
+    [47585] = { name = "Dispersion", type = "defensive", color = { 0.6, 0.4, 0.8 } },
+    [15286] = { name = "Vampiric Embrace", type = "utility", color = { 0.8, 0.2, 0.6 } },
+    [391109] = { name = "Dark Ascension", type = "offensive", color = { 0.4, 0.1, 0.7 } },
+    [391099] = { name = "Void Eruption", type = "offensive", color = { 0.5, 0.2, 0.8 } },
+    [10060] = { name = "Power Infusion", type = "offensive", color = { 1, 0.8, 0.2 } },
+    
+    -- Holy/Disc Priest
+    [47788] = { name = "Guardian Spirit", type = "defensive", color = { 1, 1, 0.8 } },
+    [33206] = { name = "Pain Suppression", type = "defensive", color = { 0.8, 0.8, 1 } },
+    [62618] = { name = "Power Word: Barrier", type = "defensive", color = { 0.6, 0.8, 1 } },
+    [265202] = { name = "Holy Word: Salvation", type = "healing", color = { 1, 1, 0.6 } },
+    [372760] = { name = "Divine Ascension", type = "healing", color = { 1, 0.9, 0.5 } },
+
+    -- DEATH KNIGHT COOLDOWNS
+    -- All specs
+    [48792] = { name = "Icebound Fortitude", type = "defensive", color = { 0.4, 0.8, 1 } },
+    [55233] = { name = "Vampiric Blood", type = "defensive", color = { 0.8, 0.2, 0.2 } },
+    [49039] = { name = "Lichborne", type = "utility", color = { 0.6, 0.8, 0.6 } },
+    [47568] = { name = "Empower Rune Weapon", type = "offensive", color = { 0.8, 0.8, 0.2 } },
+    
+    -- Blood DK
+    [194679] = { name = "Rune Tap", type = "defensive", color = { 0.6, 0.2, 0.2 } },
+    [219809] = { name = "Tombstone", type = "defensive", color = { 0.4, 0.4, 0.4 } },
+    [274156] = { name = "Consumption", type = "healing", color = { 0.8, 0.4, 0.4 } },
+    
+    -- Frost DK
+    [51271] = { name = "Pillar of Frost", type = "offensive", color = { 0.6, 0.8, 1 } },
+    [279302] = { name = "Frostwyrm's Fury", type = "offensive", color = { 0.4, 0.6, 1 } },
+    [152279] = { name = "Breath of Sindragosa", type = "offensive", color = { 0.2, 0.7, 1 } },
+    
+    -- Unholy DK  
+    [42650] = { name = "Army of the Dead", type = "offensive", color = { 0.4, 0.8, 0.4 } },
+    [275699] = { name = "Apocalypse", type = "offensive", color = { 0.6, 0.4, 0.2 } },
+    [63560] = { name = "Dark Transformation", type = "offensive", color = { 0.5, 0.3, 0.5 } },
+
+    -- MONK COOLDOWNS
+    -- All specs
+    [122783] = { name = "Diffuse Magic", type = "defensive", color = { 0.8, 0.6, 1 } },
+    [125174] = { name = "Touch of Karma", type = "defensive", color = { 0.9, 0.7, 0.2 } },
+    [122278] = { name = "Dampen Harm", type = "defensive", color = { 0.6, 0.8, 0.8 } },
+    [116680] = { name = "Thunder Focus Tea", type = "utility", color = { 0.2, 0.8, 0.6 } },
+    
+    -- Windwalker Monk
+    [137639] = { name = "Storm, Earth, and Fire", type = "offensive", color = { 0.8, 0.6, 0.2 } },
+    [152173] = { name = "Serenity", type = "offensive", color = { 0.6, 0.9, 0.8 } },
+    [123904] = { name = "Invoke Xuen", type = "offensive", color = { 1, 0.8, 0.4 } },
+    
+    -- Brewmaster Monk
+    [115203] = { name = "Fortifying Brew", type = "defensive", color = { 0.6, 0.4, 0.2 } },
+    [132578] = { name = "Invoke Niuzao", type = "defensive", color = { 0.4, 0.6, 0.4 } },
+    [325153] = { name = "Exploding Keg", type = "utility", color = { 0.8, 0.5, 0.2 } },
+    
+    -- Mistweaver Monk
+    [115310] = { name = "Revival", type = "healing", color = { 0.6, 1, 0.6 } },
+    [197908] = { name = "Mana Tea", type = "utility", color = { 0.4, 0.8, 0.4 } },
+    [322118] = { name = "Invoke Yu'lon", type = "healing", color = { 0.2, 0.9, 0.7 } },
+
+    -- Legacy/General cooldowns
     [871] = { name = "Shield Wall", type = "defensive", color = { 0.8, 0.8, 0.2 } },
     [22812] = { name = "Barkskin", type = "defensive", color = { 0.6, 0.8, 0.4 } },
-    [48792] = { name = "Icebound Fortitude", type = "defensive", color = { 0.4, 0.8, 1 } },
-    [47585] = { name = "Dispersion", type = "defensive", color = { 0.6, 0.4, 0.8 } },
-
-    -- Major offensive cooldowns
     [12472] = { name = "Icy Veins", type = "offensive", color = { 0.4, 0.8, 1 } },
     [190319] = { name = "Combustion", type = "offensive", color = { 1, 0.4, 0.2 } },
     [13750] = { name = "Adrenaline Rush", type = "offensive", color = { 1, 0.8, 0.2 } },
@@ -156,14 +214,31 @@ local function TrackGroupDamage(timestamp, sourceGUID, sourceName, destGUID, des
     end
 end
 
--- Track cooldown usage
-local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, spellId, spellName)
+-- Track cooldown usage (player-relevant only)
+local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, destGUID, spellId, spellName)
     local cooldownInfo = NOTABLE_BUFFS[spellId]
     if cooldownInfo then
+        local playerGUID = UnitGUID("player")
+        
+        -- Only track cooldowns that are player-relevant:
+        -- 1. Player cast the ability, OR
+        -- 2. Ability was applied TO the player (like external buffs)
+        if sourceGUID ~= playerGUID and destGUID ~= playerGUID then
+            return -- Skip cooldowns from other players not affecting player
+        end
         -- UNIFIED TIMESTAMP: Use TimestampManager for consistent time calculation
         local elapsed = 0
         if addon.TimestampManager then
             elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+        end
+        
+        -- Check for duplicates within 0.1 seconds
+        for _, existingCooldown in ipairs(enhancedSessionData.cooldownUsage) do
+            if existingCooldown.spellId == spellId and 
+               existingCooldown.sourceGUID == sourceGUID and
+               math.abs(existingCooldown.elapsed - elapsed) < 0.1 then
+                return -- Skip duplicate cooldown
+            end
         end
         
         table.insert(enhancedSessionData.cooldownUsage, {
@@ -184,8 +259,28 @@ local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, spellId, sp
     end
 end
 
--- Track deaths
+-- Track deaths (exclude totems and ephemeral entities)
 local function TrackDeath(timestamp, destGUID, destName)
+    -- Filter out uninteresting deaths
+    if not destName or destName == "" then
+        return -- Skip unnamed entities
+    end
+    
+    -- Skip totems and ephemeral summons
+    local lowerName = string.lower(destName)
+    if string.find(lowerName, "totem") or 
+       string.find(lowerName, "spirit") or
+       string.find(lowerName, "guardian") or
+       string.find(lowerName, "elemental") or
+       string.find(lowerName, "echo") or
+       string.find(lowerName, "image") or
+       string.find(lowerName, "duplicate") or
+       string.find(lowerName, "reflection") or
+       string.find(lowerName, "entropic rift") or
+       string.find(lowerName, "mindbender") then
+        return -- Skip ephemeral entities
+    end
+    
     -- Use TimestampManager for consistent time calculations
     local elapsed = 0
     if addon.TimestampManager then
@@ -204,10 +299,17 @@ local function TrackDeath(timestamp, destGUID, destName)
         destGUID = destGUID,
         destName = destName
     })
+    
+    -- Mark target as dead to filter future damage events
+    deadTargets[destGUID] = {
+        name = destName,
+        deathTime = elapsed,
+        timestamp = timestamp
+    }
 
     if addon.DEBUG then
-        addon:DebugPrint(string.format("Death tracked: %s died at %.3fs (logTime: %.3f)",
-            destName, elapsed, timestamp))
+        addon:DebugPrint(string.format("Death tracked: %s (GUID: %s) died at %.3fs (logTime: %.3f)",
+            destName, destGUID, elapsed, timestamp))
     end
 end
 
@@ -229,6 +331,15 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
 
     -- Handle different event types with debug output
     if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or subevent == "RANGE_DAMAGE" then
+        -- Filter out damage events to dead targets
+        if deadTargets[destGUID] then
+            if addon.DEBUG then
+                addon:DebugPrint(string.format("FILTERED: Damage to dead target %s (died at %.1fs)", 
+                    destName or "Unknown", deadTargets[destGUID].deathTime))
+            end
+            return
+        end
+        
         local spellId, spellName, spellSchool, amount
 
         if subevent == "SWING_DAMAGE" then
@@ -310,11 +421,11 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
         end
     elseif subevent == "SPELL_AURA_APPLIED" then
         local spellId, spellName = select(1, ...)
-        TrackCooldownUsage(timestamp, sourceGUID, sourceName, spellId, spellName)
+        TrackCooldownUsage(timestamp, sourceGUID, sourceName, destGUID, spellId, spellName)
     elseif subevent == "SPELL_CAST_SUCCESS" then
         local spellId, spellName = select(1, ...)
         -- Some cooldowns might not show as aura applications
-        TrackCooldownUsage(timestamp, sourceGUID, sourceName, spellId, spellName)
+        TrackCooldownUsage(timestamp, sourceGUID, sourceName, destGUID, spellId, spellName)
     elseif subevent == "UNIT_DIED" then
         TrackDeath(timestamp, destGUID, destName)
     end
@@ -410,6 +521,9 @@ function EnhancedCombatLogger:StartEnhancedTracking()
         deaths = {},
         healingEvents = {}
     }
+    
+    -- Clear dead targets list for new combat session
+    deadTargets = {}
 
     if addon.DEBUG then
         addon:DebugPrint("Enhanced combat logging started - data structures reset")

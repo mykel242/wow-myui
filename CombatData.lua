@@ -46,6 +46,7 @@ local combatData = {
     lastSampleAbsorb = 0,
     -- Extended combat detection
     lastActivityTime = nil,
+    lastDamageTime = nil,
     playerRegenTime = nil,
     endCombatTimer = nil
 }
@@ -290,15 +291,15 @@ function CombatData:CheckCombatActivity()
     end
     
     local timeSinceRegen = GetTime() - combatData.playerRegenTime
-    local activityTimeout = 5.0 -- End combat if no activity for 5 seconds after player regen
+    local activityTimeout = 1.5 -- End combat if no damage for 1.5 seconds after player regen
     
-    -- Check if we've received any combat events recently
-    local recentActivity = false
-    if combatData.lastActivityTime and (GetTime() - combatData.lastActivityTime) < 3.0 then
-        recentActivity = true
+    -- Check if we've received any DAMAGE events recently (ignore healing for combat end)
+    local recentDamageActivity = false
+    if combatData.lastDamageTime and (GetTime() - combatData.lastDamageTime) < 1.5 then
+        recentDamageActivity = true
     end
     
-    if recentActivity then
+    if recentDamageActivity then
         -- Reset the regen timer - combat is still ongoing
         combatData.playerRegenTime = GetTime()
         if addon.DEBUG then
@@ -493,7 +494,12 @@ function CombatData:ParseCombatLog(timestamp, subevent, _, sourceGUID, sourceNam
         subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_DAMAGE" or
         subevent == "SPELL_PERIODIC_HEAL" then
         combatActionCount = combatActionCount + 1
-        combatData.lastActivityTime = GetTime() -- Track recent activity for extended combat
+        combatData.lastActivityTime = GetTime() -- Track all activity
+        
+        -- Track damage events separately for combat end detection
+        if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or subevent == "SPELL_PERIODIC_DAMAGE" then
+            combatData.lastDamageTime = GetTime()
+        end
     end
 
     -- Damage events with reasonable limits
@@ -745,9 +751,14 @@ function CombatData:Initialize()
         CombatData:OnEvent(event, ...)
     end)
 
-    -- Initialize unified calculator
+    -- Initialize unified calculator with saved settings
     if addon.UnifiedCalculator then
-        calculator = addon.UnifiedCalculator:New()
+        local config = nil
+        if addon.db and addon.db.calculationMethod then
+            -- Use saved calculation method
+            config = { method = addon.UnifiedCalculator.CALCULATION_METHODS[addon.db.calculationMethod] }
+        end
+        calculator = addon.UnifiedCalculator:New(config)
         calculator:SetCombatData(self)
     end
     

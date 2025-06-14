@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-enhanced-combat-chart-6c940fa"
-addon.BUILD_DATE = "2025-06-13-15:36"
+addon.VERSION = "feature-enhanced-combat-chart-8a2a937"
+addon.BUILD_DATE = "2025-06-13-21:00"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -40,6 +40,7 @@ addon.defaults = {
     trackDamageTaken = true,
     trackGroupDamage = false, -- Disabled by default for performance
     maxEnhancedEvents = 1000,
+    calculationMethod = "ROLLING_AVERAGE", -- Default calculation method
 }
 
 -- Debug print function
