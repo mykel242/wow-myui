@@ -3,7 +3,7 @@
 ## Notes: A custom World of Warcraft UI addon with DPS/HPS tracking and enhanced combat analysis
 ## Author: YourName
 ## Version: 1.0.0
-## SavedVariables: MyUIDB
+## SavedVariables: MyUIDB, EntityBlacklistDB
 ## DefaultState: enabled
 
 MyUI.lua
@@ -13,6 +13,7 @@ BaseMeterWindow.lua
 CombatData.lua
 CombatTracker.lua
 ContentDetection.lua
+EntityBlacklist.lua
 DPSWindow.lua
 EnhancedCombatLogger.lua
 EnhancedSessionDetailWindow.lua

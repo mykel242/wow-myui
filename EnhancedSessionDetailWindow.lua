@@ -375,6 +375,7 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
     self:CreateChartLegend(chartArea, maxDPS, maxHPS)
 end
 
+
 -- Draw chart grid with time axis and Y-axis labels
 function EnhancedSessionDetailWindow:DrawChartGrid(chartArea, width, height, duration, maxDPS, maxHPS)
     -- Horizontal grid lines
@@ -673,6 +674,29 @@ function EnhancedSessionDetailWindow:GetClassMarkerForCooldown(cooldown)
     return { texture = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" } -- Yellow Star
 end
 
+-- Get death marker style based on entity type
+function EnhancedSessionDetailWindow:GetDeathMarkerStyle(entityType)
+    -- Default to minion if no type specified (backwards compatibility)
+    entityType = entityType or "minion"
+    
+    if entityType == "player" then
+        -- Player deaths: Small red skull at top
+        return 12, -6, 
+               {r = 1.0, g = 0.2, b = 0.2, a = 1.0}, -- Red color
+               {r = 1.0, g = 0.4, b = 0.4, a = 0.4}  -- Red glow
+    elseif entityType == "boss" then
+        -- Boss deaths: Regular white skull at top
+        return 16, -8,
+               {r = 1.0, g = 1.0, b = 1.0, a = 1.0}, -- White color
+               {r = 0.8, g = 0.8, b = 0.8, a = 0.3}  -- White glow
+    else -- "minion" or unknown
+        -- Minion deaths: Small gray skull lower on chart
+        return 10, -18,
+               {r = 0.6, g = 0.6, b = 0.6, a = 0.8}, -- Gray color
+               {r = 0.5, g = 0.5, b = 0.5, a = 0.2}  -- Gray glow
+    end
+end
+
 -- Draw enhanced death markers with improved visibility and tooltips
 function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duration, width, height)
     if addon.DEBUG then
@@ -687,7 +711,37 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
         print("Combat start time:", combatStartTime)
     end
 
-    for i, death in ipairs(deaths) do
+    -- Filter deaths based on current blacklist settings
+    local filteredDeaths = {}
+    if addon.EntityBlacklist then
+        local playerClass = addon.EntityBlacklist:GetPlayerClass()
+        -- Use session zone data instead of current zone for filtering
+        local sessionZone = self.sessionData and self.sessionData.location
+        
+        -- Enhanced zone detection if session zone is missing/unknown
+        if not sessionZone or sessionZone == "Unknown" or sessionZone == "" then
+            -- Try multiple zone detection methods for filtering consistency
+            sessionZone = GetRealZoneText() or GetZoneText() or GetMinimapZoneText() or "Unknown Zone"
+            print("MyUI2 Debug: Filtering with session zone '" .. (self.sessionData.location or "nil") .. "', using current zone:", sessionZone)
+        end
+        
+        local encounter = "Unknown Encounter" -- Could be enhanced with boss detection
+        
+        for _, death in ipairs(deaths) do
+            if not addon.EntityBlacklist:IsBlacklisted(death.destName, playerClass, sessionZone, encounter) then
+                table.insert(filteredDeaths, death)
+            end
+        end
+        
+        if addon.DEBUG then
+            print("Filtered", #deaths - #filteredDeaths, "blacklisted deaths, showing", #filteredDeaths, "in zone:", sessionZone)
+        end
+    else
+        -- No blacklist system available, show all deaths
+        filteredDeaths = deaths
+    end
+
+    for i, death in ipairs(filteredDeaths) do
         if addon.DEBUG then
             print("Death", i, "- elapsed:", death.elapsed, "destName:", death.destName)
         end
@@ -709,36 +763,55 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
                 print("  Chart area size:", width, "x", height, "px")
             end
 
+            -- Determine marker style based on entity type
+            local markerSize, markerYOffset, markerColor, glowColor = self:GetDeathMarkerStyle(death.entityType)
+            
             -- Background warning line (thinner)
             local warningLine = chartArea:CreateTexture(nil, "BORDER")
             warningLine:SetSize(0.5, height)
             warningLine:SetPoint("BOTTOMLEFT", chartArea, "BOTTOMLEFT", x, 0)
             warningLine:SetColorTexture(1, 1, 1, 0.6) -- White warning line (more transparent)
 
-            -- Enhanced death marker with WoW skull raid target texture (positioned at top)
+            -- Enhanced death marker with WoW skull raid target texture
             local marker = chartArea:CreateTexture(nil, "OVERLAY")
-            marker:SetSize(16, 16)
-            marker:SetPoint("CENTER", chartArea, "TOPLEFT", x, -8)                 -- Top of chart, centered on line
+            marker:SetSize(markerSize, markerSize)
+            marker:SetPoint("CENTER", chartArea, "TOPLEFT", x, markerYOffset)
             marker:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_8") -- Skull raid marker
-            marker:SetVertexColor(1, 1, 1, 1)                                      -- White skull
+            marker:SetVertexColor(markerColor.r, markerColor.g, markerColor.b, markerColor.a)
 
             -- Glow effect for death marker
             local markerGlow = chartArea:CreateTexture(nil, "BACKGROUND")
-            markerGlow:SetSize(20, 20)
-            markerGlow:SetPoint("CENTER", chartArea, "TOPLEFT", x, -8)                 -- Same position as main marker
+            markerGlow:SetSize(markerSize + 4, markerSize + 4)
+            markerGlow:SetPoint("CENTER", chartArea, "TOPLEFT", x, markerYOffset)
             markerGlow:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_8") -- Skull raid marker
-            markerGlow:SetVertexColor(0.8, 0.8, 0.8, 0.3)                              -- White glow
+            markerGlow:SetVertexColor(glowColor.r, glowColor.g, glowColor.b, glowColor.a)
 
-            -- Create interactive frame for tooltip (positioned at top with marker)
+            -- Create interactive frame for tooltip (positioned with marker)
             local deathFrame = CreateFrame("Frame", nil, chartArea)
-            deathFrame:SetSize(20, 20) -- Hit area around the skull
-            deathFrame:SetPoint("CENTER", chartArea, "TOPLEFT", x, -8)
+            deathFrame:SetSize(markerSize + 8, markerSize + 8) -- Hit area around the skull
+            deathFrame:SetPoint("CENTER", chartArea, "TOPLEFT", x, markerYOffset)
             deathFrame:EnableMouse(true)
 
             -- Enhanced tooltip with death details (use converted time for display)
             deathFrame:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(string.format("Victim: %s", death.destName or "Unknown"), 1, 0.8, 0.8, true)
+                
+                -- Color-code the victim name based on entity type
+                local nameColor = {r = 1, g = 0.8, b = 0.8} -- Default
+                if death.entityType == "player" then
+                    nameColor = {r = 1, g = 0.2, b = 0.2} -- Red for players
+                elseif death.entityType == "boss" then
+                    nameColor = {r = 1, g = 1, b = 0.2} -- Yellow for bosses
+                else
+                    nameColor = {r = 0.7, g = 0.7, b = 0.7} -- Gray for minions
+                end
+                
+                local entityLabel = death.entityType == "player" and " (Player)" or 
+                                  death.entityType == "boss" and " (Boss)" or 
+                                  death.entityType == "minion" and " (Minion)" or ""
+                
+                GameTooltip:SetText(string.format("Victim: %s%s", death.destName or "Unknown", entityLabel), 
+                                  nameColor.r, nameColor.g, nameColor.b, true)
                 GameTooltip:AddLine(string.format("Time: %.1f seconds", relativeTime), 1, 1, 0.8, true)
 
                 if death.spellName and death.spellName ~= "" then
@@ -754,19 +827,85 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
                         0.7, 0.7, true)
                 end
 
+                -- Add blacklist instructions
+                GameTooltip:AddLine(" ", 1, 1, 1, true) -- Spacer
+                GameTooltip:AddLine("Right-click to blacklist options:", 0.7, 0.7, 1, true)
+                GameTooltip:AddLine("• Shift+Right-click: Blacklist globally", 0.6, 0.6, 0.9, true)
+                GameTooltip:AddLine("• Ctrl+Right-click: Blacklist for your class", 0.6, 0.6, 0.9, true)
+                GameTooltip:AddLine("• Alt+Right-click: Blacklist for this encounter", 0.6, 0.6, 0.9, true)
+
                 GameTooltip:Show()
 
-                -- Highlight effect on hover
-                marker:SetVertexColor(1, 1, 0.8, 1)       -- Slightly yellowish on hover
-                markerGlow:SetVertexColor(1, 1, 0.8, 0.5) -- Brighter glow
+                -- Highlight effect on hover (brighten current color)
+                local brightColor = {
+                    r = math.min(1, markerColor.r + 0.3),
+                    g = math.min(1, markerColor.g + 0.3), 
+                    b = math.min(1, markerColor.b + 0.3)
+                }
+                marker:SetVertexColor(brightColor.r, brightColor.g, brightColor.b, 1)
+                markerGlow:SetVertexColor(brightColor.r, brightColor.g, brightColor.b, 0.5)
             end)
 
             deathFrame:SetScript("OnLeave", function(self)
                 GameTooltip:Hide()
 
-                -- Reset highlight effect
-                marker:SetVertexColor(1, 1, 1, 1) -- Back to white
-                markerGlow:SetVertexColor(0.8, 0.8, 0.8, 0.3)
+                -- Reset to original colors
+                marker:SetVertexColor(markerColor.r, markerColor.g, markerColor.b, markerColor.a)
+                markerGlow:SetVertexColor(glowColor.r, glowColor.g, glowColor.b, glowColor.a)
+            end)
+
+            -- Right-click handler for blacklisting
+            deathFrame:SetScript("OnMouseUp", function(self, button)
+                if button == "RightButton" and death.destName then
+                    local entityName = death.destName
+                    local blacklistType = "global"
+                    local classOrZone = nil
+                    local encounter = nil
+                    local message = ""
+
+                    if IsShiftKeyDown() then
+                        -- Global blacklist
+                        blacklistType = "global"
+                        message = string.format("Blacklisted '%s' globally", entityName)
+                    elseif IsControlKeyDown() then
+                        -- Class-specific blacklist
+                        blacklistType = "class"
+                        classOrZone = addon.EntityBlacklist:GetPlayerClass()
+                        message = string.format("Blacklisted '%s' for %s", entityName, classOrZone or "your class")
+                    elseif IsAltKeyDown() then
+                        -- Encounter-specific blacklist (use session location, not current zone)
+                        blacklistType = "encounter"
+                        local sessionZone = self.sessionData and self.sessionData.location
+                        
+                        -- Enhanced zone detection if session zone is missing/unknown
+                        if not sessionZone or sessionZone == "Unknown" or sessionZone == "" then
+                            -- Try multiple zone detection methods
+                            sessionZone = GetRealZoneText() or GetZoneText() or GetMinimapZoneText() or "Unknown Zone"
+                            print("MyUI2 Debug: Session zone was '" .. (self.sessionData.location or "nil") .. "', using current zone:", sessionZone)
+                        end
+                        
+                        classOrZone = sessionZone
+                        encounter = "Unknown Encounter" -- We could enhance this with boss detection later
+                        message = string.format("Blacklisted '%s' for encounter in %s", entityName, sessionZone)
+                        
+                        -- Debug output
+                        print("MyUI2 Debug: Blacklisting for zone '" .. sessionZone .. "', encounter '" .. encounter .. "'")
+                    else
+                        -- Default to global if no modifier
+                        blacklistType = "global"
+                        message = string.format("Blacklisted '%s' globally (no modifier key)", entityName)
+                    end
+
+                    -- Add to blacklist
+                    local success = addon.EntityBlacklist:AddToBlacklist(entityName, blacklistType, classOrZone, encounter)
+                    
+                    if success then
+                        print("|cff00ff00MyUI2:|r " .. message)
+                        print("|cff888888MyUI2:|r Close and reopen chart to see changes")
+                    else
+                        print("|cffff0000MyUI2:|r Failed to blacklist '" .. entityName .. "'")
+                    end
+                end
             end)
         else
             if addon.DEBUG then

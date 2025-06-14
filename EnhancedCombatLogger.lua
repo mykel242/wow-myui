@@ -259,26 +259,73 @@ local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, destGUID, s
     end
 end
 
--- Track deaths (exclude totems and ephemeral entities)
-local function TrackDeath(timestamp, destGUID, destName)
+-- Track deaths (exclude blacklisted entities)
+local function TrackDeath(timestamp, destGUID, destName, destFlags)
     -- Filter out uninteresting deaths
     if not destName or destName == "" then
         return -- Skip unnamed entities
     end
     
-    -- Skip totems and ephemeral summons
-    local lowerName = string.lower(destName)
-    if string.find(lowerName, "totem") or 
-       string.find(lowerName, "spirit") or
-       string.find(lowerName, "guardian") or
-       string.find(lowerName, "elemental") or
-       string.find(lowerName, "echo") or
-       string.find(lowerName, "image") or
-       string.find(lowerName, "duplicate") or
-       string.find(lowerName, "reflection") or
-       string.find(lowerName, "entropic rift") or
-       string.find(lowerName, "mindbender") then
-        return -- Skip ephemeral entities
+    -- Use new blacklist system to filter entities
+    if addon.EntityBlacklist then
+        local playerClass = addon.EntityBlacklist:GetPlayerClass()
+        local zone, encounter = addon.EntityBlacklist:GetCurrentEncounter()
+        
+        if addon.EntityBlacklist:IsBlacklisted(destName, playerClass, zone, encounter) then
+            return -- Skip blacklisted entities
+        end
+    else
+        -- Fallback to legacy filtering if blacklist system not available
+        local lowerName = string.lower(destName)
+        if string.find(lowerName, "totem") or 
+           string.find(lowerName, "spirit") or
+           string.find(lowerName, "guardian") or
+           string.find(lowerName, "elemental") or
+           string.find(lowerName, "echo") or
+           string.find(lowerName, "image") or
+           string.find(lowerName, "duplicate") or
+           string.find(lowerName, "reflection") or
+           string.find(lowerName, "entropic rift") or
+           string.find(lowerName, "mindbender") then
+            return -- Skip ephemeral entities
+        end
+    end
+    
+    -- Determine entity type and boss classification
+    local isPlayer = bit.band(destFlags or 0, COMBATLOG_OBJECT_TYPE_PLAYER) > 0
+    local isNPC = bit.band(destFlags or 0, COMBATLOG_OBJECT_TYPE_NPC) > 0
+    local isPet = bit.band(destFlags or 0, COMBATLOG_OBJECT_TYPE_PET) > 0
+    
+    -- Determine if this is a boss (for marker type)
+    local entityType = "minion" -- default
+    if isPlayer then
+        entityType = "player"
+    elseif isNPC then
+        -- Check for boss classification
+        local isBoss = false
+        
+        -- Method 1: Check unit frames for boss classification
+        for i = 1, 4 do
+            local unitID = "boss" .. i
+            if UnitExists(unitID) and UnitName(unitID) == destName then
+                isBoss = true
+                break
+            end
+        end
+        
+        -- Method 2: Check target classification if this is the target
+        if not isBoss and UnitExists("target") and UnitName("target") == destName then
+            local classification = UnitClassification("target")
+            isBoss = (classification == "worldboss" or classification == "elite" or classification == "rareelite")
+        end
+        
+        -- Method 3: Heuristic - very high health suggests boss
+        if not isBoss and UnitExists("target") and UnitName("target") == destName then
+            local maxHealth = UnitHealthMax("target")
+            isBoss = maxHealth and maxHealth > 1000000 -- 1M+ health suggests boss
+        end
+        
+        entityType = isBoss and "boss" or "minion"
     end
     
     -- Use TimestampManager for consistent time calculations
@@ -297,7 +344,11 @@ local function TrackDeath(timestamp, destGUID, destName)
         timestamp = timestamp,           -- Original combat log timestamp
         elapsed = elapsed,               -- Time since combat start (from TimestampManager)
         destGUID = destGUID,
-        destName = destName
+        destName = destName,
+        entityType = entityType,         -- "player", "boss", "minion"
+        isPlayer = isPlayer,
+        isNPC = isNPC,
+        isPet = isPet
     })
     
     -- Mark target as dead to filter future damage events
@@ -427,7 +478,7 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
         -- Some cooldowns might not show as aura applications
         TrackCooldownUsage(timestamp, sourceGUID, sourceName, destGUID, spellId, spellName)
     elseif subevent == "UNIT_DIED" then
-        TrackDeath(timestamp, destGUID, destName)
+        TrackDeath(timestamp, destGUID, destName, destFlags)
     end
 end
 

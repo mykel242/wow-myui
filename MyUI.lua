@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-50e61b2"
-addon.BUILD_DATE = "2025-06-14-08:31"
+addon.VERSION = "feature-more-filters-f9a06c3"
+addon.BUILD_DATE = "2025-06-14-10:48"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -283,12 +283,17 @@ function addon:OnInitialize()
         self.EnhancedCombatLogger:Initialize()
     end
 
-    -- 4. Content detection
+    -- 4. Entity blacklist system
+    if self.EntityBlacklist then
+        self.EntityBlacklist:Initialize()
+    end
+
+    -- 5. Content detection
     if self.ContentDetection then
         self.ContentDetection:Initialize()
     end
 
-    -- 5. Session manager (depends on others)
+    -- 6. Session manager (depends on others)
     if self.SessionManager then
         self.SessionManager:Initialize()
     end
