@@ -189,8 +189,11 @@ function EnhancedSessionDetailWindow:CreateTabbedInterface(frame, sessionData)
     local tabs = {
         { id = "overview",     text = "Timeline" },
         { id = "participants", text = "Participants" },
-        { id = "damage",       text = "Damage Analysis" },
-        { id = "insights",     text = "Combat Insights" }
+        { id = "log",          text = "Log" },
+        { id = "blacklist",    text = "Blacklist" },
+        { id = "whitelist",    text = "Whitelist" }
+        -- { id = "damage",       text = "Damage Analysis" },
+        -- { id = "insights",     text = "Combat Insights" }
     }
 
     frame.tabButtons = {}
@@ -268,10 +271,16 @@ function EnhancedSessionDetailWindow:ShowTab(tabId)
         self:CreateTimelineTab()
     elseif tabId == "participants" then
         self:CreateParticipantsTab()
-    elseif tabId == "damage" then
-        self:CreateDamageTab()
-    elseif tabId == "insights" then
-        self:CreateInsightsTab()
+    elseif tabId == "log" then
+        self:CreateLogTab()
+    elseif tabId == "blacklist" then
+        self:CreateBlacklistTab()
+    elseif tabId == "whitelist" then
+        self:CreateWhitelistTab()
+    -- elseif tabId == "damage" then
+    --     self:CreateDamageTab()
+    -- elseif tabId == "insights" then
+    --     self:CreateInsightsTab()
     end
 end
 
@@ -334,14 +343,16 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
     -- Draw performance lines
     self:DrawPerformanceLines(chartArea, timelineData, chartWidth, chartHeight, maxDPS, maxHPS)
 
-    -- Draw cooldown markers if enhanced data is available
-    if sessionData.enhancedData and sessionData.enhancedData.cooldownUsage then
+    -- Draw cooldown markers if enhanced data is available and filter allows
+    if sessionData.enhancedData and sessionData.enhancedData.cooldownUsage and 
+       self.chartFilters and self.chartFilters.showCooldowns then
         self:DrawCooldownMarkers(chartArea, sessionData.enhancedData.cooldownUsage, sessionData.duration, chartWidth,
             chartHeight)
     end
 
-    -- Draw death markers if enhanced data is available
-    if sessionData.enhancedData and sessionData.enhancedData.deaths and #sessionData.enhancedData.deaths > 0 then
+    -- Draw death markers if enhanced data is available and filters allow
+    if sessionData.enhancedData and sessionData.enhancedData.deaths and #sessionData.enhancedData.deaths > 0 and
+       self.chartFilters and (self.chartFilters.showPlayerDeaths or self.chartFilters.showMinionDeaths) then
         -- print("Drawing", #sessionData.enhancedData.deaths, "death markers")
         self:DrawDeathMarkers(chartArea, sessionData.enhancedData.deaths, sessionData.duration, chartWidth, chartHeight)
     else
@@ -518,26 +529,30 @@ function EnhancedSessionDetailWindow:DrawPerformanceLines(chartArea, timelineDat
         -- Remove arbitrary 200-point limit to show full combat duration
         local x = (i - 1) * pointWidth
 
-        -- DPS line
-        local dpsValue = point.instantDPS or point.averageDPS or 0
-        if maxDPS > 0 then
-            local dpsHeight = dpsValue > 0 and math.max(2, (dpsValue / maxDPS) * height) or 1
+        -- DPS line - only draw if filter is enabled
+        if self.chartFilters and self.chartFilters.showDPS then
+            local dpsValue = point.instantDPS or point.averageDPS or 0
+            if maxDPS > 0 then
+                local dpsHeight = dpsValue > 0 and math.max(2, (dpsValue / maxDPS) * height) or 1
 
-            if previousDPSPoint then
-                self:DrawLine(chartArea, previousDPSPoint.x, previousDPSPoint.y, x, dpsHeight, CHART_COLORS.dps)
+                if previousDPSPoint then
+                    self:DrawLine(chartArea, previousDPSPoint.x, previousDPSPoint.y, x, dpsHeight, CHART_COLORS.dps)
+                end
+                previousDPSPoint = { x = x, y = dpsHeight }
             end
-            previousDPSPoint = { x = x, y = dpsHeight }
         end
 
-        -- HPS line
-        local hpsValue = point.instantHPS or point.averageHPS or 0
-        if maxHPS > 0 then
-            local hpsHeight = hpsValue > 0 and math.max(2, (hpsValue / maxHPS) * height) or 1
+        -- HPS line - only draw if filter is enabled
+        if self.chartFilters and self.chartFilters.showHPS then
+            local hpsValue = point.instantHPS or point.averageHPS or 0
+            if maxHPS > 0 then
+                local hpsHeight = hpsValue > 0 and math.max(2, (hpsValue / maxHPS) * height) or 1
 
-            if previousHPSPoint then
-                self:DrawLine(chartArea, previousHPSPoint.x, previousHPSPoint.y, x, hpsHeight, CHART_COLORS.hps)
+                if previousHPSPoint then
+                    self:DrawLine(chartArea, previousHPSPoint.x, previousHPSPoint.y, x, hpsHeight, CHART_COLORS.hps)
+                end
+                previousHPSPoint = { x = x, y = hpsHeight }
             end
-            previousHPSPoint = { x = x, y = hpsHeight }
         end
     end
 end
@@ -561,6 +576,10 @@ end
 
 -- Draw enhanced cooldown markers with improved visibility and tooltips
 function EnhancedSessionDetailWindow:DrawCooldownMarkers(chartArea, cooldowns, duration, width, height)
+    -- Only draw cooldown markers if filter is enabled
+    if not (self.chartFilters and self.chartFilters.showCooldowns) then
+        return
+    end
     for _, cooldown in ipairs(cooldowns) do
         if cooldown.elapsed and cooldown.elapsed >= 0 and cooldown.elapsed <= duration then
             local x = (cooldown.elapsed / duration) * width
@@ -699,6 +718,11 @@ end
 
 -- Draw enhanced death markers with improved visibility and tooltips
 function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duration, width, height)
+    -- Check if any death markers should be shown based on filters
+    if not (self.chartFilters and (self.chartFilters.showPlayerDeaths or self.chartFilters.showMinionDeaths)) then
+        return
+    end
+
     if addon.DEBUG then
         print("=== DEATH MARKER DEBUG ===")
         print("Chart duration:", duration, "Chart width:", width)
@@ -740,6 +764,28 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
         -- No blacklist system available, show all deaths
         filteredDeaths = deaths
     end
+
+    -- Further filter deaths based on chart filter settings
+    local chartFilteredDeaths = {}
+    for _, death in ipairs(filteredDeaths) do
+        local shouldShow = false
+        
+        -- Determine if this is a player death or minion death
+        -- This is a simplified check - you may need to adjust based on your death data structure
+        local isPlayerDeath = death.destName and (death.destFlags == nil or not string.find(tostring(death.destFlags), "OBJECT_TYPE_PETGUARDIAN"))
+        
+        if isPlayerDeath and self.chartFilters.showPlayerDeaths then
+            shouldShow = true
+        elseif not isPlayerDeath and self.chartFilters.showMinionDeaths then
+            shouldShow = true
+        end
+        
+        if shouldShow then
+            table.insert(chartFilteredDeaths, death)
+        end
+    end
+    
+    filteredDeaths = chartFilteredDeaths
 
     for i, death in ipairs(filteredDeaths) do
         if addon.DEBUG then
@@ -968,22 +1014,161 @@ function EnhancedSessionDetailWindow:CreateChartLegend(chartArea, maxDPS, maxHPS
     -- Legend removed per user feedback - was the unwanted light gray summary data
 end
 
--- Create chart controls
+-- Create chart controls and filters
 function EnhancedSessionDetailWindow:CreateChartControls(controlsFrame)
     local controlsBg = controlsFrame:CreateTexture(nil, "BACKGROUND")
     controlsBg:SetAllPoints(controlsFrame)
     controlsBg:SetColorTexture(0.1, 0.1, 0.1, 0.7)
 
-    -- Title removed per user feedback
-    -- local title = controlsFrame:CreateFontString(nil, "OVERLAY")
-    -- title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    -- title:SetPoint("TOP", controlsFrame, "TOP", 0, -5)
-    -- title:SetText("Chart Controls & Event Timeline")
-
-    -- Create scrollable event log
-    if self.sessionData.enhancedData then
-        self:CreateScrollableEventLog(controlsFrame)
+    -- Initialize chart filters if not already set
+    if not self.chartFilters then
+        self.chartFilters = {
+            showHPS = true,
+            showDPS = true,
+            showCooldowns = true,
+            showPlayerDeaths = true,
+            showMinionDeaths = true
+        }
     end
+
+    -- Create filter toggles
+    self:CreateChartFilterToggles(controlsFrame)
+end
+
+-- Create chart filter toggles
+function EnhancedSessionDetailWindow:CreateChartFilterToggles(controlsFrame)
+    -- Create a horizontal layout for filter toggles
+    local toggleContainer = CreateFrame("Frame", nil, controlsFrame)
+    toggleContainer:SetSize(720, 35)
+    toggleContainer:SetPoint("TOP", controlsFrame, "TOP", 0, -10)
+
+    local toggles = {
+        { key = "showHPS", text = "HPS", color = { 0.3, 1, 0.3 } },
+        { key = "showDPS", text = "DPS", color = { 1, 0.3, 0.3 } },
+        { key = "showCooldowns", text = "Cooldowns", color = { 0.3, 0.3, 1 } },
+        { key = "showPlayerDeaths", text = "Player Deaths", color = { 1, 0.2, 0.2 } },
+        { key = "showMinionDeaths", text = "Minion Deaths", color = { 0.8, 0.4, 0.4 } }
+    }
+
+    local xOffset = 10
+    for i, toggle in ipairs(toggles) do
+        local checkbox = CreateFrame("CheckButton", nil, toggleContainer)
+        checkbox:SetSize(20, 20)
+        checkbox:SetPoint("LEFT", toggleContainer, "LEFT", xOffset, 5)
+
+        -- Checkbox background
+        local checkBg = checkbox:CreateTexture(nil, "BACKGROUND")
+        checkBg:SetAllPoints(checkbox)
+        checkBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
+
+        -- Checkbox check mark
+        local checkMark = checkbox:CreateTexture(nil, "OVERLAY")
+        checkMark:SetSize(12, 12)
+        checkMark:SetPoint("CENTER", checkbox, "CENTER", 0, 0)
+        checkMark:SetColorTexture(toggle.color[1], toggle.color[2], toggle.color[3], 1)
+        checkbox.checkMark = checkMark
+
+        -- Update check mark visibility based on current state
+        checkMark:SetShown(self.chartFilters[toggle.key])
+
+        -- Label
+        local label = toggleContainer:CreateFontString(nil, "OVERLAY")
+        label:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        label:SetPoint("LEFT", checkbox, "RIGHT", 5, 0)
+        label:SetText(toggle.text)
+        label:SetTextColor(toggle.color[1], toggle.color[2], toggle.color[3], 1)
+
+        -- Click handler
+        checkbox:SetScript("OnClick", function()
+            self.chartFilters[toggle.key] = not self.chartFilters[toggle.key]
+            checkMark:SetShown(self.chartFilters[toggle.key])
+            -- Note: Redraw will be triggered by separate redraw button
+        end)
+
+        -- Hover effects
+        checkbox:SetScript("OnEnter", function()
+            checkBg:SetColorTexture(0.3, 0.3, 0.3, 0.8)
+        end)
+
+        checkbox:SetScript("OnLeave", function()
+            checkBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
+        end)
+
+        -- Calculate next position
+        local labelWidth = label:GetStringWidth()
+        xOffset = xOffset + 25 + labelWidth + 15
+    end
+
+    -- Add redraw button
+    local redrawButton = CreateFrame("Button", nil, toggleContainer)
+    redrawButton:SetSize(80, 25)
+    redrawButton:SetPoint("RIGHT", toggleContainer, "RIGHT", -10, 0)
+
+    local redrawBg = redrawButton:CreateTexture(nil, "BACKGROUND")
+    redrawBg:SetAllPoints(redrawButton)
+    redrawBg:SetColorTexture(0.4, 0.4, 0.4, 0.8)
+
+    local redrawText = redrawButton:CreateFontString(nil, "OVERLAY")
+    redrawText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    redrawText:SetPoint("CENTER", redrawButton, "CENTER", 0, 0)
+    redrawText:SetText("Redraw")
+    redrawText:SetTextColor(1, 1, 1, 1)
+
+    redrawButton:SetScript("OnClick", function()
+        self:RedrawChart()
+    end)
+
+    redrawButton:SetScript("OnEnter", function()
+        redrawBg:SetColorTexture(0.5, 0.5, 0.5, 0.8)
+    end)
+
+    redrawButton:SetScript("OnLeave", function()
+        redrawBg:SetColorTexture(0.4, 0.4, 0.4, 0.8)
+    end)
+end
+
+-- Redraw chart with current filter settings
+function EnhancedSessionDetailWindow:RedrawChart()
+    if not self.frame or not self.frame.currentContent or self.currentTab ~= "overview" then
+        return
+    end
+
+    -- Find the chart area in the current content
+    local chartArea = nil
+    for i = 1, self.frame.currentContent:GetNumChildren() do
+        local child = select(i, self.frame.currentContent:GetChildren())
+        if child and child:GetWidth() == 740 and child:GetHeight() == 320 then
+            chartArea = child
+            break
+        end
+    end
+
+    if not chartArea then
+        return
+    end
+
+    -- Clear existing chart elements (keep background)
+    for i = chartArea:GetNumChildren(), 1, -1 do
+        local child = select(i, chartArea:GetChildren())
+        if child then
+            child:Hide()
+            child:SetParent(nil)
+        end
+    end
+
+    -- Clear existing textures (except background)
+    for i = chartArea:GetNumRegions(), 1, -1 do
+        local region = select(i, chartArea:GetRegions())
+        if region and region ~= chartArea:GetRegions() then -- Keep the background texture
+            if region.GetTexture and region:GetTexture() ~= nil then
+                region:Hide()
+                region:SetParent(nil)
+            end
+        end
+    end
+
+    -- Redraw the chart with current filters
+    self:CreateEnhancedTimeline(chartArea, self.sessionData)
 end
 
 -- Create scrollable event log for deaths and buffs
@@ -1037,6 +1222,413 @@ function EnhancedSessionDetailWindow:CreateScrollableEventLog(controlsFrame)
         scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 0, -16)
         scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", 0, 16)
     end
+end
+
+-- Create log tab with scrollable event log
+function EnhancedSessionDetailWindow:CreateLogTab()
+    local content = CreateFrame("Frame", nil, self.frame.contentArea)
+    content:SetAllPoints(self.frame.contentArea)
+
+    local title = content:CreateFontString(nil, "OVERLAY")
+    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetPoint("TOP", content, "TOP", 0, -20)
+    title:SetText("Combat Event Log")
+
+    -- Check for enhanced data
+    if not self.sessionData.enhancedData then
+        local noDataText = content:CreateFontString(nil, "OVERLAY")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        noDataText:SetPoint("CENTER", content, "CENTER", 0, 0)
+        noDataText:SetText("No event log data available\n(Enhanced logging was not active during this session)")
+        noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
+
+        content:Show()
+        self.frame.currentContent = content
+        return
+    end
+
+    -- Create the scrollable event log taking up most of the tab
+    local logFrame = CreateFrame("Frame", nil, content)
+    logFrame:SetPoint("TOPLEFT", content, "TOPLEFT", 10, -50)
+    logFrame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -10, 10)
+
+    self:CreateScrollableEventLog(logFrame)
+
+    content:Show()
+    self.frame.currentContent = content
+end
+
+-- Create blacklist tab
+function EnhancedSessionDetailWindow:CreateBlacklistTab()
+    local content = CreateFrame("Frame", nil, self.frame.contentArea)
+    content:SetAllPoints(self.frame.contentArea)
+
+    local title = content:CreateFontString(nil, "OVERLAY")
+    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetPoint("TOP", content, "TOP", 0, -20)
+    title:SetText("Entity Blacklists")
+
+    -- Check if EntityBlacklist is available
+    if not addon.EntityBlacklist or not EntityBlacklistDB then
+        local noDataText = content:CreateFontString(nil, "OVERLAY")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        noDataText:SetPoint("CENTER", content, "CENTER", 0, 0)
+        noDataText:SetText("Entity blacklist data not available")
+        noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
+
+        content:Show()
+        self.frame.currentContent = content
+        return
+    end
+
+    -- Create scrollable blacklist view
+    local scrollFrame = CreateFrame("ScrollFrame", nil, content, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", content, "TOPLEFT", 10, -50)
+    scrollFrame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -30, 50)
+
+    local scrollContent = CreateFrame("Frame", nil, scrollFrame)
+    scrollContent:SetSize(scrollFrame:GetWidth() - 10, 1000)
+    scrollFrame:SetScrollChild(scrollContent)
+
+    local yOffset = -10
+
+    -- Global Blacklist Section
+    local globalTitle = scrollContent:CreateFontString(nil, "OVERLAY")
+    globalTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    globalTitle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 10, yOffset)
+    globalTitle:SetText("Global Blacklist:")
+    globalTitle:SetTextColor(1, 0.8, 0.2, 1)
+    yOffset = yOffset - 20
+
+    if EntityBlacklistDB.global then
+        for pattern, _ in pairs(EntityBlacklistDB.global) do
+            local entryText = scrollContent:CreateFontString(nil, "OVERLAY")
+            entryText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+            entryText:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 20, yOffset)
+            entryText:SetText("• " .. pattern)
+            entryText:SetTextColor(0.9, 0.9, 0.9, 1)
+            yOffset = yOffset - 15
+        end
+    end
+
+    yOffset = yOffset - 10
+
+    -- Class-specific Blacklists
+    local classTitle = scrollContent:CreateFontString(nil, "OVERLAY")
+    classTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    classTitle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 10, yOffset)
+    classTitle:SetText("Class-specific Blacklists:")
+    classTitle:SetTextColor(0.2, 1, 0.8, 1)
+    yOffset = yOffset - 20
+
+    if EntityBlacklistDB.classes then
+        for className, entities in pairs(EntityBlacklistDB.classes) do
+            local classHeader = scrollContent:CreateFontString(nil, "OVERLAY")
+            classHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+            classHeader:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 20, yOffset)
+            classHeader:SetText(className .. ":")
+            classHeader:SetTextColor(0.8, 1, 0.8, 1)
+            yOffset = yOffset - 18
+
+            for pattern, _ in pairs(entities) do
+                local entryText = scrollContent:CreateFontString(nil, "OVERLAY")
+                entryText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+                entryText:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 30, yOffset)
+                entryText:SetText("• " .. pattern)
+                entryText:SetTextColor(0.9, 0.9, 0.9, 1)
+                yOffset = yOffset - 15
+            end
+            yOffset = yOffset - 5
+        end
+    end
+
+    -- Encounter-specific Blacklists
+    if EntityBlacklistDB.encounters then
+        local encounterTitle = scrollContent:CreateFontString(nil, "OVERLAY")
+        encounterTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+        encounterTitle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 10, yOffset)
+        encounterTitle:SetText("Encounter-specific Blacklists:")
+        encounterTitle:SetTextColor(1, 0.2, 0.8, 1)
+        yOffset = yOffset - 20
+
+        for zoneName, encounters in pairs(EntityBlacklistDB.encounters) do
+            local zoneHeader = scrollContent:CreateFontString(nil, "OVERLAY")
+            zoneHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+            zoneHeader:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 20, yOffset)
+            zoneHeader:SetText(zoneName .. ":")
+            zoneHeader:SetTextColor(1, 0.8, 0.8, 1)
+            yOffset = yOffset - 18
+
+            for bossName, entities in pairs(encounters) do
+                local bossHeader = scrollContent:CreateFontString(nil, "OVERLAY")
+                bossHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+                bossHeader:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 30, yOffset)
+                bossHeader:SetText(bossName .. ":")
+                bossHeader:SetTextColor(0.9, 0.7, 0.9, 1)
+                yOffset = yOffset - 16
+
+                for pattern, _ in pairs(entities) do
+                    local entryText = scrollContent:CreateFontString(nil, "OVERLAY")
+                    entryText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+                    entryText:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 40, yOffset)
+                    entryText:SetText("• " .. pattern)
+                    entryText:SetTextColor(0.9, 0.9, 0.9, 1)
+                    yOffset = yOffset - 15
+                end
+                yOffset = yOffset - 5
+            end
+            yOffset = yOffset - 5
+        end
+    end
+
+    -- Add share button
+    local shareButton = CreateFrame("Button", nil, content)
+    shareButton:SetSize(120, 30)
+    shareButton:SetPoint("BOTTOM", content, "BOTTOM", -60, 15)
+
+    local shareButtonBg = shareButton:CreateTexture(nil, "BACKGROUND")
+    shareButtonBg:SetAllPoints(shareButton)
+    shareButtonBg:SetColorTexture(0.2, 0.6, 0.2, 0.8)
+
+    local shareButtonText = shareButton:CreateFontString(nil, "OVERLAY")
+    shareButtonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    shareButtonText:SetPoint("CENTER", shareButton, "CENTER", 0, 0)
+    shareButtonText:SetText("Share Blacklist")
+    shareButtonText:SetTextColor(1, 1, 1, 1)
+
+    shareButton:SetScript("OnClick", function()
+        self:ShowBlacklistShareWindow()
+    end)
+
+    shareButton:SetScript("OnEnter", function()
+        shareButtonBg:SetColorTexture(0.3, 0.7, 0.3, 0.8)
+    end)
+
+    shareButton:SetScript("OnLeave", function()
+        shareButtonBg:SetColorTexture(0.2, 0.6, 0.2, 0.8)
+    end)
+
+    -- Update scroll content height
+    scrollContent:SetHeight(math.abs(yOffset) + 50)
+
+    content:Show()
+    self.frame.currentContent = content
+end
+
+-- Show blacklist sharing window with base64 encoded data
+function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
+    if self.shareWindow then
+        self.shareWindow:Hide()
+        self.shareWindow = nil
+    end
+
+    -- Create share window
+    local shareWindow = CreateFrame("Frame", nil, UIParent)
+    shareWindow:SetSize(500, 400)
+    shareWindow:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    shareWindow:SetFrameStrata("DIALOG")
+
+    -- Background and border
+    local bg = shareWindow:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(shareWindow)
+    bg:SetColorTexture(0, 0, 0, 0.9)
+
+    local border = shareWindow:CreateTexture(nil, "BORDER")
+    border:SetAllPoints(shareWindow)
+    border:SetColorTexture(0.4, 0.4, 0.4, 1)
+    bg:SetPoint("TOPLEFT", border, "TOPLEFT", 2, -2)
+    bg:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", -2, 2)
+
+    -- Title
+    local title = shareWindow:CreateFontString(nil, "OVERLAY")
+    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetPoint("TOP", shareWindow, "TOP", 0, -20)
+    title:SetText("Share Blacklist Configuration")
+    title:SetTextColor(1, 1, 1, 1)
+
+    -- Description
+    local descText = shareWindow:CreateFontString(nil, "OVERLAY")
+    descText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    descText:SetPoint("TOP", shareWindow, "TOP", 0, -50)
+    descText:SetText("Copy the encoded data below to share your blacklist configuration with other users.")
+    descText:SetTextColor(0.8, 0.8, 0.8, 1)
+
+    -- Serialize and encode blacklist data
+    local blacklistData = {
+        global = EntityBlacklistDB and EntityBlacklistDB.global or {},
+        classes = EntityBlacklistDB and EntityBlacklistDB.classes or {},
+        encounters = EntityBlacklistDB and EntityBlacklistDB.encounters or {}
+    }
+
+    -- Simple serialization to string
+    local function serializeTable(t, depth)
+        depth = depth or 0
+        if depth > 10 then return "{}" end -- Prevent infinite recursion
+        
+        local parts = {}
+        for k, v in pairs(t) do
+            local key = type(k) == "string" and string.format('"%s"', k) or tostring(k)
+            local value
+            if type(v) == "table" then
+                value = serializeTable(v, depth + 1)
+            elseif type(v) == "string" then
+                value = string.format('"%s"', v)
+            else
+                value = tostring(v)
+            end
+            table.insert(parts, key .. "=" .. value)
+        end
+        return "{" .. table.concat(parts, ",") .. "}"
+    end
+
+    local serializedData = serializeTable(blacklistData)
+
+    -- Base64 encode (simple implementation)
+    local function base64Encode(data)
+        local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        local result = ""
+        
+        for i = 1, #data, 3 do
+            local byte1 = string.byte(data, i) or 0
+            local byte2 = string.byte(data, i + 1) or 0
+            local byte3 = string.byte(data, i + 2) or 0
+            
+            local combined = bit.bor(bit.lshift(byte1, 16), bit.lshift(byte2, 8), byte3)
+            
+            result = result .. string.sub(chars, bit.rshift(combined, 18) + 1, bit.rshift(combined, 18) + 1)
+            result = result .. string.sub(chars, bit.band(bit.rshift(combined, 12), 63) + 1, bit.band(bit.rshift(combined, 12), 63) + 1)
+            result = result .. (i + 1 <= #data and string.sub(chars, bit.band(bit.rshift(combined, 6), 63) + 1, bit.band(bit.rshift(combined, 6), 63) + 1) or "=")
+            result = result .. (i + 2 <= #data and string.sub(chars, bit.band(combined, 63) + 1, bit.band(combined, 63) + 1) or "=")
+        end
+        
+        return result
+    end
+
+    local encodedData = base64Encode(serializedData)
+
+    -- Create text area for encoded data
+    local scrollFrame = CreateFrame("ScrollFrame", nil, shareWindow, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", shareWindow, "TOPLEFT", 20, -90)
+    scrollFrame:SetPoint("BOTTOMRIGHT", shareWindow, "BOTTOMRIGHT", -40, 80)
+
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetAutoFocus(false)
+    editBox:SetFontObject(ChatFontNormal)
+    editBox:SetWidth(scrollFrame:GetWidth() - 20)
+    editBox:SetText(encodedData)
+    editBox:SetCursorPosition(0)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- Make the text auto-select when clicked
+    editBox:SetScript("OnClick", function()
+        editBox:HighlightText()
+    end)
+
+    -- Instructions
+    local instructText = shareWindow:CreateFontString(nil, "OVERLAY")
+    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 50)
+    instructText:SetText("Click the text above to select all, then copy with Ctrl+C")
+    instructText:SetTextColor(0.7, 0.7, 0.7, 1)
+
+    -- Close button
+    local closeButton = CreateFrame("Button", nil, shareWindow)
+    closeButton:SetSize(80, 30)
+    closeButton:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 15)
+
+    local closeBg = closeButton:CreateTexture(nil, "BACKGROUND")
+    closeBg:SetAllPoints(closeButton)
+    closeBg:SetColorTexture(0.6, 0.2, 0.2, 0.8)
+
+    local closeText = closeButton:CreateFontString(nil, "OVERLAY")
+    closeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    closeText:SetPoint("CENTER", closeButton, "CENTER", 0, 0)
+    closeText:SetText("Close")
+    closeText:SetTextColor(1, 1, 1, 1)
+
+    closeButton:SetScript("OnClick", function()
+        shareWindow:Hide()
+        self.shareWindow = nil
+    end)
+
+    closeButton:SetScript("OnEnter", function()
+        closeBg:SetColorTexture(0.7, 0.3, 0.3, 0.8)
+    end)
+
+    closeButton:SetScript("OnLeave", function()
+        closeBg:SetColorTexture(0.6, 0.2, 0.2, 0.8)
+    end)
+
+    -- Make draggable
+    shareWindow:SetMovable(true)
+    shareWindow:EnableMouse(true)
+    shareWindow:RegisterForDrag("LeftButton")
+    shareWindow:SetScript("OnDragStart", shareWindow.StartMoving)
+    shareWindow:SetScript("OnDragStop", shareWindow.StopMovingOrSizing)
+
+    shareWindow:Show()
+    self.shareWindow = shareWindow
+end
+
+-- Create whitelist tab (placeholder)
+function EnhancedSessionDetailWindow:CreateWhitelistTab()
+    local content = CreateFrame("Frame", nil, self.frame.contentArea)
+    content:SetAllPoints(self.frame.contentArea)
+
+    local title = content:CreateFontString(nil, "OVERLAY")
+    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetPoint("TOP", content, "TOP", 0, -20)
+    title:SetText("Entity Whitelist (Priority Tracking)")
+
+    -- Description
+    local descText = content:CreateFontString(nil, "OVERLAY")
+    descText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    descText:SetPoint("TOP", content, "TOP", 0, -60)
+    descText:SetText("Configure entities, buffs, and abilities that should always be tracked and charted,\neven if they would normally be filtered or blacklisted.")
+    descText:SetTextColor(0.8, 0.8, 0.8, 1)
+
+    -- Future features section
+    local futureTitle = content:CreateFontString(nil, "OVERLAY")
+    futureTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 13, "OUTLINE")
+    futureTitle:SetPoint("TOP", content, "TOP", 0, -120)
+    futureTitle:SetText("Planned Features:")
+    futureTitle:SetTextColor(1, 0.8, 0.2, 1)
+
+    local featuresList = {
+        "• Priority buff tracking (important raid buffs that should always show)",
+        "• Custom entity inclusion (override blacklists for specific entities)",
+        "• VIP player tracking (always track specific players' actions)",
+        "• Priority spell/ability tracking (key cooldowns to always display)",
+        "• Import/Export whitelist configurations",
+        "• Per-encounter whitelist settings"
+    }
+
+    local yOffset = -150
+    for _, feature in ipairs(featuresList) do
+        local featureText = content:CreateFontString(nil, "OVERLAY")
+        featureText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        featureText:SetPoint("TOPLEFT", content, "TOPLEFT", 50, yOffset)
+        featureText:SetText(feature)
+        featureText:SetTextColor(0.7, 0.9, 0.7, 1)
+        yOffset = yOffset - 20
+    end
+
+    -- Coming soon notice
+    local comingSoonText = content:CreateFontString(nil, "OVERLAY")
+    comingSoonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    comingSoonText:SetPoint("BOTTOM", content, "BOTTOM", 0, 80)
+    comingSoonText:SetText("🚧 Coming Soon! 🚧")
+    comingSoonText:SetTextColor(1, 0.6, 0.2, 1)
+
+    local implementationText = content:CreateFontString(nil, "OVERLAY")
+    implementationText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    implementationText:SetPoint("BOTTOM", content, "BOTTOM", 0, 50)
+    implementationText:SetText("This feature will be implemented in a future update.")
+    implementationText:SetTextColor(0.8, 0.8, 0.8, 1)
+
+    content:Show()
+    self.frame.currentContent = content
 end
 
 -- Create participants tab - ENHANCED VERSION
