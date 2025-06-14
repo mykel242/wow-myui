@@ -1449,9 +1449,9 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
         self.shareWindow = nil
     end
 
-    -- Create share window
+    -- Create share window (larger size to accommodate all elements)
     local shareWindow = CreateFrame("Frame", nil, UIParent)
-    shareWindow:SetSize(500, 400)
+    shareWindow:SetSize(600, 500)
     shareWindow:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     shareWindow:SetFrameStrata("DIALOG")
 
@@ -1533,10 +1533,10 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
 
     local encodedData = base64Encode(serializedData)
 
-    -- Create text area for encoded data with improved margins
+    -- Create text area for encoded data with improved margins (more space for buttons)
     local textAreaFrame = CreateFrame("Frame", nil, shareWindow)
     textAreaFrame:SetPoint("TOPLEFT", shareWindow, "TOPLEFT", 20, -90)
-    textAreaFrame:SetPoint("BOTTOMRIGHT", shareWindow, "BOTTOMRIGHT", -20, 110)
+    textAreaFrame:SetPoint("BOTTOMRIGHT", shareWindow, "BOTTOMRIGHT", -20, 130)
     
     local textAreaBg = textAreaFrame:CreateTexture(nil, "BACKGROUND")
     textAreaBg:SetAllPoints(textAreaFrame)
@@ -1563,10 +1563,10 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
         editBox:HighlightText()
     end)
 
-    -- Button container
+    -- Button container (higher up to be visible)
     local buttonContainer = CreateFrame("Frame", nil, shareWindow)
-    buttonContainer:SetSize(460, 40)
-    buttonContainer:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 35)
+    buttonContainer:SetSize(560, 40)
+    buttonContainer:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 55)
 
     -- Select All button
     local selectAllButton = CreateFrame("Button", nil, buttonContainer)
@@ -1654,10 +1654,10 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
         closeBg:SetColorTexture(0.6, 0.2, 0.2, 0.8)
     end)
 
-    -- Instructions
+    -- Instructions (below buttons)
     local instructText = shareWindow:CreateFontString(nil, "OVERLAY")
     instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 10)
+    instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 20)
     instructText:SetText("Text is auto-selected. Use Ctrl+C to copy.")
     instructText:SetTextColor(0.7, 0.7, 0.7, 1)
 
