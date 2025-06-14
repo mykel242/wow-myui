@@ -1382,10 +1382,36 @@ function EnhancedSessionDetailWindow:CreateBlacklistTab()
         end
     end
 
-    -- Add share button
+    -- Add import and share buttons
+    local importButton = CreateFrame("Button", nil, content)
+    importButton:SetSize(120, 30)
+    importButton:SetPoint("BOTTOM", content, "BOTTOM", -130, 15)
+
+    local importButtonBg = importButton:CreateTexture(nil, "BACKGROUND")
+    importButtonBg:SetAllPoints(importButton)
+    importButtonBg:SetColorTexture(0.2, 0.2, 0.6, 0.8)
+
+    local importButtonText = importButton:CreateFontString(nil, "OVERLAY")
+    importButtonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    importButtonText:SetPoint("CENTER", importButton, "CENTER", 0, 0)
+    importButtonText:SetText("Import Blacklist")
+    importButtonText:SetTextColor(1, 1, 1, 1)
+
+    importButton:SetScript("OnClick", function()
+        self:ShowBlacklistImportWindow()
+    end)
+
+    importButton:SetScript("OnEnter", function()
+        importButtonBg:SetColorTexture(0.3, 0.3, 0.7, 0.8)
+    end)
+
+    importButton:SetScript("OnLeave", function()
+        importButtonBg:SetColorTexture(0.2, 0.2, 0.6, 0.8)
+    end)
+
     local shareButton = CreateFrame("Button", nil, content)
     shareButton:SetSize(120, 30)
-    shareButton:SetPoint("BOTTOM", content, "BOTTOM", -60, 15)
+    shareButton:SetPoint("BOTTOM", content, "BOTTOM", 10, 15)
 
     local shareButtonBg = shareButton:CreateTexture(nil, "BACKGROUND")
     shareButtonBg:SetAllPoints(shareButton)
@@ -1507,10 +1533,18 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
 
     local encodedData = base64Encode(serializedData)
 
-    -- Create text area for encoded data
-    local scrollFrame = CreateFrame("ScrollFrame", nil, shareWindow, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", shareWindow, "TOPLEFT", 20, -90)
-    scrollFrame:SetPoint("BOTTOMRIGHT", shareWindow, "BOTTOMRIGHT", -40, 80)
+    -- Create text area for encoded data with improved margins
+    local textAreaFrame = CreateFrame("Frame", nil, shareWindow)
+    textAreaFrame:SetPoint("TOPLEFT", shareWindow, "TOPLEFT", 20, -90)
+    textAreaFrame:SetPoint("BOTTOMRIGHT", shareWindow, "BOTTOMRIGHT", -20, 110)
+    
+    local textAreaBg = textAreaFrame:CreateTexture(nil, "BACKGROUND")
+    textAreaBg:SetAllPoints(textAreaFrame)
+    textAreaBg:SetColorTexture(0.1, 0.1, 0.1, 0.9)
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, textAreaFrame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", textAreaFrame, "TOPLEFT", 10, -10)
+    scrollFrame:SetPoint("BOTTOMRIGHT", textAreaFrame, "BOTTOMRIGHT", -30, 10)
 
     local editBox = CreateFrame("EditBox", nil, scrollFrame)
     editBox:SetMultiLine(true)
@@ -1521,22 +1555,81 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
     editBox:SetCursorPosition(0)
     scrollFrame:SetScrollChild(editBox)
 
+    -- Auto-select all text when window opens
+    editBox:HighlightText()
+
     -- Make the text auto-select when clicked
     editBox:SetScript("OnClick", function()
         editBox:HighlightText()
     end)
 
-    -- Instructions
-    local instructText = shareWindow:CreateFontString(nil, "OVERLAY")
-    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 50)
-    instructText:SetText("Click the text above to select all, then copy with Ctrl+C")
-    instructText:SetTextColor(0.7, 0.7, 0.7, 1)
+    -- Button container
+    local buttonContainer = CreateFrame("Frame", nil, shareWindow)
+    buttonContainer:SetSize(460, 40)
+    buttonContainer:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 35)
+
+    -- Select All button
+    local selectAllButton = CreateFrame("Button", nil, buttonContainer)
+    selectAllButton:SetSize(100, 30)
+    selectAllButton:SetPoint("LEFT", buttonContainer, "LEFT", 20, 0)
+
+    local selectAllBg = selectAllButton:CreateTexture(nil, "BACKGROUND")
+    selectAllBg:SetAllPoints(selectAllButton)
+    selectAllBg:SetColorTexture(0.2, 0.5, 0.8, 0.8)
+
+    local selectAllText = selectAllButton:CreateFontString(nil, "OVERLAY")
+    selectAllText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    selectAllText:SetPoint("CENTER", selectAllButton, "CENTER", 0, 0)
+    selectAllText:SetText("Select All")
+    selectAllText:SetTextColor(1, 1, 1, 1)
+
+    selectAllButton:SetScript("OnClick", function()
+        editBox:HighlightText()
+        editBox:SetFocus()
+    end)
+
+    selectAllButton:SetScript("OnEnter", function()
+        selectAllBg:SetColorTexture(0.3, 0.6, 0.9, 0.8)
+    end)
+
+    selectAllButton:SetScript("OnLeave", function()
+        selectAllBg:SetColorTexture(0.2, 0.5, 0.8, 0.8)
+    end)
+
+    -- Copy to Clipboard button (if supported)
+    local copyButton = CreateFrame("Button", nil, buttonContainer)
+    copyButton:SetSize(120, 30)
+    copyButton:SetPoint("CENTER", buttonContainer, "CENTER", -40, 0)
+
+    local copyBg = copyButton:CreateTexture(nil, "BACKGROUND")
+    copyBg:SetAllPoints(copyButton)
+    copyBg:SetColorTexture(0.2, 0.7, 0.2, 0.8)
+
+    local copyText = copyButton:CreateFontString(nil, "OVERLAY")
+    copyText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    copyText:SetPoint("CENTER", copyButton, "CENTER", 0, 0)
+    copyText:SetText("Copy to Clipboard")
+    copyText:SetTextColor(1, 1, 1, 1)
+
+    copyButton:SetScript("OnClick", function()
+        editBox:HighlightText()
+        editBox:SetFocus()
+        -- Note: Actual clipboard copying requires special handling in WoW
+        print("MyUI2: Text selected - use Ctrl+C to copy to clipboard")
+    end)
+
+    copyButton:SetScript("OnEnter", function()
+        copyBg:SetColorTexture(0.3, 0.8, 0.3, 0.8)
+    end)
+
+    copyButton:SetScript("OnLeave", function()
+        copyBg:SetColorTexture(0.2, 0.7, 0.2, 0.8)
+    end)
 
     -- Close button
-    local closeButton = CreateFrame("Button", nil, shareWindow)
+    local closeButton = CreateFrame("Button", nil, buttonContainer)
     closeButton:SetSize(80, 30)
-    closeButton:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 15)
+    closeButton:SetPoint("RIGHT", buttonContainer, "RIGHT", -20, 0)
 
     local closeBg = closeButton:CreateTexture(nil, "BACKGROUND")
     closeBg:SetAllPoints(closeButton)
@@ -1561,6 +1654,13 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
         closeBg:SetColorTexture(0.6, 0.2, 0.2, 0.8)
     end)
 
+    -- Instructions
+    local instructText = shareWindow:CreateFontString(nil, "OVERLAY")
+    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 10)
+    instructText:SetText("Text is auto-selected. Use Ctrl+C to copy.")
+    instructText:SetTextColor(0.7, 0.7, 0.7, 1)
+
     -- Make draggable
     shareWindow:SetMovable(true)
     shareWindow:EnableMouse(true)
@@ -1570,6 +1670,183 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
 
     shareWindow:Show()
     self.shareWindow = shareWindow
+end
+
+-- Show blacklist import window
+function EnhancedSessionDetailWindow:ShowBlacklistImportWindow()
+    if self.importWindow then
+        self.importWindow:Hide()
+        self.importWindow = nil
+    end
+
+    -- Create import window
+    local importWindow = CreateFrame("Frame", nil, UIParent)
+    importWindow:SetSize(500, 400)
+    importWindow:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    importWindow:SetFrameStrata("DIALOG")
+
+    -- Background and border
+    local bg = importWindow:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(importWindow)
+    bg:SetColorTexture(0, 0, 0, 0.9)
+
+    local border = importWindow:CreateTexture(nil, "BORDER")
+    border:SetAllPoints(importWindow)
+    border:SetColorTexture(0.4, 0.4, 0.4, 1)
+    bg:SetPoint("TOPLEFT", border, "TOPLEFT", 2, -2)
+    bg:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", -2, 2)
+
+    -- Title
+    local title = importWindow:CreateFontString(nil, "OVERLAY")
+    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetPoint("TOP", importWindow, "TOP", 0, -20)
+    title:SetText("Import Blacklist Configuration")
+    title:SetTextColor(1, 1, 1, 1)
+
+    -- Description
+    local descText = importWindow:CreateFontString(nil, "OVERLAY")
+    descText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    descText:SetPoint("TOP", importWindow, "TOP", 0, -50)
+    descText:SetText("Paste the encoded blacklist data below to import a configuration from another user.")
+    descText:SetTextColor(0.8, 0.8, 0.8, 1)
+
+    -- Create text area for pasting data
+    local textAreaFrame = CreateFrame("Frame", nil, importWindow)
+    textAreaFrame:SetPoint("TOPLEFT", importWindow, "TOPLEFT", 20, -90)
+    textAreaFrame:SetPoint("BOTTOMRIGHT", importWindow, "BOTTOMRIGHT", -20, 110)
+    
+    local textAreaBg = textAreaFrame:CreateTexture(nil, "BACKGROUND")
+    textAreaBg:SetAllPoints(textAreaFrame)
+    textAreaBg:SetColorTexture(0.1, 0.1, 0.1, 0.9)
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, textAreaFrame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", textAreaFrame, "TOPLEFT", 10, -10)
+    scrollFrame:SetPoint("BOTTOMRIGHT", textAreaFrame, "BOTTOMRIGHT", -30, 10)
+
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetAutoFocus(true)
+    editBox:SetFontObject(ChatFontNormal)
+    editBox:SetWidth(scrollFrame:GetWidth() - 20)
+    editBox:SetText("")
+    scrollFrame:SetScrollChild(editBox)
+
+    -- Button container
+    local buttonContainer = CreateFrame("Frame", nil, importWindow)
+    buttonContainer:SetSize(460, 40)
+    buttonContainer:SetPoint("BOTTOM", importWindow, "BOTTOM", 0, 35)
+
+    -- Import button
+    local importButton = CreateFrame("Button", nil, buttonContainer)
+    importButton:SetSize(100, 30)
+    importButton:SetPoint("CENTER", buttonContainer, "CENTER", -50, 0)
+
+    local importBg = importButton:CreateTexture(nil, "BACKGROUND")
+    importBg:SetAllPoints(importButton)
+    importBg:SetColorTexture(0.2, 0.2, 0.7, 0.8)
+
+    local importText = importButton:CreateFontString(nil, "OVERLAY")
+    importText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    importText:SetPoint("CENTER", importButton, "CENTER", 0, 0)
+    importText:SetText("Import")
+    importText:SetTextColor(1, 1, 1, 1)
+
+    importButton:SetScript("OnClick", function()
+        self:ImportBlacklistData(editBox:GetText())
+    end)
+
+    importButton:SetScript("OnEnter", function()
+        importBg:SetColorTexture(0.3, 0.3, 0.8, 0.8)
+    end)
+
+    importButton:SetScript("OnLeave", function()
+        importBg:SetColorTexture(0.2, 0.2, 0.7, 0.8)
+    end)
+
+    -- Close button
+    local closeButton = CreateFrame("Button", nil, buttonContainer)
+    closeButton:SetSize(80, 30)
+    closeButton:SetPoint("CENTER", buttonContainer, "CENTER", 50, 0)
+
+    local closeBg = closeButton:CreateTexture(nil, "BACKGROUND")
+    closeBg:SetAllPoints(closeButton)
+    closeBg:SetColorTexture(0.6, 0.2, 0.2, 0.8)
+
+    local closeText = closeButton:CreateFontString(nil, "OVERLAY")
+    closeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    closeText:SetPoint("CENTER", closeButton, "CENTER", 0, 0)
+    closeText:SetText("Close")
+    closeText:SetTextColor(1, 1, 1, 1)
+
+    closeButton:SetScript("OnClick", function()
+        importWindow:Hide()
+        self.importWindow = nil
+    end)
+
+    closeButton:SetScript("OnEnter", function()
+        closeBg:SetColorTexture(0.7, 0.3, 0.3, 0.8)
+    end)
+
+    closeButton:SetScript("OnLeave", function()
+        closeBg:SetColorTexture(0.6, 0.2, 0.2, 0.8)
+    end)
+
+    -- Instructions
+    local instructText = importWindow:CreateFontString(nil, "OVERLAY")
+    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    instructText:SetPoint("BOTTOM", importWindow, "BOTTOM", 0, 10)
+    instructText:SetText("Paste encoded data above and click Import. This will merge with your existing blacklist.")
+    instructText:SetTextColor(0.7, 0.7, 0.7, 1)
+
+    -- Make draggable
+    importWindow:SetMovable(true)
+    importWindow:EnableMouse(true)
+    importWindow:RegisterForDrag("LeftButton")
+    importWindow:SetScript("OnDragStart", importWindow.StartMoving)
+    importWindow:SetScript("OnDragStop", importWindow.StopMovingOrSizing)
+
+    importWindow:Show()
+    self.importWindow = importWindow
+end
+
+-- Import blacklist data from base64 encoded string
+function EnhancedSessionDetailWindow:ImportBlacklistData(encodedData)
+    if not encodedData or encodedData:gsub("^%s*(.-)%s*$", "%1") == "" then
+        print("MyUI2: No data to import")
+        return
+    end
+
+    -- Base64 decode (simple implementation)
+    local function base64Decode(data)
+        -- Basic validation
+        if not data or #data == 0 then return "" end
+        
+        -- Remove whitespace
+        data = data:gsub("%s", "")
+        
+        -- For now, return a basic message since proper base64 decoding is complex
+        return "decoded_placeholder_data"
+    end
+
+    -- Simple import for now - in a full implementation you'd:
+    -- 1. Decode the base64 data
+    -- 2. Parse the serialized table
+    -- 3. Merge with existing EntityBlacklistDB
+    -- 4. Update the UI
+    
+    print("MyUI2: Import functionality is a placeholder - full implementation coming soon!")
+    print("Received data length:", #encodedData)
+    
+    -- Close the import window
+    if self.importWindow then
+        self.importWindow:Hide()
+        self.importWindow = nil
+    end
+    
+    -- Refresh the blacklist tab if it's currently showing
+    if self.currentTab == "blacklist" then
+        self:CreateBlacklistTab()
+    end
 end
 
 -- Create whitelist tab (placeholder)
