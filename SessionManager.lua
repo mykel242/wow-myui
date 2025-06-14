@@ -195,7 +195,7 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
         peakHPS = calculator and calculator:GetMaxHPS() or combatData.finalMaxHPS,
 
         -- Metadata
-        location = GetZoneText() or "Unknown",
+        location = GetRealZoneText() or GetZoneText() or GetMinimapZoneText() or "Unknown",
         playerLevel = UnitLevel("player"),
         actionCount = addon.CombatData:GetActionCount(),
 
