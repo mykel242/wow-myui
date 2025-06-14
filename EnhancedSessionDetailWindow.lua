@@ -792,14 +792,21 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
     for _, death in ipairs(filteredDeaths) do
         local shouldShow = false
         
-        -- Determine if this is a player death or minion death
-        -- This is a simplified check - you may need to adjust based on your death data structure
-        local isPlayerDeath = death.destName and (death.destFlags == nil or not string.find(tostring(death.destFlags), "OBJECT_TYPE_PETGUARDIAN"))
-        
-        if isPlayerDeath and self.chartFilters.showPlayerDeaths then
+        -- Use the structured entityType field for proper classification
+        if death.entityType == "player" and self.chartFilters.showPlayerDeaths then
             shouldShow = true
-        elseif not isPlayerDeath and self.chartFilters.showMinionDeaths then
+        elseif death.entityType == "minion" and self.chartFilters.showMinionDeaths then
             shouldShow = true
+        elseif death.entityType == "boss" and self.chartFilters.showPlayerDeaths then
+            -- Treat boss deaths as "player deaths" for now since we don't have a separate boss filter
+            shouldShow = true
+        elseif not death.entityType then
+            -- Fallback for older data without entityType - use the boolean flags
+            if death.isPlayer and self.chartFilters.showPlayerDeaths then
+                shouldShow = true
+            elseif (death.isPet or death.isNPC) and self.chartFilters.showMinionDeaths then
+                shouldShow = true
+            end
         end
         
         if shouldShow then
