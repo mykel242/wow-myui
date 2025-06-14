@@ -1133,42 +1133,9 @@ function EnhancedSessionDetailWindow:RedrawChart()
         return
     end
 
-    -- Find the chart area in the current content
-    local chartArea = nil
-    for i = 1, self.frame.currentContent:GetNumChildren() do
-        local child = select(i, self.frame.currentContent:GetChildren())
-        if child and child:GetWidth() == 740 and child:GetHeight() == 320 then
-            chartArea = child
-            break
-        end
-    end
-
-    if not chartArea then
-        return
-    end
-
-    -- Clear existing chart elements (keep background)
-    for i = chartArea:GetNumChildren(), 1, -1 do
-        local child = select(i, chartArea:GetChildren())
-        if child then
-            child:Hide()
-            child:SetParent(nil)
-        end
-    end
-
-    -- Clear existing textures (except background)
-    for i = chartArea:GetNumRegions(), 1, -1 do
-        local region = select(i, chartArea:GetRegions())
-        if region and region ~= chartArea:GetRegions() then -- Keep the background texture
-            if region.GetTexture and region:GetTexture() ~= nil then
-                region:Hide()
-                region:SetParent(nil)
-            end
-        end
-    end
-
-    -- Redraw the chart with current filters
-    self:CreateEnhancedTimeline(chartArea, self.sessionData)
+    -- Simply recreate the timeline tab completely
+    -- This ensures everything is properly cleared and redrawn
+    self:CreateTimelineTab()
 end
 
 -- Create scrollable event log for deaths and buffs
