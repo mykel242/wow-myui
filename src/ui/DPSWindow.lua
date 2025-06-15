@@ -26,9 +26,16 @@ local dpsConfig = {
 -- Create DPS Window instance
 addon.DPSWindow = addon.BaseMeterWindow:New(dpsConfig)
 
--- Initialize DPS Window
+-- Initialize DPS Window (DISABLED DURING MODULARIZATION)
 function addon.DPSWindow:Initialize()
+    --[[
+    DISABLED DURING MODULARIZATION - PRESERVE FOR RE-ENABLE
     addon.BaseMeterWindow.Initialize(self)
+    --]]
+    
+    if addon.DEBUG then
+        print("DPSWindow initialization disabled during modularization")
+    end
 end
 
 -- Function to position pixel meter relative to window

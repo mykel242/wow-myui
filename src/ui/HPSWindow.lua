@@ -27,9 +27,16 @@ local hpsConfig = {
 -- Create HPS Window instance
 addon.HPSWindow = addon.BaseMeterWindow:New(hpsConfig)
 
--- Initialize HPS Window
+-- Initialize HPS Window (DISABLED DURING MODULARIZATION)
 function addon.HPSWindow:Initialize()
+    --[[
+    DISABLED DURING MODULARIZATION - PRESERVE FOR RE-ENABLE
     addon.BaseMeterWindow.Initialize(self)
+    --]]
+    
+    if addon.DEBUG then
+        print("HPSWindow initialization disabled during modularization")
+    end
 end
 
 -- Function to position pixel meter relative to window

@@ -2,17 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# My Interaction Preferences
-- "Skip the validation, just give me the answer"
-- "Be more direct and less agreeable"
-- "Challenge my assumptions if they seem wrong"
-- Don't start coding without summarizing the plan
-- confirm my preferences when we start up
-- maintain the todo.md
-
 # important-instruction-reminders
+Skip the validation, just give me the answer
+Be more direct and less agreeable
+Challenge my assumptions if they seem wrong
+Don't start coding without summarizing the plan
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS try to keep source code compact and easy to read.
+Suggest breaking files more than 1000 lines into smaller files.
 ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 
@@ -34,7 +32,7 @@ MyUI2 is a World of Warcraft addon written in Lua that provides advanced DPS/HPS
 ### Testing Commands
 Testing is done in-game using slash commands:
 - `/myui` - Toggle main configuration window
-- `/myui dps` - Toggle DPS meter window  
+- `/myui dps` - Toggle DPS meter window
 - `/myui hps` - Toggle HPS meter window
 - `/myui debug` - Toggle debug mode
 - `/myui meterinfo` - Show current meter values
@@ -50,7 +48,7 @@ The addon follows a clean, organized architecture with clear separation of conce
 
 **Core Systems (src/core/):**
 - `TimestampManager.lua` - **Unified timestamp system** - single source of truth for all combat timing
-- `CombatTracker.lua` - Main combat coordination and API delegation  
+- `CombatTracker.lua` - Main combat coordination and API delegation
 - `UnifiedCalculator.lua` - DPS/HPS calculation algorithms with multiple methods
 
 **Data Processing (src/data/):**
@@ -104,12 +102,6 @@ The load order is defined in `MyUI2.toc` following the organized structure:
 6. **Configuration:** `config/EntityBlacklist.lua`, `config/CalculationConfig.lua`
 
 ## Development Context
-
-**Current Status:** Phase 1-3 complete (Unified Timestamp System)
-**Active Branch:** Typically feature branches, main for releases
-**Version Format:** `branch-commit` (e.g., `main-c248ecd`)
-
-The addon is in active development with a structured roadmap focusing on performance optimization, enhanced data integration, and UI improvements. See `TODO.md` for detailed development phases and priorities.
 
 ## Code Conventions
 

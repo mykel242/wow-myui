@@ -1,0 +1,405 @@
+-- StorageManager.lua
+-- Memory-efficient storage system for combat sessions
+
+local addonName, addon = ...
+
+-- Storage Manager module
+addon.StorageManager = {}
+local StorageManager = addon.StorageManager
+
+-- State tracking
+local isInitialized = false
+local sessionStorage = {}
+local memoryStats = {}
+
+-- Configuration
+local CONFIG = {
+    MAX_SESSIONS = 50,           -- Maximum stored combat sessions
+    MAX_SESSION_AGE_DAYS = 7,    -- Auto-cleanup sessions older than this
+    MEMORY_CLEANUP_INTERVAL = 30, -- Seconds between memory cleanup checks
+    MAX_MEMORY_MB = 10,          -- Maximum memory usage in MB
+    COMPRESSION_ENABLED = true,   -- Enable event compression for storage
+}
+
+-- Saved variable for persistent storage
+local STORAGE_KEY = "MyUI_CombatSessions"
+
+-- Initialize the storage manager
+function StorageManager:Initialize()
+    if isInitialized then
+        return
+    end
+    
+    -- Initialize storage from saved variables
+    self:LoadFromSavedVariables()
+    
+    -- Start memory management timer
+    self:StartMemoryManagementTimer()
+    
+    -- Initialize memory stats
+    memoryStats = {
+        sessionsStored = #sessionStorage,
+        totalMemoryKB = 0,
+        lastCleanup = GetTime(),
+        compressionRatio = 0
+    }
+    
+    isInitialized = true
+    
+    if addon.DEBUG then
+        print(string.format("StorageManager initialized - %d sessions loaded", #sessionStorage))
+    end
+end
+
+-- Store a completed combat session
+function StorageManager:StoreCombatSession(sessionData)
+    if not isInitialized then
+        self:Initialize()
+    end
+    
+    -- Add metadata and timestamps
+    sessionData.storedAt = GetTime()
+    sessionData.serverTime = GetServerTime()
+    
+    -- Get context metadata if available
+    if addon.MetadataCollector then
+        sessionData.metadata = addon.MetadataCollector:GetMetadataForCombat(sessionData.id)
+    end
+    
+    -- Compress event data if enabled
+    if CONFIG.COMPRESSION_ENABLED then
+        sessionData.events = self:CompressEvents(sessionData.events)
+        sessionData.compressed = true
+    end
+    
+    -- Add to storage
+    table.insert(sessionStorage, sessionData)
+    
+    -- Update memory stats
+    self:UpdateMemoryStats()
+    
+    -- Trigger cleanup if needed
+    self:PerformMemoryCleanup()
+    
+    -- Auto-save after storing new session
+    self:SaveToSavedVariables()
+    
+    if addon.DEBUG then
+        print(string.format("Combat session stored: %s (%d events, %.1fKB)", 
+            sessionData.id, 
+            sessionData.eventCount,
+            self:EstimateSessionSizeKB(sessionData)))
+    end
+end
+
+-- Compress event data for storage
+function StorageManager:CompressEvents(events)
+    if not events or #events == 0 then
+        return {}
+    end
+    
+    local compressed = {}
+    local eventTypeMap = {} -- Map event types to short codes
+    local nextTypeId = 1
+    
+    for _, event in ipairs(events) do
+        -- Map event type to short ID
+        local eventType = event.subevent
+        if not eventTypeMap[eventType] then
+            eventTypeMap[eventType] = nextTypeId
+            nextTypeId = nextTypeId + 1
+        end
+        
+        -- Create compressed event record
+        local compressedEvent = {
+            t = math.floor((event.realTime or 0) * 1000), -- Timestamp in ms
+            e = eventTypeMap[eventType], -- Event type ID
+            s = event.sourceGUID, -- Source GUID
+            d = event.destGUID,   -- Dest GUID
+            a = event.args and #event.args > 0 and event.args or nil -- Args only if present
+        }
+        
+        table.insert(compressed, compressedEvent)
+    end
+    
+    return {
+        events = compressed,
+        typeMap = eventTypeMap,
+        originalCount = #events
+    }
+end
+
+-- Decompress event data for reading
+function StorageManager:DecompressEvents(compressedData)
+    if not compressedData or not compressedData.events then
+        return {}
+    end
+    
+    local events = {}
+    local reverseTypeMap = {} -- Reverse the type mapping
+    
+    for eventType, id in pairs(compressedData.typeMap) do
+        reverseTypeMap[id] = eventType
+    end
+    
+    for _, compressed in ipairs(compressedData.events) do
+        local event = {
+            realTime = compressed.t and (compressed.t / 1000) or 0,
+            subevent = reverseTypeMap[compressed.e] or "UNKNOWN",
+            sourceGUID = compressed.s,
+            destGUID = compressed.d,
+            args = compressed.a or {}
+        }
+        
+        table.insert(events, event)
+    end
+    
+    return events
+end
+
+-- Estimate memory usage of a session in KB
+function StorageManager:EstimateSessionSizeKB(sessionData)
+    -- Rough estimation based on data structure
+    local baseSize = 1 -- Base session metadata
+    local eventSize = sessionData.eventCount * 0.1 -- ~100 bytes per event
+    local metadataSize = sessionData.metadata and 2 or 0 -- ~2KB for metadata
+    
+    return baseSize + eventSize + metadataSize
+end
+
+-- Update memory statistics
+function StorageManager:UpdateMemoryStats()
+    local totalSizeKB = 0
+    local compressedEvents = 0
+    local originalEvents = 0
+    
+    for _, session in ipairs(sessionStorage) do
+        totalSizeKB = totalSizeKB + self:EstimateSessionSizeKB(session)
+        
+        if session.compressed and session.events and session.events.originalCount then
+            compressedEvents = compressedEvents + #session.events.events
+            originalEvents = originalEvents + session.events.originalCount
+        end
+    end
+    
+    memoryStats.sessionsStored = #sessionStorage
+    memoryStats.totalMemoryKB = totalSizeKB
+    memoryStats.compressionRatio = originalEvents > 0 and (compressedEvents / originalEvents) or 1
+end
+
+-- Perform memory cleanup
+function StorageManager:PerformMemoryCleanup()
+    local cleaned = false
+    
+    -- Remove sessions exceeding max count (oldest first)
+    while #sessionStorage > CONFIG.MAX_SESSIONS do
+        table.remove(sessionStorage, 1)
+        cleaned = true
+    end
+    
+    -- Remove sessions older than max age
+    local cutoffTime = GetServerTime() - (CONFIG.MAX_SESSION_AGE_DAYS * 24 * 60 * 60)
+    local i = 1
+    while i <= #sessionStorage do
+        local session = sessionStorage[i]
+        if session.serverTime and session.serverTime < cutoffTime then
+            table.remove(sessionStorage, i)
+            cleaned = true
+        else
+            i = i + 1
+        end
+    end
+    
+    -- Memory-based cleanup if over limit
+    self:UpdateMemoryStats()
+    if memoryStats.totalMemoryKB > (CONFIG.MAX_MEMORY_MB * 1024) then
+        -- Remove oldest 25% of sessions
+        local removeCount = math.floor(#sessionStorage * 0.25)
+        for i = 1, removeCount do
+            table.remove(sessionStorage, 1)
+        end
+        cleaned = true
+    end
+    
+    if cleaned then
+        self:UpdateMemoryStats()
+        if addon.DEBUG then
+            print(string.format("Storage cleanup: %d sessions remaining (%.1fKB)", 
+                memoryStats.sessionsStored, memoryStats.totalMemoryKB))
+        end
+    end
+end
+
+-- Start memory management timer
+function StorageManager:StartMemoryManagementTimer()
+    if self.memoryTimer then
+        self.memoryTimer:Cancel()
+    end
+    
+    self.memoryTimer = C_Timer.NewTicker(CONFIG.MEMORY_CLEANUP_INTERVAL, function()
+        self:PerformMemoryCleanup()
+        -- Note: No periodic saves - data saves automatically on logout/reload
+    end)
+end
+
+-- Load sessions from saved variables
+function StorageManager:LoadFromSavedVariables()
+    if MyUIDB and MyUIDB[STORAGE_KEY] then
+        sessionStorage = MyUIDB[STORAGE_KEY]
+        if addon.DEBUG then
+            print(string.format("Loaded %d combat sessions from saved variables", #sessionStorage))
+        end
+    else
+        sessionStorage = {}
+    end
+end
+
+-- Save sessions to saved variables
+function StorageManager:SaveToSavedVariables()
+    if not MyUIDB then
+        MyUIDB = {}
+    end
+    
+    MyUIDB[STORAGE_KEY] = sessionStorage
+    
+    -- Note: Silent save - no chat spam
+end
+
+-- Public API methods
+function StorageManager:GetAllSessions()
+    -- Return copy to prevent modification
+    local sessions = {}
+    for i, session in ipairs(sessionStorage) do
+        sessions[i] = session
+    end
+    return sessions
+end
+
+function StorageManager:GetSession(sessionId)
+    for _, session in ipairs(sessionStorage) do
+        if session.id == sessionId then
+            -- Return copy with decompressed events if needed
+            local sessionCopy = {}
+            for k, v in pairs(session) do
+                sessionCopy[k] = v
+            end
+            
+            if session.compressed and session.events then
+                sessionCopy.events = self:DecompressEvents(session.events)
+                sessionCopy.compressed = false
+            end
+            
+            return sessionCopy
+        end
+    end
+    return nil
+end
+
+function StorageManager:GetRecentSessions(count)
+    count = count or 10
+    local recent = {}
+    local startIndex = math.max(1, #sessionStorage - count + 1)
+    
+    for i = startIndex, #sessionStorage do
+        table.insert(recent, sessionStorage[i])
+    end
+    
+    return recent
+end
+
+function StorageManager:DeleteSession(sessionId)
+    for i, session in ipairs(sessionStorage) do
+        if session.id == sessionId then
+            table.remove(sessionStorage, i)
+            self:UpdateMemoryStats()
+            self:SaveToSavedVariables() -- Auto-save after deletion
+            return true
+        end
+    end
+    return false
+end
+
+function StorageManager:ClearAllSessions()
+    sessionStorage = {}
+    memoryStats.sessionsStored = 0
+    memoryStats.totalMemoryKB = 0
+    self:SaveToSavedVariables() -- Auto-save after clearing
+    
+    if addon.DEBUG then
+        print("All combat sessions cleared")
+    end
+end
+
+function StorageManager:GetMemoryStats()
+    return {
+        sessionsStored = memoryStats.sessionsStored,
+        totalMemoryKB = memoryStats.totalMemoryKB,
+        totalMemoryMB = memoryStats.totalMemoryKB / 1024,
+        compressionRatio = memoryStats.compressionRatio,
+        maxSessions = CONFIG.MAX_SESSIONS,
+        maxMemoryMB = CONFIG.MAX_MEMORY_MB
+    }
+end
+
+function StorageManager:GetStatus()
+    local stats = self:GetMemoryStats()
+    return {
+        isInitialized = isInitialized,
+        sessionsStored = stats.sessionsStored,
+        memoryUsageMB = stats.totalMemoryMB,
+        compressionEnabled = CONFIG.COMPRESSION_ENABLED,
+        lastCleanup = memoryStats.lastCleanup
+    }
+end
+
+-- Debug summary for slash commands
+function StorageManager:GetDebugSummary()
+    local status = self:GetStatus()
+    local stats = self:GetMemoryStats()
+    
+    return string.format(
+        "StorageManager Status:\n" ..
+        "  Initialized: %s\n" ..
+        "  Sessions Stored: %d / %d\n" ..
+        "  Memory Usage: %.2f / %.1f MB\n" ..
+        "  Compression: %s (%.1f%% ratio)\n" ..
+        "  Recent Sessions: %d available",
+        tostring(status.isInitialized),
+        stats.sessionsStored,
+        stats.maxSessions,
+        stats.totalMemoryMB,
+        stats.maxMemoryMB,
+        CONFIG.COMPRESSION_ENABLED and "ON" or "OFF",
+        (stats.compressionRatio * 100),
+        math.min(5, stats.sessionsStored)
+    )
+end
+
+-- Export data for external tools
+function StorageManager:ExportSessionsToTable()
+    local exportData = {
+        metadata = {
+            exportTime = GetServerTime(),
+            addonVersion = addon.VERSION,
+            sessionCount = #sessionStorage
+        },
+        sessions = {}
+    }
+    
+    for _, session in ipairs(sessionStorage) do
+        local exportSession = {}
+        for k, v in pairs(session) do
+            exportSession[k] = v
+        end
+        
+        -- Decompress events for export
+        if session.compressed and session.events then
+            exportSession.events = self:DecompressEvents(session.events)
+            exportSession.compressed = false
+        end
+        
+        table.insert(exportData.sessions, exportSession)
+    end
+    
+    return exportData
+end

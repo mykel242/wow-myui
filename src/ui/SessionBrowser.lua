@@ -1,0 +1,866 @@
+-- SessionBrowser.lua
+-- Table view for browsing stored combat sessions with detailed viewer
+
+local addonName, addon = ...
+
+-- Session Browser module
+addon.SessionBrowser = {}
+local SessionBrowser = addon.SessionBrowser
+
+-- State tracking
+local isInitialized = false
+local browserFrame = nil
+local sessionTable = nil
+local selectedSession = nil
+local viewerFrame = nil
+local viewerEditBox = nil
+
+-- Configuration
+local CONFIG = {
+    BROWSER_WIDTH = 600,
+    BROWSER_HEIGHT = 400,
+    VIEWER_WIDTH = 700,
+    VIEWER_HEIGHT = 500,
+    ROW_HEIGHT = 16,
+    MAX_VISIBLE_ROWS = 20,
+}
+
+
+-- Initialize the session browser
+function SessionBrowser:Initialize()
+    if isInitialized then
+        return
+    end
+    
+    self:CreateBrowserWindow()
+    self:CreateSessionViewer()
+    isInitialized = true
+    
+    if addon.DEBUG then
+        print("SessionBrowser initialized - ready to browse stored sessions")
+    end
+end
+
+-- Create the main browser window with session table
+function SessionBrowser:CreateBrowserWindow()
+    if browserFrame then
+        return
+    end
+    
+    -- Main browser frame
+    local frame = CreateFrame("Frame", addonName .. "SessionBrowser", UIParent, "BasicFrameTemplateWithInset")
+    frame:SetSize(CONFIG.BROWSER_WIDTH, CONFIG.BROWSER_HEIGHT)
+    frame:SetPoint("CENTER", UIParent, "CENTER", -200, 0)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:Hide()
+    
+    -- Set title
+    frame.TitleText:SetText("Session Browser")
+    
+    -- Close button behavior
+    frame.CloseButton:SetScript("OnClick", function()
+        self:Hide()
+    end)
+    
+    -- === TOOLBAR ===
+    local toolbar = CreateFrame("Frame", nil, frame)
+    toolbar:SetSize(CONFIG.BROWSER_WIDTH - 30, 30)
+    toolbar:SetPoint("TOP", frame, "TOP", 0, -30)
+    
+    -- Refresh button
+    local refreshBtn = CreateFrame("Button", nil, toolbar, "GameMenuButtonTemplate")
+    refreshBtn:SetSize(80, 22)
+    refreshBtn:SetPoint("LEFT", toolbar, "LEFT", 10, 0)
+    refreshBtn:SetText("Refresh")
+    refreshBtn:SetScript("OnClick", function()
+        self:RefreshSessionList()
+    end)
+    
+    -- Delete button
+    local deleteBtn = CreateFrame("Button", nil, toolbar, "GameMenuButtonTemplate")
+    deleteBtn:SetSize(80, 22)
+    deleteBtn:SetPoint("LEFT", refreshBtn, "RIGHT", 10, 0)
+    deleteBtn:SetText("Delete")
+    deleteBtn:SetScript("OnClick", function()
+        self:DeleteSelectedSession()
+    end)
+    
+    -- View button
+    local viewBtn = CreateFrame("Button", nil, toolbar, "GameMenuButtonTemplate")
+    viewBtn:SetSize(80, 22)
+    viewBtn:SetPoint("LEFT", deleteBtn, "RIGHT", 10, 0)
+    viewBtn:SetText("View")
+    viewBtn:SetScript("OnClick", function()
+        self:ViewSelectedSession()
+    end)
+    
+    
+    -- Clear all button
+    local clearBtn = CreateFrame("Button", nil, toolbar, "GameMenuButtonTemplate")
+    clearBtn:SetSize(80, 22)
+    clearBtn:SetPoint("RIGHT", toolbar, "RIGHT", -10, 0)
+    clearBtn:SetText("Clear All")
+    clearBtn:SetScript("OnClick", function()
+        self:ClearAllSessions()
+    end)
+    
+    -- === SESSION TABLE ===
+    local tableFrame = CreateFrame("Frame", nil, frame)
+    tableFrame:SetSize(CONFIG.BROWSER_WIDTH - 40, CONFIG.BROWSER_HEIGHT - 100)
+    tableFrame:SetPoint("TOP", toolbar, "BOTTOM", 0, -10)
+    
+    -- Table headers
+    local headerFrame = CreateFrame("Frame", nil, tableFrame)
+    headerFrame:SetSize(CONFIG.BROWSER_WIDTH - 40, 20)
+    headerFrame:SetPoint("TOP", tableFrame, "TOP", 0, 0)
+    
+    local headers = {
+        {text = "Session ID", width = 140},
+        {text = "Duration", width = 60},
+        {text = "Events", width = 60},
+        {text = "Zone", width = 120},
+        {text = "Time", width = 120}
+    }
+    
+    local xOffset = 0
+    for _, header in ipairs(headers) do
+        local headerText = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        headerText:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", xOffset + 5, -2)
+        headerText:SetSize(header.width, 16)
+        headerText:SetJustifyH("LEFT")
+        headerText:SetText(header.text)
+        headerText:SetTextColor(1, 1, 0.5) -- Yellow headers
+        xOffset = xOffset + header.width
+    end
+    
+    -- Scrollable session list
+    local scrollFrame = CreateFrame("ScrollFrame", nil, tableFrame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -5)
+    scrollFrame:SetPoint("BOTTOMRIGHT", tableFrame, "BOTTOMRIGHT", -25, 10)
+    
+    local contentFrame = CreateFrame("Frame", nil, scrollFrame)
+    contentFrame:SetSize(1, 1)
+    scrollFrame:SetScrollChild(contentFrame)
+    
+    -- Store references
+    browserFrame = frame
+    frame.scrollFrame = scrollFrame
+    frame.contentFrame = contentFrame
+    frame.selectedRow = nil
+    frame.sessionRows = {}
+    
+    if addon.DEBUG then
+        print("Session browser window created")
+    end
+end
+
+-- Create the session detail viewer
+function SessionBrowser:CreateSessionViewer()
+    if viewerFrame then
+        return
+    end
+    
+    -- Session viewer frame
+    local frame = CreateFrame("Frame", addonName .. "SessionViewer", UIParent, "BasicFrameTemplateWithInset")
+    frame:SetSize(CONFIG.VIEWER_WIDTH, CONFIG.VIEWER_HEIGHT)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 200, 0)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:Hide()
+    
+    -- Set title
+    frame.TitleText:SetText("Session Viewer")
+    
+    -- Close button behavior
+    frame.CloseButton:SetScript("OnClick", function()
+        frame:Hide()
+    end)
+    
+    -- === VIEWER TOOLBAR ===
+    local toolbar = CreateFrame("Frame", nil, frame)
+    toolbar:SetSize(CONFIG.VIEWER_WIDTH - 30, 30)
+    toolbar:SetPoint("TOP", frame, "TOP", 0, -30)
+    
+    -- Format dropdown
+    local formatDropdown = CreateFrame("Frame", nil, toolbar, "UIDropDownMenuTemplate")
+    formatDropdown:SetPoint("LEFT", toolbar, "LEFT", 0, 0)
+    UIDropDownMenu_SetWidth(formatDropdown, 120)
+    UIDropDownMenu_SetText(formatDropdown, "Raw")
+    UIDropDownMenu_SetSelectedValue(formatDropdown, "raw")
+    
+    UIDropDownMenu_Initialize(formatDropdown, function(self, level)
+        local formats = {
+            {id = "raw", name = "Raw Data"},
+            {id = "text", name = "Text"},
+            {id = "json", name = "JSON"},
+            {id = "csv", name = "CSV"},
+            {id = "lua", name = "Lua Table"}
+        }
+        
+        for _, format in ipairs(formats) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = format.name
+            info.value = format.id
+            info.func = function()
+                UIDropDownMenu_SetSelectedValue(formatDropdown, format.id)
+                UIDropDownMenu_SetText(formatDropdown, format.name)
+                SessionBrowser:RefreshViewerContent()
+            end
+            UIDropDownMenu_AddButton(info, level)
+        end
+    end)
+    
+    -- Select All button
+    local selectAllBtn = CreateFrame("Button", nil, toolbar, "GameMenuButtonTemplate")
+    selectAllBtn:SetSize(80, 22)
+    selectAllBtn:SetPoint("LEFT", formatDropdown, "RIGHT", 10, 0)
+    selectAllBtn:SetText("Select All")
+    selectAllBtn:SetScript("OnClick", function()
+        if viewerEditBox then
+            viewerEditBox:SetFocus()
+            viewerEditBox:HighlightText()
+        end
+    end)
+    
+    -- Export info text
+    local exportInfo = toolbar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    exportInfo:SetPoint("RIGHT", toolbar, "RIGHT", -10, 0)
+    exportInfo:SetText("Select format, then Select All + Ctrl+C to copy")
+    exportInfo:SetTextColor(0.8, 0.8, 0.8)
+    
+    frame.formatDropdown = formatDropdown
+    
+    -- === SESSION INFO HEADER ===
+    local infoFrame = CreateFrame("Frame", nil, frame)
+    infoFrame:SetSize(CONFIG.VIEWER_WIDTH - 30, 60)
+    infoFrame:SetPoint("TOP", toolbar, "BOTTOM", 0, -5)
+    
+    local sessionTitle = infoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    sessionTitle:SetPoint("TOPLEFT", infoFrame, "TOPLEFT", 10, -5)
+    sessionTitle:SetText("No Session Selected")
+    frame.sessionTitle = sessionTitle
+    
+    local sessionInfo = infoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    sessionInfo:SetPoint("TOPLEFT", sessionTitle, "BOTTOMLEFT", 0, -5)
+    sessionInfo:SetText("")
+    frame.sessionInfo = sessionInfo
+    
+    local sessionMeta = infoFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sessionMeta:SetPoint("TOPLEFT", sessionInfo, "BOTTOMLEFT", 0, -5)
+    sessionMeta:SetText("")
+    frame.sessionMeta = sessionMeta
+    
+    -- === FULL SESSION LOG ===
+    local scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", infoFrame, "BOTTOMLEFT", 10, -10)
+    scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -30, 10)
+    
+    -- Edit box for session content (read-only)
+    local editbox = CreateFrame("EditBox", nil, scroll)
+    editbox:SetMultiLine(true)
+    editbox:SetAutoFocus(false)
+    editbox:SetFontObject(ChatFontNormal)
+    editbox:SetWidth(scroll:GetWidth())
+    editbox:SetScript("OnEscapePressed", function() editbox:ClearFocus() end)
+    editbox:SetScript("OnTextChanged", function(self, userInput)
+        if userInput then
+            -- Prevent user editing
+            self:SetText(viewerFrame.lastContent or "")
+            self:ClearFocus()
+        end
+    end)
+    
+    scroll:SetScrollChild(editbox)
+    
+    viewerFrame = frame
+    viewerEditBox = editbox
+    
+    if addon.DEBUG then
+        print("Session viewer window created")
+    end
+end
+
+-- Show the session browser
+function SessionBrowser:Show()
+    if not isInitialized then
+        self:Initialize()
+    end
+    
+    if browserFrame then
+        browserFrame:Show()
+        self:RefreshSessionList()
+        
+        if addon.DEBUG then
+            print("Session browser shown")
+        end
+    end
+end
+
+-- Hide the session browser
+function SessionBrowser:Hide()
+    if browserFrame then
+        browserFrame:Hide()
+    end
+    if viewerFrame then
+        viewerFrame:Hide()
+    end
+    
+    if addon.DEBUG then
+        print("Session browser hidden")
+    end
+end
+
+-- Toggle browser visibility
+function SessionBrowser:Toggle()
+    if browserFrame and browserFrame:IsShown() then
+        self:Hide()
+    else
+        self:Show()
+    end
+end
+
+-- Refresh the session list
+function SessionBrowser:RefreshSessionList()
+    if not browserFrame or not addon.StorageManager then
+        return
+    end
+    
+    -- Clear existing rows
+    for _, row in ipairs(browserFrame.sessionRows) do
+        row:Hide()
+    end
+    browserFrame.sessionRows = {}
+    browserFrame.selectedRow = nil
+    
+    -- Get all sessions
+    local sessions = addon.StorageManager:GetAllSessions()
+    
+    if #sessions == 0 then
+        -- Show "no sessions" message
+        local noSessionsText = browserFrame.contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        noSessionsText:SetPoint("TOP", browserFrame.contentFrame, "TOP", 0, -20)
+        noSessionsText:SetText("No combat sessions stored")
+        noSessionsText:SetTextColor(0.7, 0.7, 0.7)
+        return
+    end
+    
+    -- Create rows for each session (newest first)
+    for i = #sessions, 1, -1 do
+        local session = sessions[i]
+        local rowIndex = #sessions - i + 1
+        
+        local row = self:CreateSessionRow(session, rowIndex)
+        table.insert(browserFrame.sessionRows, row)
+    end
+    
+    -- Update content frame size
+    local totalHeight = #browserFrame.sessionRows * CONFIG.ROW_HEIGHT + 20
+    browserFrame.contentFrame:SetSize(CONFIG.BROWSER_WIDTH - 60, totalHeight)
+    
+    if addon.DEBUG then
+        print(string.format("Session list refreshed: %d sessions", #sessions))
+    end
+end
+
+-- Create a row for a session
+function SessionBrowser:CreateSessionRow(session, rowIndex)
+    local row = CreateFrame("Button", nil, browserFrame.contentFrame)
+    row:SetSize(CONFIG.BROWSER_WIDTH - 60, CONFIG.ROW_HEIGHT)
+    row:SetPoint("TOPLEFT", browserFrame.contentFrame, "TOPLEFT", 0, -(rowIndex - 1) * CONFIG.ROW_HEIGHT)
+    
+    -- Alternating row colors
+    local bg = row:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(row)
+    if rowIndex % 2 == 0 then
+        bg:SetColorTexture(0.1, 0.1, 0.1, 0.3)
+    else
+        bg:SetColorTexture(0.2, 0.2, 0.2, 0.3)
+    end
+    row.bg = bg
+    
+    -- Highlight texture
+    local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints(row)
+    highlight:SetColorTexture(0.3, 0.3, 0.9, 0.3)
+    
+    -- Selection texture
+    local selection = row:CreateTexture(nil, "ARTWORK")
+    selection:SetAllPoints(row)
+    selection:SetColorTexture(0.2, 0.6, 1.0, 0.4)
+    selection:Hide()
+    row.selection = selection
+    
+    -- Row data
+    local columns = {
+        {text = session.id or "Unknown", width = 140},
+        {text = string.format("%.1fs", session.duration or 0), width = 60},
+        {text = tostring(session.eventCount or 0), width = 60},
+        {text = (session.metadata and session.metadata.zone and session.metadata.zone.name) or "Unknown", width = 120},
+        {text = session.serverTime and date("%m/%d %H:%M", session.serverTime) or "Unknown", width = 120}
+    }
+    
+    local xOffset = 0
+    for _, column in ipairs(columns) do
+        local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("LEFT", row, "LEFT", xOffset + 5, 0)
+        text:SetSize(column.width, CONFIG.ROW_HEIGHT)
+        text:SetJustifyH("LEFT")
+        text:SetText(column.text)
+        xOffset = xOffset + column.width
+    end
+    
+    -- Click behavior
+    row:SetScript("OnClick", function(self, button)
+        if button == "LeftButton" then
+            self:GetParent():GetParent():GetParent():GetParent().selectedRow = self
+            SessionBrowser:SelectSession(session)
+        end
+    end)
+    
+    -- Double-click to view
+    row:SetScript("OnDoubleClick", function()
+        SessionBrowser:ViewSelectedSession()
+    end)
+    
+    row.sessionData = session
+    
+    return row
+end
+
+-- Select a session
+function SessionBrowser:SelectSession(session)
+    if not browserFrame then
+        return
+    end
+    
+    -- Clear previous selection
+    for _, row in ipairs(browserFrame.sessionRows) do
+        row.selection:Hide()
+    end
+    
+    -- Highlight selected row
+    if browserFrame.selectedRow then
+        browserFrame.selectedRow.selection:Show()
+    end
+    
+    selectedSession = session
+    
+    if addon.DEBUG then
+        print("Selected session: " .. (session.id or "Unknown"))
+    end
+end
+
+-- View the selected session in detail viewer
+function SessionBrowser:ViewSelectedSession()
+    if not selectedSession or not viewerFrame then
+        print("No session selected")
+        return
+    end
+    
+    -- Get full session data with decompressed events
+    local fullSession = addon.StorageManager:GetSession(selectedSession.id)
+    if not fullSession then
+        print("Could not load session data")
+        return
+    end
+    
+    -- Update viewer title and info
+    viewerFrame.sessionTitle:SetText("Session: " .. (fullSession.id or "Unknown"))
+    
+    local infoText = string.format("Duration: %.1fs | Events: %d | Stored: %s", 
+        fullSession.duration or 0,
+        fullSession.eventCount or 0,
+        fullSession.serverTime and date("%Y-%m-%d %H:%M:%S", fullSession.serverTime) or "Unknown")
+    viewerFrame.sessionInfo:SetText(infoText)
+    
+    local metaText = ""
+    if fullSession.metadata then
+        local meta = fullSession.metadata
+        metaText = string.format("Zone: %s | Player: %s (%s) | Group: %s (%d)",
+            (meta.zone and meta.zone.name) or "Unknown",
+            (meta.player and meta.player.name) or "Unknown",
+            (meta.player and meta.player.spec and meta.player.spec.name) or "Unknown",
+            (meta.group and meta.group.type) or "solo",
+            (meta.group and meta.group.size) or 1)
+    end
+    viewerFrame.sessionMeta:SetText(metaText)
+    
+    -- Generate session content in default format
+    local content = self:GenerateViewerContent(fullSession, "raw")
+    viewerEditBox:SetText(content)
+    viewerFrame.lastContent = content
+    viewerFrame.currentSession = fullSession
+    
+    -- Show viewer
+    viewerFrame:Show()
+    
+    if addon.DEBUG then
+        print(string.format("Viewing session: %s (%d events)", fullSession.id, #(fullSession.events or {})))
+    end
+end
+
+-- Generate complete session log
+function SessionBrowser:GenerateSessionLog(session)
+    local lines = {}
+    
+    -- Header
+    table.insert(lines, "=== Combat Session Log ===")
+    table.insert(lines, "Session ID: " .. (session.id or "Unknown"))
+    table.insert(lines, "Duration: " .. string.format("%.1fs", session.duration or 0))
+    table.insert(lines, "Total Events: " .. tostring(session.eventCount or 0))
+    
+    if session.serverTime then
+        table.insert(lines, "Timestamp: " .. date("%Y-%m-%d %H:%M:%S", session.serverTime))
+    end
+    
+    if session.metadata then
+        table.insert(lines, "")
+        table.insert(lines, "=== Context ===")
+        local meta = session.metadata
+        if meta.zone then
+            table.insert(lines, "Zone: " .. (meta.zone.name or "Unknown"))
+            if meta.zone.instanceInfo and meta.zone.instanceInfo.type ~= "none" then
+                table.insert(lines, "Instance: " .. (meta.zone.instanceInfo.name or "Unknown"))
+            end
+        end
+        if meta.player then
+            table.insert(lines, string.format("Player: %s (%s %s, Level %d)",
+                meta.player.name or "Unknown",
+                meta.player.spec and meta.player.spec.name or "Unknown",
+                meta.player.class or "Unknown",
+                meta.player.level or 0))
+        end
+        if meta.group then
+            table.insert(lines, string.format("Group: %s (%d members)",
+                meta.group.type or "unknown",
+                meta.group.size or 1))
+        end
+    end
+    
+    -- Full event log
+    table.insert(lines, "")
+    table.insert(lines, "=== Event Log ===")
+    
+    if session.events and #session.events > 0 then
+        for i, event in ipairs(session.events) do
+            local timestamp = string.format("%.3f", event.realTime or 0)
+            local eventLine = string.format("[%s] %s: %s -> %s",
+                timestamp,
+                event.subevent or "UNKNOWN",
+                event.sourceName or "?",
+                event.destName or "?")
+            
+            if event.args and #event.args > 0 then
+                local argStrings = {}
+                for j, arg in ipairs(event.args) do
+                    if j <= 5 then -- Limit args to prevent overly long lines
+                        argStrings[j] = tostring(arg or "nil")
+                    end
+                end
+                if #argStrings > 0 then
+                    eventLine = eventLine .. " (" .. table.concat(argStrings, ", ") .. ")"
+                end
+            end
+            
+            table.insert(lines, eventLine)
+        end
+    else
+        table.insert(lines, "No events recorded")
+    end
+    
+    table.insert(lines, "")
+    table.insert(lines, "=== End of Session ===")
+    
+    return table.concat(lines, "\n")
+end
+
+-- Refresh viewer content based on selected format
+function SessionBrowser:RefreshViewerContent()
+    if not viewerFrame or not viewerFrame:IsShown() or not viewerFrame.currentSession then
+        return
+    end
+    
+    local selectedFormat = UIDropDownMenu_GetSelectedValue(viewerFrame.formatDropdown) or "raw"
+    local content = self:GenerateViewerContent(viewerFrame.currentSession, selectedFormat)
+    
+    viewerEditBox:SetText(content)
+    viewerFrame.lastContent = content
+    
+    if addon.DEBUG then
+        print("Refreshed viewer content in " .. selectedFormat .. " format")
+    end
+end
+
+-- Generate content in different formats for the viewer
+function SessionBrowser:GenerateViewerContent(session, format)
+    if format == "raw" then
+        return self:FormatAsRaw(session)
+    elseif format == "text" then
+        return self:GenerateSessionLog(session)  -- Use existing function
+    elseif format == "json" then
+        return self:FormatAsJSON(session)
+    elseif format == "csv" then
+        return self:FormatAsCSV(session)
+    elseif format == "lua" then
+        return self:FormatAsLua(session)
+    else
+        return "Unknown format: " .. tostring(format)
+    end
+end
+
+-- Format as raw session data
+function SessionBrowser:FormatAsRaw(session)
+    local lines = {}
+    
+    -- Raw session object
+    table.insert(lines, "=== RAW SESSION DATA ===")
+    table.insert(lines, "Session ID: " .. tostring(session.id))
+    table.insert(lines, "Duration: " .. tostring(session.duration))
+    table.insert(lines, "Event Count: " .. tostring(session.eventCount))
+    table.insert(lines, "Start Time: " .. tostring(session.startTime))
+    table.insert(lines, "End Time: " .. tostring(session.endTime))
+    table.insert(lines, "Stored At: " .. tostring(session.storedAt))
+    table.insert(lines, "Server Time: " .. tostring(session.serverTime))
+    table.insert(lines, "Compressed: " .. tostring(session.compressed))
+    table.insert(lines, "")
+    
+    -- Raw metadata
+    if session.metadata then
+        table.insert(lines, "=== RAW METADATA ===")
+        self:DumpTableToLines(session.metadata, lines, 0)
+        table.insert(lines, "")
+    end
+    
+    -- Name mapping for narrative reconstruction
+    if session.nameMapping then
+        table.insert(lines, "=== NAME MAPPING ===")
+        local guidCount = 0
+        for guid, nameData in pairs(session.nameMapping) do
+            guidCount = guidCount + 1
+            table.insert(lines, string.format("GUID %d: %s", guidCount, guid))
+            table.insert(lines, string.format("  Name: %s", nameData.name))
+            table.insert(lines, string.format("  Type: %s", nameData.guidType))
+            table.insert(lines, string.format("  Cached: %s", nameData.cached and "Yes" or "No"))
+            if nameData.metadata then
+                table.insert(lines, "  Metadata:")
+                self:DumpTableToLines(nameData.metadata, lines, 2)
+            end
+            table.insert(lines, "")
+        end
+        table.insert(lines, string.format("Total entities: %d", guidCount))
+        table.insert(lines, "")
+    end
+    
+    -- Raw events (first 50 to avoid overwhelming)
+    if session.events then
+        table.insert(lines, "=== RAW EVENTS (" .. #session.events .. " total, showing first 50) ===")
+        for i = 1, math.min(50, #session.events) do
+            local event = session.events[i]
+            table.insert(lines, "Event " .. i .. ":")
+            self:DumpTableToLines(event, lines, 1)
+            table.insert(lines, "")
+            
+            if i >= 50 and #session.events > 50 then
+                table.insert(lines, "... and " .. (#session.events - 50) .. " more events")
+                break
+            end
+        end
+    end
+    
+    return table.concat(lines, "\n")
+end
+
+-- Helper function to dump table structure to lines
+function SessionBrowser:DumpTableToLines(tbl, lines, indent)
+    indent = indent or 0
+    local spacing = string.rep("  ", indent)
+    
+    if not tbl then
+        table.insert(lines, spacing .. "nil")
+        return
+    end
+    
+    if type(tbl) ~= "table" then
+        table.insert(lines, spacing .. tostring(tbl))
+        return
+    end
+    
+    for k, v in pairs(tbl) do
+        if type(v) == "table" then
+            table.insert(lines, spacing .. tostring(k) .. " = {")
+            self:DumpTableToLines(v, lines, indent + 1)
+            table.insert(lines, spacing .. "}")
+        else
+            table.insert(lines, spacing .. tostring(k) .. " = " .. tostring(v))
+        end
+    end
+end
+
+-- Delete selected session
+function SessionBrowser:DeleteSelectedSession()
+    if not selectedSession then
+        print("No session selected")
+        return
+    end
+    
+    if addon.StorageManager then
+        local deleted = addon.StorageManager:DeleteSession(selectedSession.id)
+        if deleted then
+            print("Session deleted: " .. selectedSession.id)
+            selectedSession = nil
+            self:RefreshSessionList()
+            if viewerFrame and viewerFrame:IsShown() then
+                viewerFrame:Hide()
+            end
+        else
+            print("Failed to delete session")
+        end
+    end
+end
+
+-- Clear all sessions
+function SessionBrowser:ClearAllSessions()
+    if addon.StorageManager then
+        addon.StorageManager:ClearAllSessions()
+        print("All sessions cleared")
+        selectedSession = nil
+        self:RefreshSessionList()
+        if viewerFrame and viewerFrame:IsShown() then
+            viewerFrame:Hide()
+        end
+    end
+end
+
+
+-- Format as JSON (simplified implementation)
+function SessionBrowser:FormatAsJSON(data)
+    local function serializeValue(value, indent)
+        indent = indent or 0
+        local spacing = string.rep("  ", indent)
+        
+        if type(value) == "table" then
+            local result = "{\n"
+            for k, v in pairs(value) do
+                result = result .. spacing .. "  \"" .. tostring(k) .. "\": " .. serializeValue(v, indent + 1) .. ",\n"
+            end
+            result = result .. spacing .. "}"
+            return result
+        elseif type(value) == "string" then
+            return "\"" .. value:gsub("\"", "\\\"") .. "\""
+        elseif type(value) == "number" then
+            return tostring(value)
+        elseif type(value) == "boolean" then
+            return value and "true" or "false"
+        else
+            return "\"" .. tostring(value) .. "\""
+        end
+    end
+    
+    return serializeValue(data)
+end
+
+-- Format as CSV (basic implementation)
+function SessionBrowser:FormatAsCSV(data)
+    local lines = {"Event Type,Source,Destination,Timestamp,Args"}
+    
+    if data.events then
+        for _, event in ipairs(data.events) do
+            -- Safely convert args to string, handling nil values
+            local argsString = ""
+            if event.args and #event.args > 0 then
+                local argStrings = {}
+                for i, arg in ipairs(event.args) do
+                    argStrings[i] = tostring(arg or "")
+                end
+                argsString = table.concat(argStrings, ";")
+            end
+            
+            -- Escape commas in CSV fields
+            local function escapeCSV(field)
+                field = tostring(field or "")
+                if field:find("[,\"\n\r]") then
+                    field = '"' .. field:gsub('"', '""') .. '"'
+                end
+                return field
+            end
+            
+            local line = string.format("%s,%s,%s,%.3f,%s",
+                escapeCSV(event.subevent),
+                escapeCSV(event.sourceName),
+                escapeCSV(event.destName),
+                tonumber(event.realTime) or 0,
+                escapeCSV(argsString))
+            table.insert(lines, line)
+        end
+    end
+    
+    return table.concat(lines, "\n")
+end
+
+-- Format as readable text
+function SessionBrowser:FormatAsText(data)
+    local lines = {"=== Session Export ==="}
+    table.insert(lines, "Session ID: " .. (data.sessionId or "Unknown"))
+    table.insert(lines, "Duration: " .. string.format("%.1fs", data.duration or 0))
+    table.insert(lines, "Events: " .. tostring(data.eventCount or 0))
+    table.insert(lines, "Export Time: " .. date("%Y-%m-%d %H:%M:%S"))
+    table.insert(lines, "")
+    
+    if data.events then
+        table.insert(lines, "=== Combat Events ===")
+        for i, event in ipairs(data.events) do
+            local line = string.format("[%.3f] %s: %s -> %s",
+                event.realTime or 0,
+                event.subevent or "UNKNOWN",
+                event.sourceName or "?",
+                event.destName or "?")
+            table.insert(lines, line)
+        end
+    end
+    
+    return table.concat(lines, "\n")
+end
+
+-- Format as Lua table
+function SessionBrowser:FormatAsLua(data)
+    local function serializeLua(value, indent)
+        indent = indent or 0
+        local spacing = string.rep("  ", indent)
+        
+        if type(value) == "table" then
+            local result = "{\n"
+            for k, v in pairs(value) do
+                local key = type(k) == "string" and "[\"" .. k .. "\"]" or "[" .. tostring(k) .. "]"
+                result = result .. spacing .. "  " .. key .. " = " .. serializeLua(v, indent + 1) .. ",\n"
+            end
+            result = result .. spacing .. "}"
+            return result
+        elseif type(value) == "string" then
+            return "\"" .. value:gsub("\"", "\\\"") .. "\""
+        else
+            return tostring(value)
+        end
+    end
+    
+    return "local sessionData = " .. serializeLua(data) .. "\nreturn sessionData"
+end
+
+-- Public API
+function SessionBrowser:IsShown()
+    return browserFrame and browserFrame:IsShown()
+end
+
+function SessionBrowser:GetStatus()
+    return {
+        isInitialized = isInitialized,
+        isShown = self:IsShown(),
+        selectedSession = selectedSession and selectedSession.id or nil
+    }
+end
