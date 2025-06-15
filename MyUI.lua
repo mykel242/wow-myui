@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-c248ecd"
-addon.BUILD_DATE = "2025-06-15-08:53"
+addon.VERSION = "refactor-modularization-73a1182"
+addon.BUILD_DATE = "2025-06-15-09:07"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
