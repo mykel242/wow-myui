@@ -12,14 +12,17 @@ local isInitialized = false
 local sessionStorage = {}
 local memoryStats = {}
 
--- Configuration
-local CONFIG = {
-    MAX_SESSIONS = 50,           -- Maximum stored combat sessions
-    MAX_SESSION_AGE_DAYS = 7,    -- Auto-cleanup sessions older than this
-    MEMORY_CLEANUP_INTERVAL = 30, -- Seconds between memory cleanup checks
-    MAX_MEMORY_MB = 10,          -- Maximum memory usage in MB
-    COMPRESSION_ENABLED = true,   -- Enable event compression for storage
-}
+-- Get current storage configuration from settings
+local function GetStorageConfig()
+    local settings = addon.SettingsWindow and addon.SettingsWindow:GetCurrentSettings() or {}
+    return {
+        MAX_SESSIONS = settings.maxSessions or 50,
+        MAX_SESSION_AGE_DAYS = settings.sessionAgeDays or 7,
+        MAX_MEMORY_MB = settings.maxMemoryMB or 10,
+        COMPRESSION_ENABLED = settings.compressionEnabled ~= false, -- Default true
+        WARNING_THRESHOLD = 0.8 -- Warn at 80% of limits
+    }
+end
 
 -- Saved variable for persistent storage
 local STORAGE_KEY = "MyUI_CombatSessions"
@@ -33,9 +36,6 @@ function StorageManager:Initialize()
     -- Initialize storage from saved variables
     self:LoadFromSavedVariables()
     
-    -- Start memory management timer
-    self:StartMemoryManagementTimer()
-    
     -- Initialize memory stats
     memoryStats = {
         sessionsStored = #sessionStorage,
@@ -45,6 +45,11 @@ function StorageManager:Initialize()
     }
     
     isInitialized = true
+    
+    -- Check storage limits on initialization (delayed to allow settings to load)
+    C_Timer.After(2.0, function()
+        self:CheckStorageLimits()
+    end)
     
     if addon.DEBUG then
         print(string.format("StorageManager initialized - %d sessions loaded", #sessionStorage))
@@ -67,7 +72,8 @@ function StorageManager:StoreCombatSession(sessionData)
     end
     
     -- Compress event data if enabled
-    if CONFIG.COMPRESSION_ENABLED then
+    local config = GetStorageConfig()
+    if config.COMPRESSION_ENABLED then
         sessionData.events = self:CompressEvents(sessionData.events)
         sessionData.compressed = true
     end
@@ -78,8 +84,8 @@ function StorageManager:StoreCombatSession(sessionData)
     -- Update memory stats
     self:UpdateMemoryStats()
     
-    -- Trigger cleanup if needed
-    self:PerformMemoryCleanup()
+    -- Check for storage warnings and cleanup if needed
+    self:CheckStorageLimits()
     
     -- Auto-save after storing new session
     self:SaveToSavedVariables()
@@ -187,59 +193,170 @@ function StorageManager:UpdateMemoryStats()
     memoryStats.compressionRatio = originalEvents > 0 and (compressedEvents / originalEvents) or 1
 end
 
--- Perform memory cleanup
+-- Check storage limits and warn/cleanup as needed
+function StorageManager:CheckStorageLimits(testMode)
+    local config = GetStorageConfig()
+    
+    -- In test mode, temporarily lower limits to force warnings
+    if testMode then
+        config.MAX_SESSIONS = math.max(1, #sessionStorage - 5) -- Force close to limit
+        config.MAX_MEMORY_MB = math.max(0.1, (memoryStats.totalMemoryKB / 1024) + 0.1) -- Force close to limit
+        config.WARNING_THRESHOLD = 0.5 -- Lower threshold for easier testing
+    end
+    
+    self:UpdateMemoryStats()
+    
+    local warnings = {}
+    local cleanupNeeded = false
+    
+    -- Check session count limit
+    local sessionCount = #sessionStorage
+    local maxSessions = config.MAX_SESSIONS
+    local sessionWarningThreshold = math.floor(maxSessions * config.WARNING_THRESHOLD)
+    
+    if sessionCount >= maxSessions then
+        cleanupNeeded = true
+    elseif sessionCount >= sessionWarningThreshold then
+        table.insert(warnings, string.format("Session count: %d/%d (%.0f%%)", 
+            sessionCount, maxSessions, (sessionCount / maxSessions) * 100))
+    end
+    
+    -- Check memory limit  
+    local memoryMB = memoryStats.totalMemoryKB / 1024
+    local maxMemoryMB = config.MAX_MEMORY_MB
+    local memoryWarningThreshold = maxMemoryMB * config.WARNING_THRESHOLD
+    
+    if memoryMB >= maxMemoryMB then
+        cleanupNeeded = true
+    elseif memoryMB >= memoryWarningThreshold then
+        table.insert(warnings, string.format("Memory usage: %.1f/%.1f MB (%.0f%%)", 
+            memoryMB, maxMemoryMB, (memoryMB / maxMemoryMB) * 100))
+    end
+    
+    -- Check age-based cleanup need
+    local cutoffTime = GetServerTime() - (config.MAX_SESSION_AGE_DAYS * 24 * 60 * 60)
+    local expiredCount = 0
+    for _, session in ipairs(sessionStorage) do
+        if session.serverTime and session.serverTime < cutoffTime then
+            expiredCount = expiredCount + 1
+        end
+    end
+    
+    if expiredCount > 0 then
+        table.insert(warnings, string.format("%d sessions older than %d days", 
+            expiredCount, config.MAX_SESSION_AGE_DAYS))
+        cleanupNeeded = true
+    end
+    
+    -- Show warnings if any
+    if #warnings > 0 then
+        self:ShowStorageWarning(warnings, cleanupNeeded)
+    end
+    
+    -- Perform cleanup if over limits (not just warnings)
+    if cleanupNeeded then
+        self:PerformMemoryCleanup()
+    end
+end
+
+-- Perform memory cleanup (when limits are exceeded)
 function StorageManager:PerformMemoryCleanup()
+    local config = GetStorageConfig()
     local cleaned = false
+    local cleanupLog = {}
     
     -- Remove sessions exceeding max count (oldest first)
-    while #sessionStorage > CONFIG.MAX_SESSIONS do
+    local initialCount = #sessionStorage
+    while #sessionStorage > config.MAX_SESSIONS do
         table.remove(sessionStorage, 1)
         cleaned = true
     end
+    if initialCount > #sessionStorage then
+        table.insert(cleanupLog, string.format("Removed %d sessions over limit", initialCount - #sessionStorage))
+    end
     
     -- Remove sessions older than max age
-    local cutoffTime = GetServerTime() - (CONFIG.MAX_SESSION_AGE_DAYS * 24 * 60 * 60)
+    local cutoffTime = GetServerTime() - (config.MAX_SESSION_AGE_DAYS * 24 * 60 * 60)
+    local expiredRemoved = 0
     local i = 1
     while i <= #sessionStorage do
         local session = sessionStorage[i]
         if session.serverTime and session.serverTime < cutoffTime then
             table.remove(sessionStorage, i)
+            expiredRemoved = expiredRemoved + 1
             cleaned = true
         else
             i = i + 1
         end
     end
+    if expiredRemoved > 0 then
+        table.insert(cleanupLog, string.format("Removed %d expired sessions", expiredRemoved))
+    end
     
-    -- Memory-based cleanup if over limit
+    -- Memory-based cleanup if still over limit
     self:UpdateMemoryStats()
-    if memoryStats.totalMemoryKB > (CONFIG.MAX_MEMORY_MB * 1024) then
+    if memoryStats.totalMemoryKB > (config.MAX_MEMORY_MB * 1024) then
+        local beforeCount = #sessionStorage
         -- Remove oldest 25% of sessions
         local removeCount = math.floor(#sessionStorage * 0.25)
         for i = 1, removeCount do
             table.remove(sessionStorage, 1)
         end
         cleaned = true
+        table.insert(cleanupLog, string.format("Removed %d sessions for memory limit", removeCount))
     end
     
     if cleaned then
         self:UpdateMemoryStats()
-        if addon.DEBUG then
-            print(string.format("Storage cleanup: %d sessions remaining (%.1fKB)", 
+        if addon.DEBUG or #cleanupLog > 0 then
+            print("Storage cleanup performed:")
+            for _, msg in ipairs(cleanupLog) do
+                print("  " .. msg)
+            end
+            print(string.format("  Final: %d sessions, %.1fKB", 
                 memoryStats.sessionsStored, memoryStats.totalMemoryKB))
         end
     end
 end
 
--- Start memory management timer
-function StorageManager:StartMemoryManagementTimer()
-    if self.memoryTimer then
-        self.memoryTimer:Cancel()
+-- Show storage warning to user
+function StorageManager:ShowStorageWarning(warnings, cleanupNeeded)
+    local message = "Storage Usage Warning:\n\n"
+    for _, warning in ipairs(warnings) do
+        message = message .. "• " .. warning .. "\n"
     end
     
-    self.memoryTimer = C_Timer.NewTicker(CONFIG.MEMORY_CLEANUP_INTERVAL, function()
-        self:PerformMemoryCleanup()
-        -- Note: No periodic saves - data saves automatically on logout/reload
-    end)
+    if cleanupNeeded then
+        message = message .. "\nAutomatic cleanup will occur to stay within limits."
+    else
+        message = message .. "\nConsider exporting important sessions or increasing storage limits in Settings."
+    end
+    
+    message = message .. "\n\nOpen Session Browser to export sessions?\nOpen Settings to adjust limits?"
+    
+    -- Create warning dialog
+    StaticPopupDialogs["MYUI_STORAGE_WARNING"] = {
+        text = message,
+        button1 = "Session Browser",
+        button2 = "Settings", 
+        button3 = "Dismiss",
+        OnAccept = function()
+            if addon.SessionBrowser then
+                addon.SessionBrowser:Show()
+            end
+        end,
+        OnCancel = function()
+            if addon.SettingsWindow then
+                addon.SettingsWindow:Show()
+            end
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+    
+    StaticPopup_Show("MYUI_STORAGE_WARNING")
 end
 
 -- Load sessions from saved variables
@@ -331,13 +448,16 @@ function StorageManager:ClearAllSessions()
 end
 
 function StorageManager:GetMemoryStats()
+    local config = GetStorageConfig()
     return {
         sessionsStored = memoryStats.sessionsStored,
         totalMemoryKB = memoryStats.totalMemoryKB,
         totalMemoryMB = memoryStats.totalMemoryKB / 1024,
         compressionRatio = memoryStats.compressionRatio,
-        maxSessions = CONFIG.MAX_SESSIONS,
-        maxMemoryMB = CONFIG.MAX_MEMORY_MB
+        maxSessions = config.MAX_SESSIONS,
+        maxMemoryMB = config.MAX_MEMORY_MB,
+        maxSessionAgeDays = config.MAX_SESSION_AGE_DAYS,
+        compressionEnabled = config.COMPRESSION_ENABLED
     }
 end
 
@@ -347,7 +467,7 @@ function StorageManager:GetStatus()
         isInitialized = isInitialized,
         sessionsStored = stats.sessionsStored,
         memoryUsageMB = stats.totalMemoryMB,
-        compressionEnabled = CONFIG.COMPRESSION_ENABLED,
+        compressionEnabled = stats.compressionEnabled,
         lastCleanup = memoryStats.lastCleanup
     }
 end
@@ -360,16 +480,20 @@ function StorageManager:GetDebugSummary()
     return string.format(
         "StorageManager Status:\n" ..
         "  Initialized: %s\n" ..
-        "  Sessions Stored: %d / %d\n" ..
-        "  Memory Usage: %.2f / %.1f MB\n" ..
+        "  Sessions Stored: %d / %d (%.0f%%)\n" ..
+        "  Memory Usage: %.2f / %.1f MB (%.0f%%)\n" ..
+        "  Session Age Limit: %d days\n" ..
         "  Compression: %s (%.1f%% ratio)\n" ..
         "  Recent Sessions: %d available",
         tostring(status.isInitialized),
         stats.sessionsStored,
         stats.maxSessions,
+        (stats.sessionsStored / stats.maxSessions) * 100,
         stats.totalMemoryMB,
         stats.maxMemoryMB,
-        CONFIG.COMPRESSION_ENABLED and "ON" or "OFF",
+        (stats.totalMemoryMB / stats.maxMemoryMB) * 100,
+        stats.maxSessionAgeDays,
+        stats.compressionEnabled and "ON" or "OFF",
         (stats.compressionRatio * 100),
         math.min(5, stats.sessionsStored)
     )

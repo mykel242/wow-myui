@@ -183,6 +183,14 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("StorageManager not loaded")
             end
+        elseif command == "testwarning" then
+            if addon.StorageManager then
+                -- Force a storage warning check in test mode
+                addon.StorageManager:CheckStorageLimits(true)
+                print("Storage warning test triggered (with lowered limits)")
+            else
+                print("StorageManager not loaded")
+            end
         elseif command == "sessions" then
             if addon.StorageManager then
                 local sessions = addon.StorageManager:GetRecentSessions(5)
@@ -289,6 +297,7 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui rawdata - Current combat raw data")
             print("  /myui metadata - Current context metadata")
             print("  /myui storage - Storage manager status")
+            print("  /myui testwarning - Test storage warning system")
             print("  /myui sessions - Recent combat sessions")
             print("  /myui session <id> - Show detailed session data")
             print("  /myui counters - Show session counter status")
