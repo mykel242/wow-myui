@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-tree-blacklist-system-415c3b0"
-addon.BUILD_DATE = "2025-06-15-07:49"
+addon.VERSION = "main-c248ecd"
+addon.BUILD_DATE = "2025-06-15-08:53"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
