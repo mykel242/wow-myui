@@ -161,15 +161,20 @@ function SettingsWindow:CreateTabs(parent)
     local tabNames = {"Combat Detection", "Calculations", "Storage", "Debug"}
     
     for i, name in ipairs(tabNames) do
-        local tab = CreateFrame("Button", nil, parent, "CharacterFrameTabButtonTemplate")
+        -- Create a simple button using GameMenuButtonTemplate
+        local tab = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
+        tab:SetSize(120, 25)
         tab:SetID(i)
         tab:SetText(name)
+        
+        -- Set up click handler
         tab:SetScript("OnClick", function() self:SelectTab(i) end)
         
+        -- Position tabs
         if i == 1 then
             tab:SetPoint("BOTTOMLEFT", parent, "TOPLEFT", 5, -28)
         else
-            tab:SetPoint("LEFT", tabs[i-1], "RIGHT", -15, 0)
+            tab:SetPoint("LEFT", tabs[i-1], "RIGHT", 5, 0)
         end
         
         tabs[i] = tab
@@ -191,9 +196,13 @@ function SettingsWindow:SelectTab(tabIndex)
     -- Update tab appearance
     for i, tab in ipairs(tabs) do
         if i == tabIndex then
-            tab:SetChecked(true)
+            -- Selected tab appearance - push the button down
+            tab:SetButtonState("PUSHED", true)
+            tab:SetAlpha(1.0)
         else
-            tab:SetChecked(false)
+            -- Unselected tab appearance
+            tab:SetButtonState("NORMAL")
+            tab:SetAlpha(0.8)
         end
     end
 end
