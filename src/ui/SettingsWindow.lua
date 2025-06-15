@@ -221,18 +221,29 @@ function SettingsWindow:CreateCombatDetectionPanel(parent)
     timeoutLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, yOffset)
     timeoutLabel:SetText("Combat Timeout (seconds)")
     
-    local timeoutSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+    local timeoutSlider = CreateFrame("Slider", "MyUITimeoutSlider", panel, "OptionsSliderTemplate")
     timeoutSlider:SetPoint("TOPLEFT", timeoutLabel, "BOTTOMLEFT", 0, -10)
     timeoutSlider:SetMinMaxValues(0.5, 15.0)
     timeoutSlider:SetValueStep(0.5)
     timeoutSlider:SetValue(currentSettings.combatTimeout)
+    
+    -- Create value display text
+    local timeoutValueText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    timeoutValueText:SetPoint("TOP", timeoutSlider, "BOTTOM", 0, -5)
+    timeoutValueText:SetText(string.format("%.1f", currentSettings.combatTimeout))
+    
     timeoutSlider:SetScript("OnValueChanged", function(self, value)
         currentSettings.combatTimeout = value
-        getglobal(self:GetName() .. "Text"):SetText(string.format("%.1f", value))
+        timeoutValueText:SetText(string.format("%.1f", value))
     end)
-    getglobal(timeoutSlider:GetName() .. "Low"):SetText("0.5")
-    getglobal(timeoutSlider:GetName() .. "High"):SetText("15.0")
-    getglobal(timeoutSlider:GetName() .. "Text"):SetText(string.format("%.1f", currentSettings.combatTimeout))
+    
+    -- Set slider labels if the template supports them
+    if _G[timeoutSlider:GetName() .. "Low"] then
+        _G[timeoutSlider:GetName() .. "Low"]:SetText("0.5")
+    end
+    if _G[timeoutSlider:GetName() .. "High"] then
+        _G[timeoutSlider:GetName() .. "High"]:SetText("15.0")
+    end
     
     yOffset = yOffset - 70
     
@@ -241,18 +252,29 @@ function SettingsWindow:CreateCombatDetectionPanel(parent)
     deadTimeoutLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, yOffset)
     deadTimeoutLabel:SetText("Dead Player Timeout (seconds)")
     
-    local deadTimeoutSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+    local deadTimeoutSlider = CreateFrame("Slider", "MyUIDeadTimeoutSlider", panel, "OptionsSliderTemplate")
     deadTimeoutSlider:SetPoint("TOPLEFT", deadTimeoutLabel, "BOTTOMLEFT", 0, -10)
     deadTimeoutSlider:SetMinMaxValues(2.0, 30.0)
     deadTimeoutSlider:SetValueStep(1.0)
     deadTimeoutSlider:SetValue(currentSettings.deadPlayerTimeout)
+    
+    -- Create value display text
+    local deadTimeoutValueText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    deadTimeoutValueText:SetPoint("TOP", deadTimeoutSlider, "BOTTOM", 0, -5)
+    deadTimeoutValueText:SetText(string.format("%.0f", currentSettings.deadPlayerTimeout))
+    
     deadTimeoutSlider:SetScript("OnValueChanged", function(self, value)
         currentSettings.deadPlayerTimeout = value
-        getglobal(self:GetName() .. "Text"):SetText(string.format("%.0f", value))
+        deadTimeoutValueText:SetText(string.format("%.0f", value))
     end)
-    getglobal(deadTimeoutSlider:GetName() .. "Low"):SetText("2")
-    getglobal(deadTimeoutSlider:GetName() .. "High"):SetText("30")
-    getglobal(deadTimeoutSlider:GetName() .. "Text"):SetText(string.format("%.0f", currentSettings.deadPlayerTimeout))
+    
+    -- Set slider labels if the template supports them
+    if _G[deadTimeoutSlider:GetName() .. "Low"] then
+        _G[deadTimeoutSlider:GetName() .. "Low"]:SetText("2")
+    end
+    if _G[deadTimeoutSlider:GetName() .. "High"] then
+        _G[deadTimeoutSlider:GetName() .. "High"]:SetText("30")
+    end
     
     yOffset = yOffset - 70
     
@@ -339,18 +361,29 @@ function SettingsWindow:CreateCalculationsPanel(parent)
     windowLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, yOffset)
     windowLabel:SetText("Rolling Window Size (seconds)")
     
-    local windowSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+    local windowSlider = CreateFrame("Slider", "MyUIWindowSlider", panel, "OptionsSliderTemplate")
     windowSlider:SetPoint("TOPLEFT", windowLabel, "BOTTOMLEFT", 0, -10)
     windowSlider:SetMinMaxValues(1.0, 10.0)
     windowSlider:SetValueStep(0.5)
     windowSlider:SetValue(currentSettings.rollingWindowSize)
+    
+    -- Create value display text
+    local windowValueText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    windowValueText:SetPoint("TOP", windowSlider, "BOTTOM", 0, -5)
+    windowValueText:SetText(string.format("%.1f", currentSettings.rollingWindowSize))
+    
     windowSlider:SetScript("OnValueChanged", function(self, value)
         currentSettings.rollingWindowSize = value
-        getglobal(self:GetName() .. "Text"):SetText(string.format("%.1f", value))
+        windowValueText:SetText(string.format("%.1f", value))
     end)
-    getglobal(windowSlider:GetName() .. "Low"):SetText("1.0")
-    getglobal(windowSlider:GetName() .. "High"):SetText("10.0")
-    getglobal(windowSlider:GetName() .. "Text"):SetText(string.format("%.1f", currentSettings.rollingWindowSize))
+    
+    -- Set slider labels if the template supports them
+    if _G[windowSlider:GetName() .. "Low"] then
+        _G[windowSlider:GetName() .. "Low"]:SetText("1.0")
+    end
+    if _G[windowSlider:GetName() .. "High"] then
+        _G[windowSlider:GetName() .. "High"]:SetText("10.0")
+    end
     
     yOffset = yOffset - 70
     
@@ -359,18 +392,29 @@ function SettingsWindow:CreateCalculationsPanel(parent)
     sampleLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, yOffset)
     sampleLabel:SetText("Sample Interval (seconds)")
     
-    local sampleSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+    local sampleSlider = CreateFrame("Slider", "MyUISampleSlider", panel, "OptionsSliderTemplate")
     sampleSlider:SetPoint("TOPLEFT", sampleLabel, "BOTTOMLEFT", 0, -10)
     sampleSlider:SetMinMaxValues(0.1, 2.0)
     sampleSlider:SetValueStep(0.1)
     sampleSlider:SetValue(currentSettings.sampleInterval)
+    
+    -- Create value display text
+    local sampleValueText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sampleValueText:SetPoint("TOP", sampleSlider, "BOTTOM", 0, -5)
+    sampleValueText:SetText(string.format("%.1f", currentSettings.sampleInterval))
+    
     sampleSlider:SetScript("OnValueChanged", function(self, value)
         currentSettings.sampleInterval = value
-        getglobal(self:GetName() .. "Text"):SetText(string.format("%.1f", value))
+        sampleValueText:SetText(string.format("%.1f", value))
     end)
-    getglobal(sampleSlider:GetName() .. "Low"):SetText("0.1")
-    getglobal(sampleSlider:GetName() .. "High"):SetText("2.0")
-    getglobal(sampleSlider:GetName() .. "Text"):SetText(string.format("%.1f", currentSettings.sampleInterval))
+    
+    -- Set slider labels if the template supports them
+    if _G[sampleSlider:GetName() .. "Low"] then
+        _G[sampleSlider:GetName() .. "Low"]:SetText("0.1")
+    end
+    if _G[sampleSlider:GetName() .. "High"] then
+        _G[sampleSlider:GetName() .. "High"]:SetText("2.0")
+    end
     
     panels[2] = panel
 end
@@ -389,18 +433,29 @@ function SettingsWindow:CreateStoragePanel(parent)
     maxSessionsLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, yOffset)
     maxSessionsLabel:SetText("Maximum Stored Sessions")
     
-    local maxSessionsSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+    local maxSessionsSlider = CreateFrame("Slider", "MyUIMaxSessionsSlider", panel, "OptionsSliderTemplate")
     maxSessionsSlider:SetPoint("TOPLEFT", maxSessionsLabel, "BOTTOMLEFT", 0, -10)
     maxSessionsSlider:SetMinMaxValues(10, 200)
     maxSessionsSlider:SetValueStep(10)
     maxSessionsSlider:SetValue(currentSettings.maxSessions)
+    
+    -- Create value display text
+    local maxSessionsValueText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    maxSessionsValueText:SetPoint("TOP", maxSessionsSlider, "BOTTOM", 0, -5)
+    maxSessionsValueText:SetText(string.format("%.0f", currentSettings.maxSessions))
+    
     maxSessionsSlider:SetScript("OnValueChanged", function(self, value)
         currentSettings.maxSessions = value
-        getglobal(self:GetName() .. "Text"):SetText(string.format("%.0f", value))
+        maxSessionsValueText:SetText(string.format("%.0f", value))
     end)
-    getglobal(maxSessionsSlider:GetName() .. "Low"):SetText("10")
-    getglobal(maxSessionsSlider:GetName() .. "High"):SetText("200")
-    getglobal(maxSessionsSlider:GetName() .. "Text"):SetText(string.format("%.0f", currentSettings.maxSessions))
+    
+    -- Set slider labels if the template supports them
+    if _G[maxSessionsSlider:GetName() .. "Low"] then
+        _G[maxSessionsSlider:GetName() .. "Low"]:SetText("10")
+    end
+    if _G[maxSessionsSlider:GetName() .. "High"] then
+        _G[maxSessionsSlider:GetName() .. "High"]:SetText("200")
+    end
     
     yOffset = yOffset - 70
     
@@ -409,18 +464,29 @@ function SettingsWindow:CreateStoragePanel(parent)
     sessionAgeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, yOffset)
     sessionAgeLabel:SetText("Auto-cleanup After (days)")
     
-    local sessionAgeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+    local sessionAgeSlider = CreateFrame("Slider", "MyUISessionAgeSlider", panel, "OptionsSliderTemplate")
     sessionAgeSlider:SetPoint("TOPLEFT", sessionAgeLabel, "BOTTOMLEFT", 0, -10)
     sessionAgeSlider:SetMinMaxValues(1, 30)
     sessionAgeSlider:SetValueStep(1)
     sessionAgeSlider:SetValue(currentSettings.sessionAgeDays)
+    
+    -- Create value display text
+    local sessionAgeValueText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sessionAgeValueText:SetPoint("TOP", sessionAgeSlider, "BOTTOM", 0, -5)
+    sessionAgeValueText:SetText(string.format("%.0f", currentSettings.sessionAgeDays))
+    
     sessionAgeSlider:SetScript("OnValueChanged", function(self, value)
         currentSettings.sessionAgeDays = value
-        getglobal(self:GetName() .. "Text"):SetText(string.format("%.0f", value))
+        sessionAgeValueText:SetText(string.format("%.0f", value))
     end)
-    getglobal(sessionAgeSlider:GetName() .. "Low"):SetText("1")
-    getglobal(sessionAgeSlider:GetName() .. "High"):SetText("30")
-    getglobal(sessionAgeSlider:GetName() .. "Text"):SetText(string.format("%.0f", currentSettings.sessionAgeDays))
+    
+    -- Set slider labels if the template supports them
+    if _G[sessionAgeSlider:GetName() .. "Low"] then
+        _G[sessionAgeSlider:GetName() .. "Low"]:SetText("1")
+    end
+    if _G[sessionAgeSlider:GetName() .. "High"] then
+        _G[sessionAgeSlider:GetName() .. "High"]:SetText("30")
+    end
     
     yOffset = yOffset - 70
     
@@ -429,18 +495,29 @@ function SettingsWindow:CreateStoragePanel(parent)
     memoryLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, yOffset)
     memoryLabel:SetText("Memory Limit (MB)")
     
-    local memorySlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+    local memorySlider = CreateFrame("Slider", "MyUIMemorySlider", panel, "OptionsSliderTemplate")
     memorySlider:SetPoint("TOPLEFT", memoryLabel, "BOTTOMLEFT", 0, -10)
     memorySlider:SetMinMaxValues(5, 100)
     memorySlider:SetValueStep(5)
     memorySlider:SetValue(currentSettings.maxMemoryMB)
+    
+    -- Create value display text
+    local memoryValueText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    memoryValueText:SetPoint("TOP", memorySlider, "BOTTOM", 0, -5)
+    memoryValueText:SetText(string.format("%.0f", currentSettings.maxMemoryMB))
+    
     memorySlider:SetScript("OnValueChanged", function(self, value)
         currentSettings.maxMemoryMB = value
-        getglobal(self:GetName() .. "Text"):SetText(string.format("%.0f", value))
+        memoryValueText:SetText(string.format("%.0f", value))
     end)
-    getglobal(memorySlider:GetName() .. "Low"):SetText("5")
-    getglobal(memorySlider:GetName() .. "High"):SetText("100")
-    getglobal(memorySlider:GetName() .. "Text"):SetText(string.format("%.0f", currentSettings.maxMemoryMB))
+    
+    -- Set slider labels if the template supports them
+    if _G[memorySlider:GetName() .. "Low"] then
+        _G[memorySlider:GetName() .. "Low"]:SetText("5")
+    end
+    if _G[memorySlider:GetName() .. "High"] then
+        _G[memorySlider:GetName() .. "High"]:SetText("100")
+    end
     
     yOffset = yOffset - 70
     
