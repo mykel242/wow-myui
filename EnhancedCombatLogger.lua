@@ -259,37 +259,15 @@ local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, destGUID, s
     end
 end
 
--- Track deaths (exclude blacklisted entities)
+-- Track deaths (log all deaths, filtering happens at reporting level)
 local function TrackDeath(timestamp, destGUID, destName, destFlags)
     -- Filter out uninteresting deaths
     if not destName or destName == "" then
         return -- Skip unnamed entities
     end
     
-    -- Use new blacklist system to filter entities
-    if addon.EntityBlacklist then
-        local playerClass = addon.EntityBlacklist:GetPlayerClass()
-        local zone, encounter = addon.EntityBlacklist:GetCurrentEncounter()
-        
-        if addon.EntityBlacklist:IsBlacklisted(destName, playerClass, zone, encounter) then
-            return -- Skip blacklisted entities
-        end
-    else
-        -- Fallback to legacy filtering if blacklist system not available
-        local lowerName = string.lower(destName)
-        if string.find(lowerName, "totem") or 
-           string.find(lowerName, "spirit") or
-           string.find(lowerName, "guardian") or
-           string.find(lowerName, "elemental") or
-           string.find(lowerName, "echo") or
-           string.find(lowerName, "image") or
-           string.find(lowerName, "duplicate") or
-           string.find(lowerName, "reflection") or
-           string.find(lowerName, "entropic rift") or
-           string.find(lowerName, "mindbender") then
-            return -- Skip ephemeral entities
-        end
-    end
+    -- Log all deaths now - blacklist filtering moved to reporting level
+    -- This allows retroactive blacklist changes to affect historical data
     
     -- Determine entity type and boss classification
     local isPlayer = bit.band(destFlags or 0, COMBATLOG_OBJECT_TYPE_PLAYER) > 0

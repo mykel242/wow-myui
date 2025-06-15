@@ -16,30 +16,7 @@ local CHART_COLORS = {
 
 -- Debug function to inspect session data
 local function DebugSessionData(sessionData)
-    if not addon.DEBUG then return end
-
-    print("=== SESSION DATA DEBUG ===")
-    print("Session ID:", sessionData.sessionId)
-    print("Enhanced data present:", sessionData.enhancedData ~= nil)
-
-    if sessionData.enhancedData then
-        local ed = sessionData.enhancedData
-        print("Participants:", ed.participants and "YES" or "NO")
-        print("Cooldown usage:", ed.cooldownUsage and (#ed.cooldownUsage .. " events") or "NO")
-        print("Deaths:", ed.deaths and (#ed.deaths .. " events") or "NO")
-        print("Damage taken:", ed.damageTaken and (#ed.damageTaken .. " events") or "NO")
-        print("Group damage:", ed.groupDamage and (#ed.groupDamage .. " events") or "NO")
-        print("Healing events:", ed.healingEvents and (#ed.healingEvents .. " events") or "NO")
-
-        if ed.participants then
-            local count = 0
-            for _ in pairs(ed.participants) do count = count + 1 end
-            print("Participant count:", count)
-        end
-    else
-        print("No enhanced data found")
-    end
-    print("==========================")
+    -- Debug output removed for cleaner user experience
 end
 
 -- Create enhanced detail window
@@ -305,7 +282,10 @@ function EnhancedSessionDetailWindow:CreateTimelineTab()
             showDPS = true,
             showCooldowns = true,
             showPlayerDeaths = true,
-            showMinionDeaths = true
+            showMinionDeaths = true,
+            showBossDeaths = true,
+            applyBlacklist = true,      -- Apply blacklist filtering
+            showBlacklistedOnly = false -- Show only blacklisted entities (whitelist mode)
         }
     end
 
@@ -353,11 +333,17 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
     local chartHeight = 300
     local pointWidth = chartWidth / math.max(1, #timelineData - 1)
 
-    -- Find max values for scaling
+    -- Find max values for scaling - only for enabled charts
     local maxDPS, maxHPS = 0, 0
-    for _, point in ipairs(timelineData) do
-        maxDPS = math.max(maxDPS, point.instantDPS or point.averageDPS or 0)
-        maxHPS = math.max(maxHPS, point.instantHPS or point.averageHPS or 0)
+    if self.chartFilters and self.chartFilters.showDPS then
+        for _, point in ipairs(timelineData) do
+            maxDPS = math.max(maxDPS, point.instantDPS or point.averageDPS or 0)
+        end
+    end
+    if self.chartFilters and self.chartFilters.showHPS then
+        for _, point in ipairs(timelineData) do
+            maxHPS = math.max(maxHPS, point.instantHPS or point.averageHPS or 0)
+        end
     end
 
     -- Draw grid lines with time axis and Y-axis labels
@@ -420,11 +406,15 @@ function EnhancedSessionDetailWindow:DrawChartGrid(chartArea, width, height, dur
         line:SetColorTexture(0.3, 0.3, 0.3, 0.3)
     end
 
-    -- Y-axis labels for DPS (left side, red)
-    self:CreateDPSAxis(chartArea, height, maxDPS)
+    -- Y-axis labels for DPS (left side, red) - only if DPS is enabled
+    if self.chartFilters and self.chartFilters.showDPS then
+        self:CreateDPSAxis(chartArea, height, maxDPS)
+    end
 
-    -- Y-axis labels for HPS (right side, green)
-    self:CreateHPSAxis(chartArea, width, height, maxHPS)
+    -- Y-axis labels for HPS (right side, green) - only if HPS is enabled
+    if self.chartFilters and self.chartFilters.showHPS then
+        self:CreateHPSAxis(chartArea, width, height, maxHPS)
+    end
 
     -- Calculate time intervals based on duration
     local timeInterval = self:CalculateTimeInterval(duration)
@@ -753,50 +743,44 @@ end
 -- Draw enhanced death markers with improved visibility and tooltips
 function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duration, width, height)
     -- Check if any death markers should be shown based on filters
-    if not (self.chartFilters and (self.chartFilters.showPlayerDeaths or self.chartFilters.showMinionDeaths)) then
+    if not (self.chartFilters and (self.chartFilters.showPlayerDeaths or self.chartFilters.showMinionDeaths or self.chartFilters.showBossDeaths)) then
         return
     end
 
-    if addon.DEBUG then
-        print("=== DEATH MARKER DEBUG ===")
-        print("Chart duration:", duration, "Chart width:", width)
-        print("Total deaths to process:", #deaths)
-    end
-
+    -- Capture session data for use in closures
+    local sessionData = self.sessionData
+    
     -- Get combat start time for timestamp conversion
-    local combatStartTime = self.sessionData.startTime
-    if addon.DEBUG then
-        print("Combat start time:", combatStartTime)
-    end
+    local combatStartTime = sessionData and sessionData.startTime
 
-    -- Filter deaths based on current blacklist settings
-    local filteredDeaths = {}
-    if addon.EntityBlacklist then
+    -- Filter deaths based on chart filter settings for blacklist/whitelist
+    local filteredDeaths = deaths
+    
+    if addon.EntityBlacklist and (self.chartFilters.applyBlacklist or self.chartFilters.showBlacklistedOnly) then
         local playerClass = addon.EntityBlacklist:GetPlayerClass()
-        -- Use session zone data instead of current zone for filtering
-        local sessionZone = self.sessionData and self.sessionData.location
+        -- Use session zone data for consistent filtering
+        local sessionZone = sessionData and sessionData.location or "Unknown"
         
-        -- Enhanced zone detection if session zone is missing/unknown
-        if not sessionZone or sessionZone == "Unknown" or sessionZone == "" then
-            -- Try multiple zone detection methods for filtering consistency
-            sessionZone = GetRealZoneText() or GetZoneText() or GetMinimapZoneText() or "Unknown Zone"
-            print("MyUI2 Debug: Filtering with session zone '" .. (self.sessionData.location or "nil") .. "', using current zone:", sessionZone)
-        end
-        
-        local encounter = "Unknown Encounter" -- Could be enhanced with boss detection
+        local tempFilteredDeaths = {}
         
         for _, death in ipairs(deaths) do
-            if not addon.EntityBlacklist:IsBlacklisted(death.destName, playerClass, sessionZone, encounter) then
-                table.insert(filteredDeaths, death)
+            if death.destName and death.destName ~= "" then
+                local isBlacklisted = addon.EntityBlacklist:IsBlacklisted(death.destName, playerClass, sessionZone)
+                
+                if self.chartFilters.applyBlacklist and not isBlacklisted then
+                    -- Normal blacklist mode: show only non-blacklisted entities
+                    table.insert(tempFilteredDeaths, death)
+                elseif self.chartFilters.showBlacklistedOnly and isBlacklisted then
+                    -- Whitelist mode: show only blacklisted entities
+                    table.insert(tempFilteredDeaths, death)
+                elseif not self.chartFilters.applyBlacklist and not self.chartFilters.showBlacklistedOnly then
+                    -- Both filters off: show everything
+                    table.insert(tempFilteredDeaths, death)
+                end
             end
         end
         
-        if addon.DEBUG then
-            print("Filtered", #deaths - #filteredDeaths, "blacklisted deaths, showing", #filteredDeaths, "in zone:", sessionZone)
-        end
-    else
-        -- No blacklist system available, show all deaths
-        filteredDeaths = deaths
+        filteredDeaths = tempFilteredDeaths
     end
 
     -- Further filter deaths based on chart filter settings
@@ -807,10 +791,9 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
         -- Use the structured entityType field for proper classification
         if death.entityType == "player" and self.chartFilters.showPlayerDeaths then
             shouldShow = true
-        elseif death.entityType == "minion" and self.chartFilters.showMinionDeaths then
+        elseif death.entityType == "boss" and self.chartFilters.showBossDeaths then
             shouldShow = true
-        elseif death.entityType == "boss" and self.chartFilters.showPlayerDeaths then
-            -- Treat boss deaths as "player deaths" for now since we don't have a separate boss filter
+        elseif death.entityType == "minion" and self.chartFilters.showMinionDeaths then
             shouldShow = true
         elseif not death.entityType then
             -- Fallback for older data without entityType - use the boolean flags
@@ -836,19 +819,8 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
         -- UNIFIED: Use death.elapsed directly (already calculated by TimestampManager)
         local relativeTime = death.elapsed
 
-        -- Debug the unified time calculation
-        if addon.DEBUG then
-            print("  Death.elapsed (TimestampManager):", death.elapsed)
-            print("  Combat duration:", duration)
-        end
-        -- REMOVED: death.timestamp no longer stored (unified timestamp system)
-
         if relativeTime and relativeTime > 0 and relativeTime <= duration then
             local x = (relativeTime / duration) * width
-            if addon.DEBUG then
-                print("  Positioning death marker at x =", x, "(", relativeTime, "/", duration, "* ", width, ")")
-                print("  Chart area size:", width, "x", height, "px")
-            end
 
             -- Determine marker style based on entity type
             local markerSize, markerYOffset, markerColor, glowColor = self:GetDeathMarkerStyle(death.entityType)
@@ -919,7 +891,7 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
                 GameTooltip:AddLine("Right-click to blacklist options:", 0.7, 0.7, 1, true)
                 GameTooltip:AddLine("• Shift+Right-click: Blacklist globally", 0.6, 0.6, 0.9, true)
                 GameTooltip:AddLine("• Ctrl+Right-click: Blacklist for your class", 0.6, 0.6, 0.9, true)
-                GameTooltip:AddLine("• Alt+Right-click: Blacklist for this encounter", 0.6, 0.6, 0.9, true)
+                GameTooltip:AddLine("• Alt+Right-click: Blacklist for this zone", 0.6, 0.6, 0.9, true)
 
                 GameTooltip:Show()
 
@@ -955,28 +927,80 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
                         blacklistType = "global"
                         message = string.format("Blacklisted '%s' globally", entityName)
                     elseif IsControlKeyDown() then
-                        -- Class-specific blacklist
+                        -- Class-specific blacklist - try to determine the class of the deceased entity
                         blacklistType = "class"
-                        classOrZone = addon.EntityBlacklist:GetPlayerClass()
-                        message = string.format("Blacklisted '%s' for %s", entityName, classOrZone or "your class")
+                        local targetClass = nil
+                        
+                        -- Try to determine relevant class for blacklisting
+                        if death.isPlayer and death.destGUID then
+                            -- For players, try to get their class from unit frames if they're still around
+                            for i = 1, 40 do
+                                local unit = IsInRaid() and ("raid" .. i) or (i <= 5 and (i == 1 and "player" or ("party" .. (i-1))) or nil)
+                                if unit and UnitExists(unit) and UnitGUID(unit) == death.destGUID then
+                                    local _, class = UnitClass(unit)
+                                    targetClass = class
+                                    break
+                                end
+                            end
+                            
+                            -- If we couldn't find them in group, try target/focus
+                            if not targetClass then
+                                if UnitExists("target") and UnitGUID("target") == death.destGUID then
+                                    local _, class = UnitClass("target")
+                                    targetClass = class
+                                elseif UnitExists("focus") and UnitGUID("focus") == death.destGUID then
+                                    local _, class = UnitClass("focus")
+                                    targetClass = class
+                                end
+                            end
+                        elseif death.isPet and death.destName then
+                            -- For pets, try to determine the owner's class by checking unit pet relationships
+                            for i = 1, 40 do
+                                local unit = IsInRaid() and ("raid" .. i) or (i <= 5 and (i == 1 and "player" or ("party" .. (i-1))) or nil)
+                                if unit and UnitExists(unit) then
+                                    local petUnit = unit .. "pet"
+                                    if UnitExists(petUnit) and UnitName(petUnit) == death.destName then
+                                        local _, class = UnitClass(unit)
+                                        targetClass = class
+                                        break
+                                    end
+                                end
+                            end
+                            
+                            -- Also check player's own pet
+                            if not targetClass and UnitExists("pet") and UnitName("pet") == death.destName then
+                                local _, class = UnitClass("player")
+                                targetClass = class
+                            end
+                        end
+                        
+                        -- Fall back to current player's class if we couldn't determine the target's class
+                        classOrZone = targetClass or addon.EntityBlacklist:GetPlayerClass()
+                        
+                        if targetClass then
+                            if death.isPlayer then
+                                message = string.format("Blacklisted '%s' for %s class", entityName, targetClass)
+                            elseif death.isPet then
+                                message = string.format("Blacklisted '%s' for %s class (pet owner)", entityName, targetClass)
+                            else
+                                message = string.format("Blacklisted '%s' for %s class", entityName, targetClass)
+                            end
+                        else
+                            message = string.format("Blacklisted '%s' for %s (your class - entity class unknown)", entityName, classOrZone or "your class")
+                        end
                     elseif IsAltKeyDown() then
-                        -- Encounter-specific blacklist (use session location, not current zone)
-                        blacklistType = "encounter"
-                        local sessionZone = self.sessionData and self.sessionData.location
+                        -- Zone-specific blacklist (use session location)
+                        blacklistType = "zone"
+                        local sessionZone = sessionData and sessionData.location
                         
                         -- Enhanced zone detection if session zone is missing/unknown
                         if not sessionZone or sessionZone == "Unknown" or sessionZone == "" then
                             -- Try multiple zone detection methods
                             sessionZone = GetRealZoneText() or GetZoneText() or GetMinimapZoneText() or "Unknown Zone"
-                            print("MyUI2 Debug: Session zone was '" .. (self.sessionData.location or "nil") .. "', using current zone:", sessionZone)
                         end
                         
                         classOrZone = sessionZone
-                        encounter = "Unknown Encounter" -- We could enhance this with boss detection later
-                        message = string.format("Blacklisted '%s' for encounter in %s", entityName, sessionZone)
-                        
-                        -- Debug output
-                        print("MyUI2 Debug: Blacklisting for zone '" .. sessionZone .. "', encounter '" .. encounter .. "'")
+                        message = string.format("Blacklisted '%s' for zone %s", entityName, sessionZone)
                     else
                         -- Default to global if no modifier
                         blacklistType = "global"
@@ -984,11 +1008,11 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
                     end
 
                     -- Add to blacklist
-                    local success = addon.EntityBlacklist:AddToBlacklist(entityName, blacklistType, classOrZone, encounter)
+                    local success = addon.EntityBlacklist:AddToBlacklist(entityName, blacklistType, classOrZone)
                     
                     if success then
                         print("|cff00ff00MyUI2:|r " .. message)
-                        print("|cff888888MyUI2:|r Close and reopen chart to see changes")
+                        print("|cff888888MyUI2:|r Toggle the Blacklist filter to see changes")
                     else
                         print("|cffff0000MyUI2:|r Failed to blacklist '" .. entityName .. "'")
                     end
@@ -1003,17 +1027,6 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
     end
 
     -- Summary
-    if addon.DEBUG then
-        local drawnCount = 0
-        for i, death in ipairs(deaths) do
-            if death.elapsed and death.elapsed >= 0 and death.elapsed <= duration then
-                drawnCount = drawnCount + 1
-            end
-        end
-        print("Summary: Drew", drawnCount, "out of", #deaths, "death markers")
-        print("All death times calculated by unified TimestampManager")
-        print("=== END DEATH MARKER DEBUG ===")
-    end
 end
 
 -- TEST: Draw test markers to verify chart functionality
@@ -1068,7 +1081,10 @@ function EnhancedSessionDetailWindow:CreateChartControls(controlsFrame)
             showDPS = true,
             showCooldowns = true,
             showPlayerDeaths = true,
-            showMinionDeaths = true
+            showMinionDeaths = true,
+            showBossDeaths = true,
+            applyBlacklist = true,      -- Apply blacklist filtering
+            showBlacklistedOnly = false -- Show only blacklisted entities (whitelist mode)
         }
     end
 
@@ -1088,7 +1104,10 @@ function EnhancedSessionDetailWindow:CreateChartFilterToggles(controlsFrame)
         { key = "showDPS", text = "DPS", color = { 1, 0.3, 0.3 } },
         { key = "showCooldowns", text = "Cooldowns", color = { 0.3, 0.3, 1 } },
         { key = "showPlayerDeaths", text = "Player Deaths", color = { 1, 0.2, 0.2 } },
-        { key = "showMinionDeaths", text = "Minion Deaths", color = { 0.8, 0.4, 0.4 } }
+        { key = "showBossDeaths", text = "Boss Deaths", color = { 1, 1, 0.2 } },
+        { key = "showMinionDeaths", text = "Minion Deaths", color = { 0.8, 0.4, 0.4 } },
+        { key = "applyBlacklist", text = "Blacklist", color = { 0.4, 0.4, 0.4 } },
+        { key = "showBlacklistedOnly", text = "Entity Track", color = { 0.9, 0.9, 0.9 } }
     }
 
     local xOffset = 10
@@ -1119,11 +1138,13 @@ function EnhancedSessionDetailWindow:CreateChartFilterToggles(controlsFrame)
         label:SetText(toggle.text)
         label:SetTextColor(toggle.color[1], toggle.color[2], toggle.color[3], 1)
 
-        -- Click handler
+        -- Click handler with immediate redraw
         checkbox:SetScript("OnClick", function()
             self.chartFilters[toggle.key] = not self.chartFilters[toggle.key]
             checkMark:SetShown(self.chartFilters[toggle.key])
-            -- Note: Redraw will be triggered by separate redraw button
+            
+            -- Immediately redraw the chart
+            self:RedrawChart()
         end)
 
         -- Hover effects
@@ -1140,32 +1161,7 @@ function EnhancedSessionDetailWindow:CreateChartFilterToggles(controlsFrame)
         xOffset = xOffset + 25 + labelWidth + 15
     end
 
-    -- Add redraw button
-    local redrawButton = CreateFrame("Button", nil, toggleContainer)
-    redrawButton:SetSize(80, 25)
-    redrawButton:SetPoint("RIGHT", toggleContainer, "RIGHT", -10, 0)
-
-    local redrawBg = redrawButton:CreateTexture(nil, "BACKGROUND")
-    redrawBg:SetAllPoints(redrawButton)
-    redrawBg:SetColorTexture(0.4, 0.4, 0.4, 0.8)
-
-    local redrawText = redrawButton:CreateFontString(nil, "OVERLAY")
-    redrawText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-    redrawText:SetPoint("CENTER", redrawButton, "CENTER", 0, 0)
-    redrawText:SetText("Redraw")
-    redrawText:SetTextColor(1, 1, 1, 1)
-
-    redrawButton:SetScript("OnClick", function()
-        self:RedrawChart()
-    end)
-
-    redrawButton:SetScript("OnEnter", function()
-        redrawBg:SetColorTexture(0.5, 0.5, 0.5, 0.8)
-    end)
-
-    redrawButton:SetScript("OnLeave", function()
-        redrawBg:SetColorTexture(0.4, 0.4, 0.4, 0.8)
-    end)
+    -- Redraw button removed - charts now update automatically when filters change
 end
 
 -- Redraw chart with current filter settings
@@ -1273,13 +1269,24 @@ end
 
 -- Create blacklist tab
 function EnhancedSessionDetailWindow:CreateBlacklistTab()
+    -- Clear any existing content first
+    if self.frame.currentContent then
+        local children = {self.frame.contentArea:GetChildren()}
+        for _, child in ipairs(children) do
+            child:Hide()
+            child:ClearAllPoints()
+            child:SetParent(nil)
+        end
+        self.frame.currentContent = nil
+    end
+
     local content = CreateFrame("Frame", nil, self.frame.contentArea)
     content:SetAllPoints(self.frame.contentArea)
 
     local title = content:CreateFontString(nil, "OVERLAY")
     title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
     title:SetPoint("TOP", content, "TOP", 0, -20)
-    title:SetText("Entity Blacklists")
+    title:SetText("Entity Blacklists (Tree View)")
 
     -- Check if EntityBlacklist is available
     if not addon.EntityBlacklist or not EntityBlacklistDB then
@@ -1294,7 +1301,7 @@ function EnhancedSessionDetailWindow:CreateBlacklistTab()
         return
     end
 
-    -- Create scrollable blacklist view
+    -- Create scrollable tree view
     local scrollFrame = CreateFrame("ScrollFrame", nil, content, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", content, "TOPLEFT", 10, -50)
     scrollFrame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -30, 50)
@@ -1303,155 +1310,630 @@ function EnhancedSessionDetailWindow:CreateBlacklistTab()
     scrollContent:SetSize(scrollFrame:GetWidth() - 10, 1000)
     scrollFrame:SetScrollChild(scrollContent)
 
+    -- Track tree state and checkboxes
+    self.treeState = self.treeState or {
+        global = { expanded = true },
+        classes = {},
+        zones = {}
+    }
+    self.treeCheckboxes = {}
+
     local yOffset = -10
 
-    -- Global Blacklist Section
-    local globalTitle = scrollContent:CreateFontString(nil, "OVERLAY")
-    globalTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    globalTitle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 10, yOffset)
-    globalTitle:SetText("Global Blacklist:")
-    globalTitle:SetTextColor(1, 0.8, 0.2, 1)
-    yOffset = yOffset - 20
+    -- Helper function to create expandable tree node
+    local function CreateTreeNode(parent, text, level, nodeKey, nodeType, expandCallback)
+        local nodeFrame = CreateFrame("Frame", nil, parent)
+        nodeFrame:SetSize(700, 20)
+        nodeFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", level * 15, yOffset)
 
-    if EntityBlacklistDB.global then
-        for pattern, _ in pairs(EntityBlacklistDB.global) do
-            local entryText = scrollContent:CreateFontString(nil, "OVERLAY")
-            entryText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-            entryText:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 20, yOffset)
-            entryText:SetText("• " .. pattern)
-            entryText:SetTextColor(0.9, 0.9, 0.9, 1)
-            yOffset = yOffset - 15
+        -- Expand/collapse button
+        local expandButton = CreateFrame("Button", nil, nodeFrame)
+        expandButton:SetSize(12, 12)
+        expandButton:SetPoint("LEFT", nodeFrame, "LEFT", 0, 0)
+
+        local expandTexture = expandButton:CreateTexture(nil, "OVERLAY")
+        expandTexture:SetAllPoints(expandButton)
+        expandTexture:SetColorTexture(0.8, 0.8, 0.8, 1)
+
+        -- Node text
+        local nodeText = nodeFrame:CreateFontString(nil, "OVERLAY")
+        nodeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        nodeText:SetPoint("LEFT", expandButton, "RIGHT", 5, 0)
+        nodeText:SetText(text)
+        nodeText:SetTextColor(1, 0.9, 0.6, 1)
+
+        -- Set expand button state based on nodeType
+        local isExpanded = false
+        if nodeType == "global" then
+            isExpanded = self.treeState.global and self.treeState.global.expanded
+        elseif nodeType == "class" then
+            isExpanded = self.treeState.classes[nodeKey] and self.treeState.classes[nodeKey].expanded
+        elseif nodeType == "zone" then
+            isExpanded = self.treeState.zones[nodeKey] and self.treeState.zones[nodeKey].expanded
         end
+        
+        expandTexture:SetTexCoord(0, 1, 0, 1)
+        if isExpanded then
+            expandTexture:SetColorTexture(0.6, 0.8, 0.6, 1) -- Green for expanded
+        else
+            expandTexture:SetColorTexture(0.8, 0.6, 0.6, 1) -- Red for collapsed
+        end
+
+        expandButton:SetScript("OnClick", function()
+            expandCallback(nodeKey, not isExpanded)
+        end)
+
+        yOffset = yOffset - 22
+        return nodeFrame, isExpanded
     end
 
-    yOffset = yOffset - 10
+    -- Helper function to create checkbox entry
+    local function CreateCheckboxEntry(parent, pattern, enabled, level, toggleCallback)
+        local entryFrame = CreateFrame("Frame", nil, parent)
+        entryFrame:SetSize(700, 24)  -- Increased height for better spacing
+        entryFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", level * 15 + 5, yOffset)
 
-    -- Class-specific Blacklists
-    local classTitle = scrollContent:CreateFontString(nil, "OVERLAY")
-    classTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-    classTitle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 10, yOffset)
-    classTitle:SetText("Class-specific Blacklists:")
-    classTitle:SetTextColor(0.2, 1, 0.8, 1)
-    yOffset = yOffset - 20
+        -- Larger clickable checkbox area
+        local checkbox = CreateFrame("Button", nil, entryFrame)
+        checkbox:SetSize(20, 20)  -- Bigger hit area
+        checkbox:SetPoint("LEFT", entryFrame, "LEFT", 0, 0)
 
-    if EntityBlacklistDB.classes then
-        for className, entities in pairs(EntityBlacklistDB.classes) do
-            local classHeader = scrollContent:CreateFontString(nil, "OVERLAY")
-            classHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-            classHeader:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 20, yOffset)
-            classHeader:SetText(className .. ":")
-            classHeader:SetTextColor(0.8, 1, 0.8, 1)
-            yOffset = yOffset - 18
+        -- Visual checkbox background
+        local checkboxBg = checkbox:CreateTexture(nil, "BACKGROUND")
+        checkboxBg:SetSize(16, 16)  -- Visual size
+        checkboxBg:SetPoint("CENTER", checkbox, "CENTER", 0, 0)
+        checkboxBg:SetColorTexture(0.1, 0.1, 0.1, 0.9)
 
-            for pattern, _ in pairs(entities) do
-                local entryText = scrollContent:CreateFontString(nil, "OVERLAY")
-                entryText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-                entryText:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 30, yOffset)
-                entryText:SetText("• " .. pattern)
-                entryText:SetTextColor(0.9, 0.9, 0.9, 1)
-                yOffset = yOffset - 15
+        -- Border for checkbox
+        local checkboxBorder = checkbox:CreateTexture(nil, "BORDER")
+        checkboxBorder:SetSize(18, 18)
+        checkboxBorder:SetPoint("CENTER", checkbox, "CENTER", 0, 0)
+        checkboxBorder:SetColorTexture(0.4, 0.4, 0.4, 1)
+
+        -- Checkmark (using texture coordinates to draw an X)
+        local checkboxCheck = checkbox:CreateTexture(nil, "OVERLAY")
+        checkboxCheck:SetSize(10, 10)
+        checkboxCheck:SetPoint("CENTER", checkbox, "CENTER", 0, 0)
+        checkboxCheck:SetColorTexture(0.2, 0.8, 0.2, 1)
+        checkboxCheck:SetShown(enabled)
+        
+        -- Create checkmark lines using FontString with special characters
+        local checkText = checkbox:CreateFontString(nil, "OVERLAY")  -- Changed from ARTWORK to OVERLAY
+        checkText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        checkText:SetPoint("CENTER", checkbox, "CENTER", 0, 1)
+        checkText:SetText("✓")  -- Try checkmark character
+        checkText:SetTextColor(0.2, 0.8, 0.2, 1)
+        checkText:SetShown(enabled)
+        checkText:SetDrawLayer("OVERLAY", 10)  -- Force it to top layer
+
+        -- Entry text
+        local entryText = entryFrame:CreateFontString(nil, "OVERLAY")
+        entryText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")  -- Slightly larger font
+        entryText:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
+        entryText:SetText(pattern)
+        entryText:SetTextColor(enabled and 0.9 or 0.5, enabled and 0.9 or 0.5, enabled and 0.9 or 0.5, 1)
+
+        -- Hover effects
+        checkbox:SetScript("OnEnter", function()
+            checkboxBorder:SetColorTexture(0.6, 0.6, 0.6, 1)
+        end)
+
+        checkbox:SetScript("OnLeave", function()
+            checkboxBorder:SetColorTexture(0.4, 0.4, 0.4, 1)
+        end)
+
+        checkbox:SetScript("OnClick", function()
+            local newState = not enabled
+            enabled = newState  -- Update the local enabled state
+            checkboxCheck:SetShown(newState)
+            checkText:SetShown(newState)
+            entryText:SetTextColor(newState and 0.9 or 0.5, newState and 0.9 or 0.5, newState and 0.9 or 0.5, 1)
+            toggleCallback(newState)
+        end)
+
+        -- Store reference for later updates
+        table.insert(self.treeCheckboxes, {
+            checkbox = checkbox,
+            checkmark = checkboxCheck,
+            checkText = checkText,
+            text = entryText,
+            pattern = pattern
+        })
+
+        yOffset = yOffset - 26  -- Increased spacing
+        return entryFrame
+    end
+
+    -- Function to rebuild the tree
+    local function RebuildTree()
+        -- Clear existing elements more thoroughly
+        local children = {scrollContent:GetChildren()}
+        for _, child in ipairs(children) do
+            child:Hide()
+            child:ClearAllPoints()
+            child:SetParent(nil)
+        end
+        -- Clear any stored references
+        self.treeCheckboxes = {}
+        yOffset = -10
+
+        -- Global Blacklist Section
+        local globalExpanded
+        local function toggleGlobal(key, expanded)
+            self.treeState.global.expanded = expanded
+            RebuildTree()
+        end
+        _, globalExpanded = CreateTreeNode(scrollContent, "Global Blacklist", 0, "global", "global", toggleGlobal)
+
+        if globalExpanded and EntityBlacklistDB.global then
+            for pattern, enabled in pairs(EntityBlacklistDB.global) do
+                CreateCheckboxEntry(scrollContent, pattern, enabled, 1, function(newState)
+                    EntityBlacklistDB.global[pattern] = newState
+                end)
             end
-            yOffset = yOffset - 5
         end
-    end
 
-    -- Encounter-specific Blacklists
-    if EntityBlacklistDB.encounters then
-        local encounterTitle = scrollContent:CreateFontString(nil, "OVERLAY")
-        encounterTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
-        encounterTitle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 10, yOffset)
-        encounterTitle:SetText("Encounter-specific Blacklists:")
-        encounterTitle:SetTextColor(1, 0.2, 0.8, 1)
-        yOffset = yOffset - 20
-
-        for zoneName, encounters in pairs(EntityBlacklistDB.encounters) do
-            local zoneHeader = scrollContent:CreateFontString(nil, "OVERLAY")
-            zoneHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-            zoneHeader:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 20, yOffset)
-            zoneHeader:SetText(zoneName .. ":")
-            zoneHeader:SetTextColor(1, 0.8, 0.8, 1)
-            yOffset = yOffset - 18
-
-            for bossName, entities in pairs(encounters) do
-                local bossHeader = scrollContent:CreateFontString(nil, "OVERLAY")
-                bossHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-                bossHeader:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 30, yOffset)
-                bossHeader:SetText(bossName .. ":")
-                bossHeader:SetTextColor(0.9, 0.7, 0.9, 1)
-                yOffset = yOffset - 16
-
-                for pattern, _ in pairs(entities) do
-                    local entryText = scrollContent:CreateFontString(nil, "OVERLAY")
-                    entryText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
-                    entryText:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 40, yOffset)
-                    entryText:SetText("• " .. pattern)
-                    entryText:SetTextColor(0.9, 0.9, 0.9, 1)
-                    yOffset = yOffset - 15
+        -- Class-specific Blacklists
+        if EntityBlacklistDB.classes then
+            for className, entities in pairs(EntityBlacklistDB.classes) do
+                if not self.treeState.classes[className] then
+                    self.treeState.classes[className] = { expanded = false }
                 end
-                yOffset = yOffset - 5
+
+                local classExpanded
+                local function toggleClass(key, expanded)
+                    self.treeState.classes[className].expanded = expanded
+                    RebuildTree()
+                end
+                _, classExpanded = CreateTreeNode(scrollContent, "Class: " .. className, 0, className, "class", toggleClass)
+
+                if classExpanded then
+                    for pattern, enabled in pairs(entities) do
+                        CreateCheckboxEntry(scrollContent, pattern, enabled, 1, function(newState)
+                            EntityBlacklistDB.classes[className][pattern] = newState
+                        end)
+                    end
+                end
             end
-            yOffset = yOffset - 5
         end
+
+        -- Zone-specific Blacklists  
+        if EntityBlacklistDB.zones then
+            for zoneName, entities in pairs(EntityBlacklistDB.zones) do
+                if not self.treeState.zones[zoneName] then
+                    self.treeState.zones[zoneName] = { expanded = false }
+                end
+
+                local zoneExpanded
+                local function toggleZone(key, expanded)
+                    self.treeState.zones[zoneName].expanded = expanded
+                    RebuildTree()
+                end
+                _, zoneExpanded = CreateTreeNode(scrollContent, "Zone: " .. zoneName, 0, zoneName, "zone", toggleZone)
+
+                if zoneExpanded then
+                    for pattern, enabled in pairs(entities) do
+                        CreateCheckboxEntry(scrollContent, pattern, enabled, 1, function(newState)
+                            EntityBlacklistDB.zones[zoneName][pattern] = newState
+                        end)
+                    end
+                end
+            end
+        end
+
+        -- Update scroll content height
+        scrollContent:SetHeight(math.abs(yOffset) + 50)
     end
 
-    -- Add import and share buttons
-    local importButton = CreateFrame("Button", nil, content)
-    importButton:SetSize(120, 30)
-    importButton:SetPoint("BOTTOM", content, "BOTTOM", -130, 15)
+    -- Initial tree build
+    RebuildTree()
 
-    local importButtonBg = importButton:CreateTexture(nil, "BACKGROUND")
-    importButtonBg:SetAllPoints(importButton)
-    importButtonBg:SetColorTexture(0.2, 0.2, 0.6, 0.8)
+    -- Add bulk operation buttons
+    local buttonContainer = CreateFrame("Frame", nil, content)
+    buttonContainer:SetSize(760, 60)
+    buttonContainer:SetPoint("BOTTOM", content, "BOTTOM", 0, 5)
 
-    local importButtonText = importButton:CreateFontString(nil, "OVERLAY")
-    importButtonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    importButtonText:SetPoint("CENTER", importButton, "CENTER", 0, 0)
-    importButtonText:SetText("Import Blacklist")
-    importButtonText:SetTextColor(1, 1, 1, 1)
+    -- Helper function to create buttons
+    local function CreateActionButton(parent, text, x, y, width, color, clickHandler)
+        local button = CreateFrame("Button", nil, parent)
+        button:SetSize(width, 28)
+        button:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", x, y)
 
-    importButton:SetScript("OnClick", function()
-        self:ShowBlacklistImportWindow()
+        local bg = button:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints(button)
+        bg:SetColorTexture(color[1], color[2], color[3], 0.8)
+
+        local buttonText = button:CreateFontString(nil, "OVERLAY")
+        buttonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        buttonText:SetPoint("CENTER", button, "CENTER", 0, 0)
+        buttonText:SetText(text)
+        buttonText:SetTextColor(1, 1, 1, 1)
+
+        button:SetScript("OnClick", clickHandler)
+
+        button:SetScript("OnEnter", function()
+            bg:SetColorTexture(color[1] + 0.1, color[2] + 0.1, color[3] + 0.1, 0.9)
+        end)
+
+        button:SetScript("OnLeave", function()
+            bg:SetColorTexture(color[1], color[2], color[3], 0.8)
+        end)
+
+        return button
+    end
+
+    -- Row 1: Selection controls
+    CreateActionButton(buttonContainer, "Select All", 5, 32, 80, {0.2, 0.6, 0.2}, function()
+        self:SelectAllBlacklistEntries()
     end)
 
-    importButton:SetScript("OnEnter", function()
-        importButtonBg:SetColorTexture(0.3, 0.3, 0.7, 0.8)
+    CreateActionButton(buttonContainer, "Deselect All", 90, 32, 80, {0.6, 0.6, 0.2}, function()
+        self:DeselectAllBlacklistEntries()
     end)
 
-    importButton:SetScript("OnLeave", function()
-        importButtonBg:SetColorTexture(0.2, 0.2, 0.6, 0.8)
+    CreateActionButton(buttonContainer, "Remove Selected", 175, 32, 100, {0.8, 0.3, 0.2}, function()
+        self:ShowRemoveConfirmation()
+    end)
+    
+    CreateActionButton(buttonContainer, "Cleanup Empty", 275, 32, 95, {0.6, 0.4, 0.8}, function()
+        self:CleanupEmptyNodes()
     end)
 
-    local shareButton = CreateFrame("Button", nil, content)
-    shareButton:SetSize(120, 30)
-    shareButton:SetPoint("BOTTOM", content, "BOTTOM", 10, 15)
-
-    local shareButtonBg = shareButton:CreateTexture(nil, "BACKGROUND")
-    shareButtonBg:SetAllPoints(shareButton)
-    shareButtonBg:SetColorTexture(0.2, 0.6, 0.2, 0.8)
-
-    local shareButtonText = shareButton:CreateFontString(nil, "OVERLAY")
-    shareButtonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
-    shareButtonText:SetPoint("CENTER", shareButton, "CENTER", 0, 0)
-    shareButtonText:SetText("Share Blacklist")
-    shareButtonText:SetTextColor(1, 1, 1, 1)
-
-    shareButton:SetScript("OnClick", function()
+    -- Row 2: Import/Export/Reset
+    CreateActionButton(buttonContainer, "Share Selected", 5, 2, 100, {0.2, 0.6, 0.2}, function()
         self:ShowBlacklistShareWindow()
     end)
 
-    shareButton:SetScript("OnEnter", function()
-        shareButtonBg:SetColorTexture(0.3, 0.7, 0.3, 0.8)
+    CreateActionButton(buttonContainer, "Import", 110, 2, 70, {0.2, 0.2, 0.6}, function()
+        self:ShowBlacklistImportWindow()
     end)
 
-    shareButton:SetScript("OnLeave", function()
-        shareButtonBg:SetColorTexture(0.2, 0.6, 0.2, 0.8)
+    CreateActionButton(buttonContainer, "Reset", 185, 2, 70, {0.6, 0.2, 0.6}, function()
+        self:ShowResetConfirmation()
     end)
-
-    -- Update scroll content height
-    scrollContent:SetHeight(math.abs(yOffset) + 50)
 
     content:Show()
     self.frame.currentContent = content
+end
+
+-- Bulk operation functions for blacklist management
+function EnhancedSessionDetailWindow:SelectAllBlacklistEntries()
+    -- Select all global entries
+    if EntityBlacklistDB.global then
+        for pattern, _ in pairs(EntityBlacklistDB.global) do
+            EntityBlacklistDB.global[pattern] = true
+        end
+    end
+    
+    -- Select all class entries
+    if EntityBlacklistDB.classes then
+        for className, entities in pairs(EntityBlacklistDB.classes) do
+            for pattern, _ in pairs(entities) do
+                EntityBlacklistDB.classes[className][pattern] = true
+            end
+        end
+    end
+    
+    -- Select all zone entries
+    if EntityBlacklistDB.zones then
+        for zoneName, entities in pairs(EntityBlacklistDB.zones) do
+            for pattern, _ in pairs(entities) do
+                EntityBlacklistDB.zones[zoneName][pattern] = true
+            end
+        end
+    end
+    
+    -- Expand all tree nodes to show what was selected
+    self:ExpandAllTreeNodes()
+    
+    -- Rebuild tree to reflect changes
+    self:CreateBlacklistTab()
+    print("MyUI2: All blacklist entries selected and tree expanded")
+end
+
+function EnhancedSessionDetailWindow:DeselectAllBlacklistEntries()
+    -- Deselect all global entries
+    if EntityBlacklistDB.global then
+        for pattern, _ in pairs(EntityBlacklistDB.global) do
+            EntityBlacklistDB.global[pattern] = false
+        end
+    end
+    
+    -- Deselect all class entries
+    if EntityBlacklistDB.classes then
+        for className, entities in pairs(EntityBlacklistDB.classes) do
+            for pattern, _ in pairs(entities) do
+                EntityBlacklistDB.classes[className][pattern] = false
+            end
+        end
+    end
+    
+    -- Deselect all zone entries
+    if EntityBlacklistDB.zones then
+        for zoneName, entities in pairs(EntityBlacklistDB.zones) do
+            for pattern, _ in pairs(entities) do
+                EntityBlacklistDB.zones[zoneName][pattern] = false
+            end
+        end
+    end
+    
+    -- Rebuild tree to reflect changes
+    self:CreateBlacklistTab()
+    print("MyUI2: All blacklist entries deselected")
+end
+
+function EnhancedSessionDetailWindow:ShowRemoveConfirmation()
+    -- Count selected entries
+    local selectedCount = 0
+    
+    if EntityBlacklistDB.global then
+        for _, enabled in pairs(EntityBlacklistDB.global) do
+            if enabled then selectedCount = selectedCount + 1 end
+        end
+    end
+    
+    if EntityBlacklistDB.classes then
+        for _, entities in pairs(EntityBlacklistDB.classes) do
+            for _, enabled in pairs(entities) do
+                if enabled then selectedCount = selectedCount + 1 end
+            end
+        end
+    end
+    
+    if EntityBlacklistDB.zones then
+        for _, entities in pairs(EntityBlacklistDB.zones) do
+            for _, enabled in pairs(entities) do
+                if enabled then selectedCount = selectedCount + 1 end
+            end
+        end
+    end
+    
+    if selectedCount == 0 then
+        print("MyUI2: No entries selected for removal")
+        return
+    end
+    
+    self:ShowConfirmationModal(
+        "Remove Selected Entries",
+        string.format("Are you sure you want to remove %d selected blacklist entries?\n\nThis action cannot be undone.", selectedCount),
+        function() self:RemoveSelectedEntries() end
+    )
+end
+
+function EnhancedSessionDetailWindow:RemoveSelectedEntries()
+    local removedCount = 0
+    
+    -- Remove selected global entries
+    if EntityBlacklistDB.global then
+        for pattern, enabled in pairs(EntityBlacklistDB.global) do
+            if enabled then
+                EntityBlacklistDB.global[pattern] = nil
+                removedCount = removedCount + 1
+            end
+        end
+    end
+    
+    -- Remove selected class entries
+    if EntityBlacklistDB.classes then
+        for className, entities in pairs(EntityBlacklistDB.classes) do
+            for pattern, enabled in pairs(entities) do
+                if enabled then
+                    EntityBlacklistDB.classes[className][pattern] = nil
+                    removedCount = removedCount + 1
+                end
+            end
+        end
+    end
+    
+    -- Remove selected zone entries
+    if EntityBlacklistDB.zones then
+        for zoneName, entities in pairs(EntityBlacklistDB.zones) do
+            for pattern, enabled in pairs(entities) do
+                if enabled then
+                    EntityBlacklistDB.zones[zoneName][pattern] = nil
+                    removedCount = removedCount + 1
+                end
+            end
+            -- Clean up empty zone entries
+            if next(EntityBlacklistDB.zones[zoneName]) == nil then
+                EntityBlacklistDB.zones[zoneName] = nil
+            end
+        end
+    end
+    
+    -- Automatically clean up empty parent nodes
+    local cleanedNodes = self:CleanupEmptyBlacklistNodes()
+    
+    -- Rebuild tree to reflect changes
+    self:CreateBlacklistTab()
+    
+    if cleanedNodes > 0 then
+        print(string.format("MyUI2: Removed %d blacklist entries and cleaned up %d empty parent node(s)", removedCount, cleanedNodes))
+    else
+        print(string.format("MyUI2: Removed %d blacklist entries", removedCount))
+    end
+end
+
+-- Utility function to clean up empty parent nodes
+function EnhancedSessionDetailWindow:CleanupEmptyBlacklistNodes()
+    local cleanedNodes = 0
+    
+    -- Clean up empty zone nodes
+    if EntityBlacklistDB.zones then
+        for zoneName, entities in pairs(EntityBlacklistDB.zones) do
+            if next(entities) == nil then
+                EntityBlacklistDB.zones[zoneName] = nil
+                cleanedNodes = cleanedNodes + 1
+            end
+        end
+    end
+    
+    -- Clean up empty class nodes
+    if EntityBlacklistDB.classes then
+        for className, entities in pairs(EntityBlacklistDB.classes) do
+            if next(entities) == nil then
+                EntityBlacklistDB.classes[className] = nil
+                cleanedNodes = cleanedNodes + 1
+            end
+        end
+    end
+    
+    return cleanedNodes
+end
+
+-- Manual cleanup function (called by button)
+function EnhancedSessionDetailWindow:CleanupEmptyNodes()
+    local cleanedNodes = self:CleanupEmptyBlacklistNodes()
+    
+    if cleanedNodes > 0 then
+        self:CreateBlacklistTab()
+        print(string.format("MyUI2: Cleaned up %d empty parent node(s)", cleanedNodes))
+    else
+        print("MyUI2: No empty parent nodes found to clean up")
+    end
+end
+
+-- Expand all tree nodes to show content
+function EnhancedSessionDetailWindow:ExpandAllTreeNodes()
+    -- Ensure treeState exists
+    if not self.treeState then
+        self.treeState = {
+            global = { expanded = true },
+            classes = {},
+            zones = {}
+        }
+    end
+    
+    -- Expand global node
+    self.treeState.global.expanded = true
+    
+    -- Expand all class nodes
+    if EntityBlacklistDB.classes then
+        for className, _ in pairs(EntityBlacklistDB.classes) do
+            if not self.treeState.classes[className] then
+                self.treeState.classes[className] = { expanded = true }
+            else
+                self.treeState.classes[className].expanded = true
+            end
+        end
+    end
+    
+    -- Expand all zone nodes
+    if EntityBlacklistDB.zones then
+        for zoneName, _ in pairs(EntityBlacklistDB.zones) do
+            if not self.treeState.zones[zoneName] then
+                self.treeState.zones[zoneName] = { expanded = true }
+            else
+                self.treeState.zones[zoneName].expanded = true
+            end
+        end
+    end
+end
+
+function EnhancedSessionDetailWindow:ShowResetConfirmation()
+    self:ShowConfirmationModal(
+        "Reset All Blacklists",
+        "Are you sure you want to reset ALL blacklist entries to their default state?\n\nThis will:\n• Remove all custom entries\n• Reset all entries to enabled\n• Cannot be undone",
+        function() self:ResetAllBlacklists() end
+    )
+end
+
+function EnhancedSessionDetailWindow:ResetAllBlacklists()
+    -- Reset EntityBlacklist to defaults
+    if addon.EntityBlacklist and addon.EntityBlacklist.Initialize then
+        -- Clear current data
+        EntityBlacklistDB = {}
+        -- Reinitialize with defaults
+        addon.EntityBlacklist:Initialize()
+        print("MyUI2: All blacklists reset to defaults")
+    else
+        print("MyUI2: Could not reset blacklists - EntityBlacklist system not available")
+    end
+    
+    -- Rebuild tree to reflect changes
+    self:CreateBlacklistTab()
+end
+
+function EnhancedSessionDetailWindow:ShowConfirmationModal(title, message, confirmCallback)
+    if self.confirmationModal then
+        self.confirmationModal:Hide()
+        self.confirmationModal = nil
+    end
+
+    local modal = CreateFrame("Frame", nil, UIParent)
+    modal:SetSize(400, 250)
+    modal:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    modal:SetFrameStrata("FULLSCREEN_DIALOG")
+
+    -- Background
+    local bg = modal:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(modal)
+    bg:SetColorTexture(0, 0, 0, 0.9)
+
+    local border = modal:CreateTexture(nil, "BORDER")
+    border:SetAllPoints(modal)
+    border:SetColorTexture(0.6, 0.6, 0.6, 1)
+    bg:SetPoint("TOPLEFT", border, "TOPLEFT", 2, -2)
+    bg:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", -2, 2)
+
+    -- Title
+    local titleText = modal:CreateFontString(nil, "OVERLAY")
+    titleText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    titleText:SetPoint("TOP", modal, "TOP", 0, -20)
+    titleText:SetText(title)
+    titleText:SetTextColor(1, 0.8, 0.2, 1)
+
+    -- Message
+    local messageText = modal:CreateFontString(nil, "OVERLAY")
+    messageText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    messageText:SetPoint("TOP", modal, "TOP", 0, -60)
+    messageText:SetWidth(360)
+    messageText:SetText(message)
+    messageText:SetTextColor(1, 1, 1, 1)
+
+    -- Confirm button
+    local confirmButton = CreateFrame("Button", nil, modal)
+    confirmButton:SetSize(100, 35)
+    confirmButton:SetPoint("BOTTOM", modal, "BOTTOM", -60, 20)
+
+    local confirmBg = confirmButton:CreateTexture(nil, "BACKGROUND")
+    confirmBg:SetAllPoints(confirmButton)
+    confirmBg:SetColorTexture(0.8, 0.2, 0.2, 1)
+
+    local confirmText = confirmButton:CreateFontString(nil, "OVERLAY")
+    confirmText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    confirmText:SetPoint("CENTER", confirmButton, "CENTER", 0, 0)
+    confirmText:SetText("CONFIRM")
+    confirmText:SetTextColor(1, 1, 1, 1)
+
+    confirmButton:SetScript("OnClick", function()
+        modal:Hide()
+        self.confirmationModal = nil
+        confirmCallback()
+    end)
+
+    -- Cancel button
+    local cancelButton = CreateFrame("Button", nil, modal)
+    cancelButton:SetSize(100, 35)
+    cancelButton:SetPoint("BOTTOM", modal, "BOTTOM", 60, 20)
+
+    local cancelBg = cancelButton:CreateTexture(nil, "BACKGROUND")
+    cancelBg:SetAllPoints(cancelButton)
+    cancelBg:SetColorTexture(0.4, 0.4, 0.4, 1)
+
+    local cancelText = cancelButton:CreateFontString(nil, "OVERLAY")
+    cancelText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    cancelText:SetPoint("CENTER", cancelButton, "CENTER", 0, 0)
+    cancelText:SetText("CANCEL")
+    cancelText:SetTextColor(1, 1, 1, 1)
+
+    cancelButton:SetScript("OnClick", function()
+        modal:Hide()
+        self.confirmationModal = nil
+    end)
+
+    modal:Show()
+    self.confirmationModal = modal
 end
 
 -- Show blacklist sharing window with base64 encoded data
@@ -1485,26 +1967,76 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
     title:SetText("Share Blacklist Configuration")
     title:SetTextColor(1, 1, 1, 1)
 
-    -- Serialize and encode blacklist data
+    -- Serialize and encode blacklist data (only enabled entries)
     local blacklistData = {
-        global = EntityBlacklistDB and EntityBlacklistDB.global or {},
-        classes = EntityBlacklistDB and EntityBlacklistDB.classes or {},
-        encounters = EntityBlacklistDB and EntityBlacklistDB.encounters or {}
+        global = {},
+        classes = {},
+        zones = {}
     }
+    
+    -- Only include enabled global entries
+    if EntityBlacklistDB and EntityBlacklistDB.global then
+        for pattern, enabled in pairs(EntityBlacklistDB.global) do
+            if enabled then
+                blacklistData.global[pattern] = true
+            end
+        end
+    end
+    
+    -- Only include enabled class entries
+    if EntityBlacklistDB and EntityBlacklistDB.classes then
+        for className, entities in pairs(EntityBlacklistDB.classes) do
+            blacklistData.classes[className] = {}
+            for pattern, enabled in pairs(entities) do
+                if enabled then
+                    blacklistData.classes[className][pattern] = true
+                end
+            end
+            -- Remove empty class entries
+            if next(blacklistData.classes[className]) == nil then
+                blacklistData.classes[className] = nil
+            end
+        end
+    end
+    
+    -- Only include enabled zone entries
+    if EntityBlacklistDB and EntityBlacklistDB.zones then
+        for zoneName, entities in pairs(EntityBlacklistDB.zones) do
+            blacklistData.zones[zoneName] = {}
+            for pattern, enabled in pairs(entities) do
+                if enabled then
+                    blacklistData.zones[zoneName][pattern] = true
+                end
+            end
+            -- Remove empty zone entries
+            if next(blacklistData.zones[zoneName]) == nil then
+                blacklistData.zones[zoneName] = nil
+            end
+        end
+    end
 
-    -- Simple serialization to string
+    -- Simple serialization to Lua table format
     local function serializeTable(t, depth)
         depth = depth or 0
         if depth > 10 then return "{}" end
         
         local parts = {}
         for k, v in pairs(t) do
-            local key = type(k) == "string" and string.format('"%s"', k) or tostring(k)
+            local key
+            if type(k) == "string" then
+                -- Escape special characters in key
+                key = '["' .. k:gsub('\\', '\\\\'):gsub('"', '\\"') .. '"]'
+            else
+                key = "[" .. tostring(k) .. "]"
+            end
+            
             local value
             if type(v) == "table" then
                 value = serializeTable(v, depth + 1)
             elseif type(v) == "string" then
-                value = string.format('"%s"', v)
+                value = '"' .. v:gsub('\\', '\\\\'):gsub('"', '\\"') .. '"'
+            elseif type(v) == "boolean" then
+                value = v and "true" or "false"
             else
                 value = tostring(v)
             end
@@ -1783,32 +2315,177 @@ function EnhancedSessionDetailWindow:ImportBlacklistData(encodedData)
     -- Base64 decode (simple implementation)
     local function base64Decode(data)
         -- Basic validation
-        if not data or #data == 0 then return "" end
+        if not data or #data == 0 then 
+            print("MyUI2: Empty base64 data")
+            return "" 
+        end
         
         -- Remove whitespace
         data = data:gsub("%s", "")
         
-        -- For now, return a basic message since proper base64 decoding is complex
-        return "decoded_placeholder_data"
+        -- Validate base64 characters
+        if not data:match("^[A-Za-z0-9+/=]*$") then
+            print("MyUI2: Invalid base64 characters found")
+            return ""
+        end
+        
+        local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        local charMap = {}
+        for i = 1, #chars do
+            charMap[string.sub(chars, i, i)] = i - 1
+        end
+        
+        local result = ""
+        
+        for i = 1, #data, 4 do
+            local a = charMap[string.sub(data, i, i)] or 0
+            local b = charMap[string.sub(data, i + 1, i + 1)] or 0
+            local c = charMap[string.sub(data, i + 2, i + 2)] or 0
+            local d = charMap[string.sub(data, i + 3, i + 3)] or 0
+            
+            local combined = bit.bor(bit.lshift(a, 18), bit.lshift(b, 12), bit.lshift(c, 6), d)
+            
+            result = result .. string.char(bit.rshift(combined, 16))
+            if string.sub(data, i + 2, i + 2) ~= "=" then
+                result = result .. string.char(bit.band(bit.rshift(combined, 8), 0xFF))
+            end
+            if string.sub(data, i + 3, i + 3) ~= "=" then
+                result = result .. string.char(bit.band(combined, 0xFF))
+            end
+        end
+        
+        return result
     end
 
-    -- Simple import for now - in a full implementation you'd:
-    -- 1. Decode the base64 data
-    -- 2. Parse the serialized table
-    -- 3. Merge with existing EntityBlacklistDB
-    -- 4. Update the UI
+    -- Simple deserialization from string (matching our serialize format)
+    local function deserializeTable(str)
+        -- Basic safety check
+        if not str or type(str) ~= "string" then return {} end
+        
+        -- Trim leading/trailing whitespace but preserve spaces within strings
+        str = str:gsub("^%s+", ""):gsub("%s+$", "")
+        if not str:match("^%{.*%}$") then
+            print("MyUI2: Invalid blacklist format - must be a table structure")
+            return nil
+        end
+        
+        -- Try to parse using loadstring with environment protection
+        local func, err = loadstring("return " .. str)
+        if not func then
+            print("MyUI2: Failed to parse blacklist data - syntax error:", err)
+            return nil
+        end
+        
+        -- Execute in protected environment
+        local success, result = pcall(func)
+        if success and type(result) == "table" then
+            return result
+        else
+            print("MyUI2: Failed to execute blacklist data - invalid result type")
+            return nil
+        end
+    end
+
+    -- Decode and parse the data
+    local decodedData = base64Decode(encodedData)
+    if addon.DEBUG then
+        print("MyUI2: Decoded data length:", #decodedData)
+        print("MyUI2: First 100 chars:", decodedData:sub(1, 100))
+    end
     
-    print("MyUI2: Import functionality is a placeholder - full implementation coming soon!")
-    print("Received data length:", #encodedData)
+    local importedBlacklist = deserializeTable(decodedData)
     
-    -- Close the import window
+    if not importedBlacklist then
+        print("MyUI2: Import failed - could not parse blacklist data")
+        print("MyUI2: Try exporting a fresh blacklist to get valid format")
+        return
+    end
+    
+    -- DEBUG: Show what we're about to import
+    print("MyUI2 DEBUG: Imported blacklist structure:")
+    if importedBlacklist.zones then
+        for zoneName, entities in pairs(importedBlacklist.zones) do
+            print("  Zone: " .. zoneName)
+            for entityName, enabled in pairs(entities) do
+                print("    - '" .. entityName .. "' = " .. tostring(enabled))
+            end
+        end
+    end
+
+    -- Merge with existing blacklist data (imported entries are enabled by default)
+    local merged = {
+        global = 0,
+        classes = 0,
+        zones = 0
+    }
+
+    -- Merge global blacklist
+    if importedBlacklist.global then
+        EntityBlacklistDB.global = EntityBlacklistDB.global or {}
+        for pattern, _ in pairs(importedBlacklist.global) do
+            if not EntityBlacklistDB.global[pattern] then
+                EntityBlacklistDB.global[pattern] = true -- Enable imported entries
+                merged.global = merged.global + 1
+            end
+        end
+    end
+
+    -- Merge class blacklists
+    if importedBlacklist.classes then
+        EntityBlacklistDB.classes = EntityBlacklistDB.classes or {}
+        for className, entities in pairs(importedBlacklist.classes) do
+            EntityBlacklistDB.classes[className] = EntityBlacklistDB.classes[className] or {}
+            for pattern, _ in pairs(entities) do
+                if not EntityBlacklistDB.classes[className][pattern] then
+                    EntityBlacklistDB.classes[className][pattern] = true -- Enable imported entries
+                    merged.classes = merged.classes + 1
+                end
+            end
+        end
+    end
+
+    -- Merge zone blacklists (new structure)
+    if importedBlacklist.zones then
+        EntityBlacklistDB.zones = EntityBlacklistDB.zones or {}
+        for zoneName, entities in pairs(importedBlacklist.zones) do
+            EntityBlacklistDB.zones[zoneName] = EntityBlacklistDB.zones[zoneName] or {}
+            for pattern, _ in pairs(entities) do
+                if not EntityBlacklistDB.zones[zoneName][pattern] then
+                    EntityBlacklistDB.zones[zoneName][pattern] = true -- Enable imported entries
+                    merged.zones = merged.zones + 1
+                end
+            end
+        end
+    end
+    
+    -- Handle legacy encounter blacklists (convert to zones for backward compatibility)
+    if importedBlacklist.encounters then
+        EntityBlacklistDB.zones = EntityBlacklistDB.zones or {}
+        for zoneName, encounters in pairs(importedBlacklist.encounters) do
+            EntityBlacklistDB.zones[zoneName] = EntityBlacklistDB.zones[zoneName] or {}
+            for bossName, entities in pairs(encounters) do
+                for pattern, _ in pairs(entities) do
+                    if not EntityBlacklistDB.zones[zoneName][pattern] then
+                        EntityBlacklistDB.zones[zoneName][pattern] = true -- Enable imported entries
+                        merged.zones = merged.zones + 1
+                    end
+                end
+            end
+        end
+        print("MyUI2: Converted legacy encounter-specific blacklists to zone-specific during import")
+    end
+
+    print(string.format("MyUI2: Imported blacklist entries - Global: %d, Classes: %d, Zones: %d", 
+        merged.global, merged.classes, merged.zones))
+
+    -- Close import window and refresh blacklist view if it's open
     if self.importWindow then
         self.importWindow:Hide()
         self.importWindow = nil
     end
-    
+
     -- Refresh the blacklist tab if it's currently showing
-    if self.currentTab == "blacklist" then
+    if self.frame and self.frame.currentContent then
         self:CreateBlacklistTab()
     end
 end

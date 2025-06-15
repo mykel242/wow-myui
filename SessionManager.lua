@@ -464,17 +464,27 @@ function SessionManager:DeleteSession(sessionId)
         if session.sessionId == sessionId then
             table.remove(sessionHistory, i)
 
-            -- Save changes per-character
+            -- Save changes per-character-spec
             if addon.db then
+                if not addon.db.sessionHistoryBySpec then
+                    addon.db.sessionHistoryBySpec = {}
+                end
+                addon.db.sessionHistoryBySpec[GetCharacterSpecKey()] = sessionHistory
+
+                -- Also save to legacy key for backwards compatibility
                 if not addon.db.sessionHistory then
                     addon.db.sessionHistory = {}
                 end
                 addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
             end
 
+            print(string.format("MyUI2: Session %s deleted and saved to character data", sessionId))
+            
+            -- Debug: Show current session count
             if addon.DEBUG then
-                print(string.format("Session %s deleted", sessionId))
+                print(string.format("MyUI2: %d sessions remaining for %s", #sessionHistory, GetCharacterSpecKey()))
             end
+            
             return true
         end
     end

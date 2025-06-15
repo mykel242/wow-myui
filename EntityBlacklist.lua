@@ -10,7 +10,7 @@ local EntityBlacklist = MyUI2.EntityBlacklist
 
 -- Default blacklist data (can be overridden by saved variables)
 local defaultBlacklists = {
-    -- Global blacklist (applies to all classes/specs)
+    -- Global blacklist (applies everywhere)
     global = {
         "totem",
         "spirit", 
@@ -45,14 +45,12 @@ local defaultBlacklists = {
         }
     },
     
-    -- Encounter-specific blacklists (by zone/boss name)
-    encounters = {
+    -- Zone-specific blacklists (by zone name only)
+    zones = {
         ["Liberation of Undermine"] = {
-            ["Mug'Zee"] = {
-                "unstable crawler mine",
-                "explosive charge",
-                "mining cart"
-            }
+            "unstable crawler mine",
+            "explosive charge",
+            "mining cart"
         }
     }
 }
@@ -62,6 +60,29 @@ EntityBlacklistDB = EntityBlacklistDB or {}
 
 -- Initialize the blacklist system
 function EntityBlacklist:Initialize()
+    -- Migrate existing encounter-specific data to zone-specific (if needed)
+    if EntityBlacklistDB.encounters then
+        print("MyUI2: Migrating encounter-specific blacklists to zone-specific...")
+        if not EntityBlacklistDB.zones then
+            EntityBlacklistDB.zones = {}
+        end
+        
+        -- Migrate encounter data to zone data
+        for zoneName, encounters in pairs(EntityBlacklistDB.encounters) do
+            EntityBlacklistDB.zones[zoneName] = EntityBlacklistDB.zones[zoneName] or {}
+            for bossName, entities in pairs(encounters) do
+                for entityName, enabled in pairs(entities) do
+                    -- Merge into zone-specific blacklist
+                    EntityBlacklistDB.zones[zoneName][entityName] = enabled
+                end
+            end
+        end
+        
+        -- Remove old encounters structure
+        EntityBlacklistDB.encounters = nil
+        print("MyUI2: Migration complete - encounter-specific blacklists moved to zone-specific")
+    end
+    
     -- Merge default blacklists with saved customizations
     if not EntityBlacklistDB.global then
         EntityBlacklistDB.global = {}
@@ -80,15 +101,12 @@ function EntityBlacklist:Initialize()
         end
     end
     
-    if not EntityBlacklistDB.encounters then
-        EntityBlacklistDB.encounters = {}
-        for zone, encounters in pairs(defaultBlacklists.encounters) do
-            EntityBlacklistDB.encounters[zone] = EntityBlacklistDB.encounters[zone] or {}
-            for boss, entities in pairs(encounters) do
-                EntityBlacklistDB.encounters[zone][boss] = EntityBlacklistDB.encounters[zone][boss] or {}
-                for _, entity in ipairs(entities) do
-                    EntityBlacklistDB.encounters[zone][boss][entity] = true
-                end
+    if not EntityBlacklistDB.zones then
+        EntityBlacklistDB.zones = {}
+        for zone, entities in pairs(defaultBlacklists.zones) do
+            EntityBlacklistDB.zones[zone] = EntityBlacklistDB.zones[zone] or {}
+            for _, entity in ipairs(entities) do
+                EntityBlacklistDB.zones[zone][entity] = true
             end
         end
     end
@@ -98,7 +116,8 @@ function EntityBlacklist:Initialize()
     
     if MyUI2 and MyUI2.DEBUG then
         print("MyUI2: EntityBlacklist initialized with " .. 
-              (EntityBlacklistDB.global and self:TableCount(EntityBlacklistDB.global) or 0) .. " global entries")
+              (EntityBlacklistDB.global and self:TableCount(EntityBlacklistDB.global) or 0) .. " global entries, " ..
+              (EntityBlacklistDB.zones and self:TableCount(EntityBlacklistDB.zones) or 0) .. " zone-specific lists")
     end
 end
 
@@ -114,32 +133,58 @@ function EntityBlacklist:TableCount(t)
 end
 
 -- Check if an entity should be blacklisted
-function EntityBlacklist:IsBlacklisted(entityName, playerClass, zone, encounter)
+function EntityBlacklist:IsBlacklisted(entityName, playerClass, zone)
     if not entityName then return false end
     
     local lowerName = string.lower(entityName or "")
     
-    -- Check global blacklist
-    for pattern, _ in pairs(EntityBlacklistDB.global or {}) do
-        if string.find(lowerName, string.lower(pattern)) then
+    -- Debug output removed for cleaner user experience
+    
+    -- Helper function for flexible pattern matching
+    local function matchesPattern(entityName, pattern)
+        local lowerName = string.lower(entityName)
+        local lowerPattern = string.lower(pattern)
+        
+        -- Try exact substring match first
+        if string.find(lowerName, lowerPattern) then
+            return true
+        end
+        
+        -- Try flexible matching for patterns with spaces - match if all words are present
+        if string.find(lowerPattern, " ") then
+            local allWordsMatch = true
+            for word in string.gmatch(lowerPattern, "%S+") do
+                if not string.find(lowerName, word) then
+                    allWordsMatch = false
+                    break
+                end
+            end
+            return allWordsMatch
+        end
+        
+        return false
+    end
+    
+    -- Check global blacklist (only if enabled)
+    for pattern, enabled in pairs(EntityBlacklistDB.global or {}) do
+        if enabled and matchesPattern(entityName, pattern) then
             return true
         end
     end
     
-    -- Check class-specific blacklist
+    -- Check class-specific blacklist (only if enabled)
     if playerClass and EntityBlacklistDB.classes and EntityBlacklistDB.classes[playerClass] then
-        for pattern, _ in pairs(EntityBlacklistDB.classes[playerClass]) do
-            if string.find(lowerName, string.lower(pattern)) then
+        for pattern, enabled in pairs(EntityBlacklistDB.classes[playerClass]) do
+            if enabled and matchesPattern(entityName, pattern) then
                 return true
             end
         end
     end
     
-    -- Check encounter-specific blacklist
-    if zone and encounter and EntityBlacklistDB.encounters and 
-       EntityBlacklistDB.encounters[zone] and EntityBlacklistDB.encounters[zone][encounter] then
-        for pattern, _ in pairs(EntityBlacklistDB.encounters[zone][encounter]) do
-            if string.find(lowerName, string.lower(pattern)) then
+    -- Check zone-specific blacklist (only if enabled)
+    if zone and EntityBlacklistDB.zones and EntityBlacklistDB.zones[zone] then
+        for pattern, enabled in pairs(EntityBlacklistDB.zones[zone]) do
+            if enabled and matchesPattern(entityName, pattern) then
                 return true
             end
         end
@@ -149,48 +194,85 @@ function EntityBlacklist:IsBlacklisted(entityName, playerClass, zone, encounter)
 end
 
 -- Add entity to blacklist
-function EntityBlacklist:AddToBlacklist(entityName, blacklistType, classOrZone, encounter)
+function EntityBlacklist:AddToBlacklist(entityName, blacklistType, classOrZone)
     if not entityName or entityName == "" then return false end
     
-    local lowerName = string.lower(entityName)
+    -- Preserve original formatting for storage and display
+    -- The IsBlacklisted function handles case-insensitive matching
     
     if blacklistType == "global" then
         EntityBlacklistDB.global = EntityBlacklistDB.global or {}
-        EntityBlacklistDB.global[lowerName] = true
+        EntityBlacklistDB.global[entityName] = true
         return true
     elseif blacklistType == "class" and classOrZone then
         EntityBlacklistDB.classes = EntityBlacklistDB.classes or {}
         EntityBlacklistDB.classes[classOrZone] = EntityBlacklistDB.classes[classOrZone] or {}
-        EntityBlacklistDB.classes[classOrZone][lowerName] = true
+        EntityBlacklistDB.classes[classOrZone][entityName] = true
         return true
-    elseif blacklistType == "encounter" and classOrZone and encounter then
-        EntityBlacklistDB.encounters = EntityBlacklistDB.encounters or {}
-        EntityBlacklistDB.encounters[classOrZone] = EntityBlacklistDB.encounters[classOrZone] or {}
-        EntityBlacklistDB.encounters[classOrZone][encounter] = EntityBlacklistDB.encounters[classOrZone][encounter] or {}
-        EntityBlacklistDB.encounters[classOrZone][encounter][lowerName] = true
+    elseif blacklistType == "zone" and classOrZone then
+        EntityBlacklistDB.zones = EntityBlacklistDB.zones or {}
+        EntityBlacklistDB.zones[classOrZone] = EntityBlacklistDB.zones[classOrZone] or {}
+        EntityBlacklistDB.zones[classOrZone][entityName] = true
         return true
     end
     
     return false
 end
 
--- Remove entity from blacklist
-function EntityBlacklist:RemoveFromBlacklist(entityName, blacklistType, classOrZone, encounter)
+-- Remove entity from blacklist (requires exact name match for removal)
+function EntityBlacklist:RemoveFromBlacklist(entityName, blacklistType, classOrZone)
     if not entityName or entityName == "" then return false end
     
-    local lowerName = string.lower(entityName)
+    -- For removal, we need to find the exact stored key
+    -- Since we now store original format, this should work with exact matches
     
     if blacklistType == "global" and EntityBlacklistDB.global then
-        EntityBlacklistDB.global[lowerName] = nil
+        EntityBlacklistDB.global[entityName] = nil
         return true
     elseif blacklistType == "class" and classOrZone and EntityBlacklistDB.classes and EntityBlacklistDB.classes[classOrZone] then
-        EntityBlacklistDB.classes[classOrZone][lowerName] = nil
+        EntityBlacklistDB.classes[classOrZone][entityName] = nil
         return true
-    elseif blacklistType == "encounter" and classOrZone and encounter and 
-           EntityBlacklistDB.encounters and EntityBlacklistDB.encounters[classOrZone] and 
-           EntityBlacklistDB.encounters[classOrZone][encounter] then
-        EntityBlacklistDB.encounters[classOrZone][encounter][lowerName] = nil
+    elseif blacklistType == "zone" and classOrZone and EntityBlacklistDB.zones and EntityBlacklistDB.zones[classOrZone] then
+        EntityBlacklistDB.zones[classOrZone][entityName] = nil
         return true
+    end
+    
+    return false
+end
+
+-- Toggle enable/disable state of blacklist entry
+function EntityBlacklist:ToggleBlacklistEntry(entityName, blacklistType, classOrZone)
+    if not entityName or entityName == "" then return false end
+    
+    local currentState = false
+    
+    if blacklistType == "global" and EntityBlacklistDB.global then
+        currentState = EntityBlacklistDB.global[entityName] or false
+        EntityBlacklistDB.global[entityName] = not currentState
+        return true
+    elseif blacklistType == "class" and classOrZone and EntityBlacklistDB.classes and EntityBlacklistDB.classes[classOrZone] then
+        currentState = EntityBlacklistDB.classes[classOrZone][entityName] or false
+        EntityBlacklistDB.classes[classOrZone][entityName] = not currentState
+        return true
+    elseif blacklistType == "zone" and classOrZone and EntityBlacklistDB.zones and EntityBlacklistDB.zones[classOrZone] then
+        currentState = EntityBlacklistDB.zones[classOrZone][entityName] or false
+        EntityBlacklistDB.zones[classOrZone][entityName] = not currentState
+        return true
+    end
+    
+    return false
+end
+
+-- Get enable/disable state of blacklist entry
+function EntityBlacklist:GetBlacklistEntryState(entityName, blacklistType, classOrZone)
+    if not entityName or entityName == "" then return false end
+    
+    if blacklistType == "global" and EntityBlacklistDB.global then
+        return EntityBlacklistDB.global[entityName] or false
+    elseif blacklistType == "class" and classOrZone and EntityBlacklistDB.classes and EntityBlacklistDB.classes[classOrZone] then
+        return EntityBlacklistDB.classes[classOrZone][entityName] or false
+    elseif blacklistType == "zone" and classOrZone and EntityBlacklistDB.zones and EntityBlacklistDB.zones[classOrZone] then
+        return EntityBlacklistDB.zones[classOrZone][entityName] or false
     end
     
     return false
@@ -202,48 +284,9 @@ function EntityBlacklist:GetPlayerClass()
     return class
 end
 
--- Get current zone and encounter info
-function EntityBlacklist:GetCurrentEncounter()
-    local zone = GetRealZoneText() or GetZoneText() or "Unknown"
-    
-    -- Try to detect current encounter from various sources
-    local encounter = nil
-    
-    -- Check if we're in a boss encounter
-    local inInstance, instanceType = IsInInstance()
-    if inInstance then
-        -- Get encounter ID if available
-        local encounterID = GetCurrentEncounterID and GetCurrentEncounterID()
-        if encounterID and encounterID > 0 then
-            local encounterName = EJ_GetEncounterInfo and EJ_GetEncounterInfo(encounterID)
-            if encounterName then
-                encounter = encounterName
-            end
-        end
-        
-        -- Fallback: try to get from unit frames (target boss names)
-        if not encounter then
-            for i = 1, 4 do
-                local unitID = "boss" .. i
-                if UnitExists(unitID) then
-                    local bossName = UnitName(unitID)
-                    if bossName and bossName ~= "" then
-                        encounter = bossName
-                        break
-                    end
-                end
-            end
-        end
-        
-        -- Fallback: check target if it's a boss
-        if not encounter then
-            if UnitExists("target") and UnitClassification("target") == "worldboss" then
-                encounter = UnitName("target")
-            end
-        end
-    end
-    
-    return zone, encounter
+-- Get current zone info
+function EntityBlacklist:GetCurrentZone()
+    return GetRealZoneText() or GetZoneText() or "Unknown"
 end
 
 -- Export blacklist data for backup/sharing
@@ -339,6 +382,31 @@ local function HandleBlacklistCommand(args)
         print("|cffff0000Unknown blacklist command:|r " .. cmd)
         ShowBlacklistCommands()
     end
+end
+
+-- Filter deaths array based on current blacklist settings (for reporting)
+function EntityBlacklist:FilterDeaths(deaths, playerClass, zone)
+    if not deaths then return {} end
+    
+    local filteredDeaths = {}
+    
+    for _, death in ipairs(deaths) do
+        if death.destName and death.destName ~= "" then
+            -- Check if this death should be filtered out
+            if not self:IsBlacklisted(death.destName, playerClass, zone) then
+                table.insert(filteredDeaths, death)
+            end
+        end
+    end
+    
+    return filteredDeaths
+end
+
+-- Filter deaths array using current context (convenience function)
+function EntityBlacklist:FilterDeathsForCurrentContext(deaths)
+    local playerClass = self:GetPlayerClass()
+    local zone = self:GetCurrentZone()
+    return self:FilterDeaths(deaths, playerClass, zone)
 end
 
 -- Register slash command integration (to be called from main addon)
