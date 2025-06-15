@@ -23,13 +23,13 @@ MyUI2 is a World of Warcraft addon written in Lua that provides advanced DPS/HPS
 ## Key Development Commands
 
 ### Building & Packaging
-- `./package.sh` - Creates distributable addon ZIP with automatic versioning
+- `./dev/scripts/package.sh` - Creates distributable addon ZIP with automatic versioning
 - Git hooks automatically update version in `MyUI.lua` based on branch and commit hash
 
 ### Git Hooks Setup
-- Linux/Mac: `./hooks/install-hooks.sh`
-- Windows: `hooks\install-hooks.bat`
-- Manual: `cp hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`
+- Linux/Mac: `./dev/hooks/install-hooks.sh`
+- Windows: `dev\hooks\install-hooks.bat`
+- Manual: `cp dev/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`
 
 ### Testing Commands
 Testing is done in-game using slash commands:
@@ -42,31 +42,42 @@ Testing is done in-game using slash commands:
 
 ## Architecture Overview
 
-### Core Module Structure
-The addon follows a modular architecture with clear separation of concerns:
+### Organized Module Structure
+The addon follows a clean, organized architecture with clear separation of concerns:
 
 **Main Entry Point:**
 - `MyUI.lua` - Addon initialization, configuration, and slash command handling
 
-**Core Systems:**
+**Core Systems (src/core/):**
 - `TimestampManager.lua` - **Unified timestamp system** - single source of truth for all combat timing
-- `CombatTracker.lua` - Main combat coordination and API delegation
-- `CombatData.lua` - Low-level combat event processing and data storage
+- `CombatTracker.lua` - Main combat coordination and API delegation  
 - `UnifiedCalculator.lua` - DPS/HPS calculation algorithms with multiple methods
-- `SessionManager.lua` - Combat session history and quality scoring
 
-**UI Components:**
+**Data Processing (src/data/):**
+- `CombatData.lua` - Low-level combat event processing and data storage
+- `SessionManager.lua` - Combat session history and quality scoring
+- `EnhancedCombatLogger.lua` - Detailed combat event logging and analysis
+- `TimelineTracker.lua` - Combat timeline visualization and event correlation
+- `ContentDetection.lua` - Automatic detection of encounter types and contexts
+
+**UI Components (src/ui/):**
 - `BaseMeterWindow.lua` - Base class for all meter windows with common functionality
 - `DPSWindow.lua` / `HPSWindow.lua` - Specialized meter displays
 - `SessionDetailWindow.lua` - Basic session analysis UI
 - `EnhancedSessionDetailWindow.lua` - Advanced session analysis with timeline integration
 - `WorkingPixelMeter.lua` - Visual meter rendering system
 
-**Data Processing:**
-- `EnhancedCombatLogger.lua` - Detailed combat event logging and analysis
-- `TimelineTracker.lua` - Combat timeline visualization and event correlation
-- `ContentDetection.lua` - Automatic detection of encounter types and contexts
+**Configuration (config/):**
+- `CalculationConfig.lua` - Calculation method configuration interface
 - `EntityBlacklist.lua` - Filtering system for irrelevant entities (totems, pets, etc.)
+
+**Development Tools (dev/):**
+- `hooks/` - Git hooks for automated versioning
+- `scripts/` - Build and packaging scripts
+
+**Assets (assets/):**
+- `SCP-SB.ttf` - Custom font file
+- `refresh-icon.tga` - UI icons and textures
 
 ### Key Architectural Patterns
 
@@ -84,14 +95,13 @@ The addon supports both lightweight basic tracking and comprehensive enhanced lo
 
 ## File Load Order
 
-The load order is defined in `MyUI2.toc`:
+The load order is defined in `MyUI2.toc` following the organized structure:
 1. `MyUI.lua` (entry point)
-2. `TimestampManager.lua` (core timing system)  
-3. `UnifiedCalculator.lua` (calculation engine)
-4. `BaseMeterWindow.lua` (UI foundation)
-5. Core data modules (`CombatData.lua`, `CombatTracker.lua`, etc.)
-6. UI windows and specialized components
-7. `CalculationConfig.lua` (configuration overrides)
+2. **Core Systems:** `src/core/TimestampManager.lua`, `src/core/UnifiedCalculator.lua`, `src/core/CombatTracker.lua`
+3. **UI Foundation:** `src/ui/BaseMeterWindow.lua`
+4. **Data Processing:** `src/data/CombatData.lua`, `src/data/ContentDetection.lua`, etc.
+5. **UI Components:** `src/ui/DPSWindow.lua`, `src/ui/HPSWindow.lua`, etc.
+6. **Configuration:** `config/EntityBlacklist.lua`, `config/CalculationConfig.lua`
 
 ## Development Context
 

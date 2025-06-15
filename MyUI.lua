@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "refactor-modularization-70881c6"
-addon.BUILD_DATE = "2025-06-15-09:10"
+addon.VERSION = "refactor-modularization-505e5c1"
+addon.BUILD_DATE = "2025-06-15-09:25"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -488,37 +488,37 @@ function addon:CreateMainFrame()
     combatBg:SetPoint("BOTTOMRIGHT", combatBorder, "BOTTOMRIGHT", -1, 1)
 
     local combatHeader = combatPanel:CreateFontString(nil, "OVERLAY")
-    combatHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    combatHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     combatHeader:SetPoint("TOP", combatPanel, "TOP", 0, -8)
     combatHeader:SetText("Last Combat")
     frame.combatHeader = combatHeader
 
     local dpsText = combatPanel:CreateFontString(nil, "OVERLAY")
-    dpsText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    dpsText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     dpsText:SetPoint("TOPLEFT", combatPanel, "TOPLEFT", 10, -25)
     dpsText:SetText("DPS: 0")
     frame.dpsText = dpsText
 
     local hpsText = combatPanel:CreateFontString(nil, "OVERLAY")
-    hpsText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    hpsText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     hpsText:SetPoint("TOPRIGHT", combatPanel, "TOPRIGHT", -10, -25)
     hpsText:SetText("HPS: 0")
     frame.hpsText = hpsText
 
     local damageText = combatPanel:CreateFontString(nil, "OVERLAY")
-    damageText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    damageText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     damageText:SetPoint("TOPLEFT", combatPanel, "TOPLEFT", 10, -45)
     damageText:SetText("Damage: 0")
     frame.damageText = damageText
 
     local healingText = combatPanel:CreateFontString(nil, "OVERLAY")
-    healingText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    healingText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     healingText:SetPoint("TOPRIGHT", combatPanel, "TOPRIGHT", -10, -45)
     healingText:SetText("Healing: 0")
     frame.healingText = healingText
 
     local timeText = combatPanel:CreateFontString(nil, "OVERLAY")
-    timeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    timeText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     timeText:SetPoint("BOTTOM", combatPanel, "BOTTOM", 0, 5)
     timeText:SetText("Duration: 0s")
     frame.timeText = timeText
@@ -539,7 +539,7 @@ function addon:CreateMainFrame()
     historyBg:SetPoint("BOTTOMRIGHT", historyBorder, "BOTTOMRIGHT", -1, 1)
 
     local historyHeader = historyPanel:CreateFontString(nil, "OVERLAY")
-    historyHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    historyHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     historyHeader:SetPoint("TOP", historyPanel, "TOP", 0, -8)
     historyHeader:SetText("Session History")
 
@@ -550,7 +550,7 @@ function addon:CreateMainFrame()
     headerBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
 
     local timeHeader = historyPanel:CreateFontString(nil, "OVERLAY")
-    timeHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    timeHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     timeHeader:SetPoint("LEFT", headerBg, "LEFT", 5, 0)
     timeHeader:SetWidth(40)
     timeHeader:SetJustifyH("LEFT")
@@ -558,7 +558,7 @@ function addon:CreateMainFrame()
     timeHeader:SetTextColor(1, 1, 1, 1)
 
     local durationHeader = historyPanel:CreateFontString(nil, "OVERLAY")
-    durationHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    durationHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     durationHeader:SetPoint("LEFT", headerBg, "LEFT", 50, 0)
     durationHeader:SetWidth(30)
     durationHeader:SetJustifyH("LEFT")
@@ -566,7 +566,7 @@ function addon:CreateMainFrame()
     durationHeader:SetTextColor(1, 1, 1, 1)
 
     local avgDpsHeader = historyPanel:CreateFontString(nil, "OVERLAY")
-    avgDpsHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    avgDpsHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     avgDpsHeader:SetPoint("LEFT", headerBg, "LEFT", 85, 0)
     avgDpsHeader:SetWidth(50)
     avgDpsHeader:SetJustifyH("LEFT")
@@ -574,7 +574,7 @@ function addon:CreateMainFrame()
     avgDpsHeader:SetTextColor(1, 1, 1, 1)
 
     local avgHpsHeader = historyPanel:CreateFontString(nil, "OVERLAY")
-    avgHpsHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    avgHpsHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     avgHpsHeader:SetPoint("LEFT", headerBg, "LEFT", 140, 0)
     avgHpsHeader:SetWidth(50)
     avgHpsHeader:SetJustifyH("LEFT")
@@ -582,7 +582,7 @@ function addon:CreateMainFrame()
     avgHpsHeader:SetTextColor(1, 1, 1, 1)
 
     local qualityHeader = historyPanel:CreateFontString(nil, "OVERLAY")
-    qualityHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    qualityHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     qualityHeader:SetPoint("LEFT", headerBg, "LEFT", 195, 0)
     qualityHeader:SetWidth(25)
     qualityHeader:SetJustifyH("CENTER")
@@ -590,7 +590,7 @@ function addon:CreateMainFrame()
     qualityHeader:SetTextColor(1, 1, 1, 1)
 
     local locationHeader = historyPanel:CreateFontString(nil, "OVERLAY")
-    locationHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    locationHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     locationHeader:SetPoint("LEFT", headerBg, "LEFT", 225, 0)
     locationHeader:SetWidth(80)
     locationHeader:SetJustifyH("LEFT")
@@ -631,37 +631,37 @@ function addon:CreateMainFrame()
         row.highlight = highlight -- Store reference for easy access
 
         row.time = row:CreateFontString(nil, "OVERLAY")
-        row.time:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.time:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         row.time:SetPoint("LEFT", row, "LEFT", 5, 0)
         row.time:SetWidth(40)
         row.time:SetJustifyH("LEFT")
 
         row.duration = row:CreateFontString(nil, "OVERLAY")
-        row.duration:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.duration:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         row.duration:SetPoint("LEFT", row, "LEFT", 50, 0)
         row.duration:SetWidth(30)
         row.duration:SetJustifyH("LEFT")
 
         row.avgDps = row:CreateFontString(nil, "OVERLAY")
-        row.avgDps:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.avgDps:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         row.avgDps:SetPoint("LEFT", row, "LEFT", 85, 0)
         row.avgDps:SetWidth(50)
         row.avgDps:SetJustifyH("LEFT")
 
         row.avgHps = row:CreateFontString(nil, "OVERLAY")
-        row.avgHps:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.avgHps:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         row.avgHps:SetPoint("LEFT", row, "LEFT", 140, 0)
         row.avgHps:SetWidth(50)
         row.avgHps:SetJustifyH("LEFT")
 
         row.quality = row:CreateFontString(nil, "OVERLAY")
-        row.quality:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.quality:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         row.quality:SetPoint("LEFT", row, "LEFT", 195, 0)
         row.quality:SetWidth(25)
         row.quality:SetJustifyH("CENTER")
 
         row.location = row:CreateFontString(nil, "OVERLAY")
-        row.location:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        row.location:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         row.location:SetPoint("LEFT", row, "LEFT", 225, 0)
         row.location:SetWidth(80)
         row.location:SetJustifyH("LEFT")
@@ -706,7 +706,7 @@ function addon:CreateMainFrame()
     chartBg:SetPoint("BOTTOMRIGHT", chartBorder, "BOTTOMRIGHT", -1, 1)
 
     local chartHeader = chartPanel:CreateFontString(nil, "OVERLAY")
-    chartHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    chartHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     chartHeader:SetPoint("TOP", chartPanel, "TOP", 0, -8)
     chartHeader:SetText("Performance Trend")
 
@@ -792,7 +792,7 @@ function addon:CreateMainFrame()
 
     -- Calculation method dropdown (positioned on second row)
     local calcLabel = controlPanel:CreateFontString(nil, "OVERLAY")
-    calcLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    calcLabel:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     calcLabel:SetPoint("LEFT", controlPanel, "LEFT", 10, -40)
     calcLabel:SetText("Calc Method:")
     calcLabel:SetTextColor(0.8, 0.8, 0.8, 1)
@@ -867,7 +867,7 @@ function addon:CreateMainFrame()
     frame.updateCalcDropdown = UpdateCalcDropdownText
     
     local sessionCount = controlPanel:CreateFontString(nil, "OVERLAY")
-    sessionCount:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    sessionCount:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     sessionCount:SetPoint("BOTTOM", controlPanel, "BOTTOM", 0, 5)
     sessionCount:SetText("0 sessions")
     frame.sessionCount = sessionCount

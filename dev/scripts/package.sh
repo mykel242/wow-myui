@@ -70,18 +70,20 @@ create_addon_structure() {
     cp "MyUI2.toc" "$ADDON_DIR/"
     print_status "Copied: MyUI2.toc"
 
-    # Extract and copy all lua files from TOC
-    local lua_files=$(extract_lua_files_from_toc)
+    # Copy the main addon file
+    cp "MyUI.lua" "$ADDON_DIR/"
+    print_status "Copied: MyUI.lua"
 
-    while IFS= read -r file; do
-        if [ -f "$file" ]; then
-            cp "$file" "$ADDON_DIR/"
-            print_status "Copied: $file"
-        else
-            print_error "Missing required file: $file"
-            exit 1
-        fi
-    done <<< "$lua_files"
+    # Copy organized source directories
+    if [ -d "src" ]; then
+        cp -r src "$ADDON_DIR/"
+        print_status "Copied src directory"
+    fi
+
+    if [ -d "config" ]; then
+        cp -r config "$ADDON_DIR/"
+        print_status "Copied config directory"
+    fi
 
     # Optional files (copy if they exist)
     local optional_files=(
@@ -103,7 +105,7 @@ create_addon_structure() {
         print_status "Copied assets directory"
     fi
 
-    # Copy any texture/image files in root directory
+    # Copy any texture/image files in root directory (for legacy compatibility)
     find . -maxdepth 1 \( -name "*.tga" -o -name "*.blp" -o -name "*.png" -o -name "*.jpg" -o -name "*.ttf" \) -exec cp {} "$ADDON_DIR/" \;
 
     print_success "Addon structure created"

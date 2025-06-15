@@ -123,7 +123,7 @@ function EnhancedSessionDetailWindow:CreateHeaderSection(frame, sessionData)
 
     -- Session title (left-aligned)
     local title = headerPanel:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 16, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 16, "OUTLINE")
     title:SetPoint("TOPLEFT", headerPanel, "TOPLEFT", 10, -8)
     title:SetText(string.format("Enhanced Combat Analysis: %s", sessionData.sessionId))
     title:SetTextColor(1, 1, 1, 1)
@@ -133,7 +133,7 @@ function EnhancedSessionDetailWindow:CreateHeaderSection(frame, sessionData)
     local startTime = date("%H:%M:%S", time() + (sessionData.startTime - GetTime()))
 
     local row1 = headerPanel:CreateFontString(nil, "OVERLAY")
-    row1:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    row1:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     row1:SetPoint("TOPLEFT", headerPanel, "TOPLEFT", 10, -25)
     row1:SetText(string.format("Start: %s | Location: %s | Quality: %d",
         startTime, sessionData.location or "Unknown", sessionData.qualityScore))
@@ -141,7 +141,7 @@ function EnhancedSessionDetailWindow:CreateHeaderSection(frame, sessionData)
 
     -- Row 2: Duration, Content/Scale type
     local row2 = headerPanel:CreateFontString(nil, "OVERLAY")
-    row2:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    row2:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     row2:SetPoint("TOPLEFT", headerPanel, "TOPLEFT", 10, -40)
     row2:SetText(string.format("Duration: %.1fs | Content: %s",
         sessionData.duration, sessionData.contentType or "normal"))
@@ -149,7 +149,7 @@ function EnhancedSessionDetailWindow:CreateHeaderSection(frame, sessionData)
 
     -- Performance summary line (left-aligned)
     local perfSummary = headerPanel:CreateFontString(nil, "OVERLAY")
-    perfSummary:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    perfSummary:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     perfSummary:SetPoint("BOTTOMLEFT", headerPanel, "BOTTOMLEFT", 10, 8)
     perfSummary:SetText(string.format("DPS: %s (Peak: %s) | HPS: %s (Peak: %s)",
         addon.CombatTracker:FormatNumber(sessionData.avgDPS),
@@ -196,7 +196,7 @@ function EnhancedSessionDetailWindow:CreateTabbedInterface(frame, sessionData)
         button.bg = buttonBg
 
         local buttonText = button:CreateFontString(nil, "OVERLAY")
-        buttonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+        buttonText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
         buttonText:SetPoint("CENTER", button, "CENTER", 0, 0)
         buttonText:SetText(tab.text)
         buttonText:SetTextColor(0.8, 0.8, 0.8, 1)
@@ -321,7 +321,7 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
 
     if #timelineData == 0 then
         local noDataText = chartArea:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
         noDataText:SetPoint("CENTER", chartArea, "CENTER", 0, 0)
         noDataText:SetText("No detailed timeline data available")
         noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
@@ -435,7 +435,7 @@ function EnhancedSessionDetailWindow:DrawChartGrid(chartArea, width, height, dur
 
             -- Time label
             local timeLabel = chartArea:CreateFontString(nil, "OVERLAY")
-            timeLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+            timeLabel:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
             timeLabel:SetPoint("BOTTOM", chartArea, "BOTTOMLEFT", x, -15)
             timeLabel:SetText(string.format("%.0fs", timePos))
             timeLabel:SetTextColor(0.8, 0.8, 0.8, 1)
@@ -447,7 +447,7 @@ function EnhancedSessionDetailWindow:DrawChartGrid(chartArea, width, height, dur
     if numIntervals * timeInterval < duration then
         local x = width
         local timeLabel = chartArea:CreateFontString(nil, "OVERLAY")
-        timeLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        timeLabel:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         timeLabel:SetPoint("BOTTOM", chartArea, "BOTTOMRIGHT", 0, -15)
         timeLabel:SetText(string.format("%.1fs", duration))
         timeLabel:SetTextColor(0.8, 0.8, 0.8, 1)
@@ -479,7 +479,7 @@ function EnhancedSessionDetailWindow:CreateDPSAxis(chartArea, height, maxDPS)
 
         -- DPS axis label (positioned inside chart area)
         local dpsLabel = chartArea:CreateFontString(nil, "OVERLAY")
-        dpsLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+        dpsLabel:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 9, "OUTLINE")
         dpsLabel:SetPoint("LEFT", chartArea, "BOTTOMLEFT", 5, y)
         dpsLabel:SetText(self:FormatAxisValue(value))
         dpsLabel:SetTextColor(1, 0.3, 0.3, 0.9) -- Red to match DPS line
@@ -488,7 +488,7 @@ function EnhancedSessionDetailWindow:CreateDPSAxis(chartArea, height, maxDPS)
 
     -- DPS axis title (positioned inside chart area)
     local dpsTitle = chartArea:CreateFontString(nil, "OVERLAY")
-    dpsTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    dpsTitle:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     dpsTitle:SetPoint("TOPLEFT", chartArea, "TOPLEFT", 5, -5)
     dpsTitle:SetText("DPS")
     dpsTitle:SetTextColor(1, 0.3, 0.3, 1)
@@ -506,7 +506,7 @@ function EnhancedSessionDetailWindow:CreateHPSAxis(chartArea, width, height, max
 
         -- HPS axis label (positioned inside chart area on the right side)
         local hpsLabel = chartArea:CreateFontString(nil, "OVERLAY")
-        hpsLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+        hpsLabel:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 9, "OUTLINE")
         hpsLabel:SetPoint("RIGHT", chartArea, "BOTTOMRIGHT", -5, y)
         hpsLabel:SetText(self:FormatAxisValue(value))
         hpsLabel:SetTextColor(0.3, 1, 0.3, 0.9) -- Green to match HPS line
@@ -515,7 +515,7 @@ function EnhancedSessionDetailWindow:CreateHPSAxis(chartArea, width, height, max
 
     -- HPS axis title (positioned inside chart area at top-right corner)
     local hpsTitle = chartArea:CreateFontString(nil, "OVERLAY")
-    hpsTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    hpsTitle:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     hpsTitle:SetPoint("TOPRIGHT", chartArea, "TOPRIGHT", -5, -5)
     hpsTitle:SetText("HPS")
     hpsTitle:SetTextColor(0.3, 1, 0.3, 1)
@@ -663,7 +663,7 @@ function EnhancedSessionDetailWindow:DrawCooldownMarkers(chartArea, cooldowns, d
             -- Spell name label (vertical, full spell name allowed)
             if #cooldowns <= 8 then -- Only show labels if 8 or fewer cooldowns
                 local label = chartArea:CreateFontString(nil, "OVERLAY")
-                label:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 8, "OUTLINE")
+                label:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 8, "OUTLINE")
                 label:SetPoint("TOP", markerIcon, "BOTTOM", 0, -50) -- Anchor top of text to bottom of symbol
                 label:SetWidth(200)                                 -- Wide enough for full spell names
 
@@ -1133,7 +1133,7 @@ function EnhancedSessionDetailWindow:CreateChartFilterToggles(controlsFrame)
 
         -- Label
         local label = toggleContainer:CreateFontString(nil, "OVERLAY")
-        label:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        label:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         label:SetPoint("LEFT", checkbox, "RIGHT", 5, 0)
         label:SetText(toggle.text)
         label:SetTextColor(toggle.color[1], toggle.color[2], toggle.color[3], 1)
@@ -1217,7 +1217,7 @@ function EnhancedSessionDetailWindow:CreateScrollableEventLog(controlsFrame)
     -- Add events to content frame
     for i, event in ipairs(events) do
         local eventText = contentFrame:CreateFontString(nil, "OVERLAY")
-        eventText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        eventText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         eventText:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 5, -5 - ((i - 1) * 15))
         eventText:SetText(event.text)
         eventText:SetTextColor(event.color[1], event.color[2], event.color[3], 1)
@@ -1239,14 +1239,14 @@ function EnhancedSessionDetailWindow:CreateLogTab()
     content:SetAllPoints(self.frame.contentArea)
 
     local title = content:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     title:SetPoint("TOP", content, "TOP", 0, -20)
     title:SetText("Combat Event Log")
 
     -- Check for enhanced data
     if not self.sessionData.enhancedData then
         local noDataText = content:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
         noDataText:SetPoint("CENTER", content, "CENTER", 0, 0)
         noDataText:SetText("No event log data available\n(Enhanced logging was not active during this session)")
         noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
@@ -1284,14 +1284,14 @@ function EnhancedSessionDetailWindow:CreateBlacklistTab()
     content:SetAllPoints(self.frame.contentArea)
 
     local title = content:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     title:SetPoint("TOP", content, "TOP", 0, -20)
     title:SetText("Entity Blacklists (Tree View)")
 
     -- Check if EntityBlacklist is available
     if not addon.EntityBlacklist or not EntityBlacklistDB then
         local noDataText = content:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
         noDataText:SetPoint("CENTER", content, "CENTER", 0, 0)
         noDataText:SetText("Entity blacklist data not available")
         noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
@@ -1337,7 +1337,7 @@ function EnhancedSessionDetailWindow:CreateBlacklistTab()
 
         -- Node text
         local nodeText = nodeFrame:CreateFontString(nil, "OVERLAY")
-        nodeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        nodeText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
         nodeText:SetPoint("LEFT", expandButton, "RIGHT", 5, 0)
         nodeText:SetText(text)
         nodeText:SetTextColor(1, 0.9, 0.6, 1)
@@ -1399,7 +1399,7 @@ function EnhancedSessionDetailWindow:CreateBlacklistTab()
         
         -- Create checkmark lines using FontString with special characters
         local checkText = checkbox:CreateFontString(nil, "OVERLAY")  -- Changed from ARTWORK to OVERLAY
-        checkText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        checkText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
         checkText:SetPoint("CENTER", checkbox, "CENTER", 0, 1)
         checkText:SetText("✓")  -- Try checkmark character
         checkText:SetTextColor(0.2, 0.8, 0.2, 1)
@@ -1408,7 +1408,7 @@ function EnhancedSessionDetailWindow:CreateBlacklistTab()
 
         -- Entry text
         local entryText = entryFrame:CreateFontString(nil, "OVERLAY")
-        entryText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")  -- Slightly larger font
+        entryText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")  -- Slightly larger font
         entryText:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
         entryText:SetText(pattern)
         entryText:SetTextColor(enabled and 0.9 or 0.5, enabled and 0.9 or 0.5, enabled and 0.9 or 0.5, 1)
@@ -1544,7 +1544,7 @@ function EnhancedSessionDetailWindow:CreateBlacklistTab()
         bg:SetColorTexture(color[1], color[2], color[3], 0.8)
 
         local buttonText = button:CreateFontString(nil, "OVERLAY")
-        buttonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        buttonText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         buttonText:SetPoint("CENTER", button, "CENTER", 0, 0)
         buttonText:SetText(text)
         buttonText:SetTextColor(1, 1, 1, 1)
@@ -1878,14 +1878,14 @@ function EnhancedSessionDetailWindow:ShowConfirmationModal(title, message, confi
 
     -- Title
     local titleText = modal:CreateFontString(nil, "OVERLAY")
-    titleText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    titleText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     titleText:SetPoint("TOP", modal, "TOP", 0, -20)
     titleText:SetText(title)
     titleText:SetTextColor(1, 0.8, 0.2, 1)
 
     -- Message
     local messageText = modal:CreateFontString(nil, "OVERLAY")
-    messageText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    messageText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     messageText:SetPoint("TOP", modal, "TOP", 0, -60)
     messageText:SetWidth(360)
     messageText:SetText(message)
@@ -1901,7 +1901,7 @@ function EnhancedSessionDetailWindow:ShowConfirmationModal(title, message, confi
     confirmBg:SetColorTexture(0.8, 0.2, 0.2, 1)
 
     local confirmText = confirmButton:CreateFontString(nil, "OVERLAY")
-    confirmText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    confirmText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     confirmText:SetPoint("CENTER", confirmButton, "CENTER", 0, 0)
     confirmText:SetText("CONFIRM")
     confirmText:SetTextColor(1, 1, 1, 1)
@@ -1922,7 +1922,7 @@ function EnhancedSessionDetailWindow:ShowConfirmationModal(title, message, confi
     cancelBg:SetColorTexture(0.4, 0.4, 0.4, 1)
 
     local cancelText = cancelButton:CreateFontString(nil, "OVERLAY")
-    cancelText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    cancelText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     cancelText:SetPoint("CENTER", cancelButton, "CENTER", 0, 0)
     cancelText:SetText("CANCEL")
     cancelText:SetTextColor(1, 1, 1, 1)
@@ -1962,7 +1962,7 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
 
     -- Title
     local title = shareWindow:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     title:SetPoint("TOP", shareWindow, "TOP", 0, -15)
     title:SetText("Share Blacklist Configuration")
     title:SetTextColor(1, 1, 1, 1)
@@ -2080,7 +2080,7 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
     copyBg:SetColorTexture(0.2, 0.6, 0.2, 1)
 
     local copyText = copyButton:CreateFontString(nil, "OVERLAY")
-    copyText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    copyText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     copyText:SetPoint("CENTER", copyButton, "CENTER", 0, 0)
     copyText:SetText("COPY ALL")
     copyText:SetTextColor(1, 1, 1, 1)
@@ -2095,7 +2095,7 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
     closeBg:SetColorTexture(0.8, 0.2, 0.2, 1)
 
     local closeText = closeButton:CreateFontString(nil, "OVERLAY")
-    closeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    closeText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     closeText:SetPoint("CENTER", closeButton, "CENTER", 0, 0)
     closeText:SetText("CLOSE")
     closeText:SetTextColor(1, 1, 1, 1)
@@ -2152,7 +2152,7 @@ function EnhancedSessionDetailWindow:ShowBlacklistShareWindow()
 
     -- Instructions at bottom
     local instructText = shareWindow:CreateFontString(nil, "OVERLAY")
-    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    instructText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     instructText:SetPoint("BOTTOM", shareWindow, "BOTTOM", 0, 15)
     instructText:SetText("Click COPY ALL to select text, then use Ctrl+C to copy. Click CLOSE when done.")
     instructText:SetTextColor(1, 1, 0.5, 1)
@@ -2194,14 +2194,14 @@ function EnhancedSessionDetailWindow:ShowBlacklistImportWindow()
 
     -- Title
     local title = importWindow:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     title:SetPoint("TOP", importWindow, "TOP", 0, -20)
     title:SetText("Import Blacklist Configuration")
     title:SetTextColor(1, 1, 1, 1)
 
     -- Description
     local descText = importWindow:CreateFontString(nil, "OVERLAY")
-    descText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    descText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     descText:SetPoint("TOP", importWindow, "TOP", 0, -50)
     descText:SetText("Paste the encoded blacklist data below to import a configuration from another user.")
     descText:SetTextColor(0.8, 0.8, 0.8, 1)
@@ -2242,7 +2242,7 @@ function EnhancedSessionDetailWindow:ShowBlacklistImportWindow()
     importBg:SetColorTexture(0.2, 0.2, 0.7, 0.8)
 
     local importText = importButton:CreateFontString(nil, "OVERLAY")
-    importText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    importText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     importText:SetPoint("CENTER", importButton, "CENTER", 0, 0)
     importText:SetText("Import")
     importText:SetTextColor(1, 1, 1, 1)
@@ -2269,7 +2269,7 @@ function EnhancedSessionDetailWindow:ShowBlacklistImportWindow()
     closeBg:SetColorTexture(0.6, 0.2, 0.2, 0.8)
 
     local closeText = closeButton:CreateFontString(nil, "OVERLAY")
-    closeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    closeText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     closeText:SetPoint("CENTER", closeButton, "CENTER", 0, 0)
     closeText:SetText("Close")
     closeText:SetTextColor(1, 1, 1, 1)
@@ -2289,7 +2289,7 @@ function EnhancedSessionDetailWindow:ShowBlacklistImportWindow()
 
     -- Instructions
     local instructText = importWindow:CreateFontString(nil, "OVERLAY")
-    instructText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    instructText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     instructText:SetPoint("BOTTOM", importWindow, "BOTTOM", 0, 10)
     instructText:SetText("Paste encoded data above and click Import. This will merge with your existing blacklist.")
     instructText:SetTextColor(0.7, 0.7, 0.7, 1)
@@ -2496,20 +2496,20 @@ function EnhancedSessionDetailWindow:CreateWhitelistTab()
     content:SetAllPoints(self.frame.contentArea)
 
     local title = content:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     title:SetPoint("TOP", content, "TOP", 0, -20)
     title:SetText("Entity Whitelist (Priority Tracking)")
 
     -- Description
     local descText = content:CreateFontString(nil, "OVERLAY")
-    descText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    descText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     descText:SetPoint("TOP", content, "TOP", 0, -60)
     descText:SetText("Configure entities, buffs, and abilities that should always be tracked and charted,\neven if they would normally be filtered or blacklisted.")
     descText:SetTextColor(0.8, 0.8, 0.8, 1)
 
     -- Future features section
     local futureTitle = content:CreateFontString(nil, "OVERLAY")
-    futureTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 13, "OUTLINE")
+    futureTitle:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 13, "OUTLINE")
     futureTitle:SetPoint("TOP", content, "TOP", 0, -120)
     futureTitle:SetText("Planned Features:")
     futureTitle:SetTextColor(1, 0.8, 0.2, 1)
@@ -2526,7 +2526,7 @@ function EnhancedSessionDetailWindow:CreateWhitelistTab()
     local yOffset = -150
     for _, feature in ipairs(featuresList) do
         local featureText = content:CreateFontString(nil, "OVERLAY")
-        featureText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        featureText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
         featureText:SetPoint("TOPLEFT", content, "TOPLEFT", 50, yOffset)
         featureText:SetText(feature)
         featureText:SetTextColor(0.7, 0.9, 0.7, 1)
@@ -2535,13 +2535,13 @@ function EnhancedSessionDetailWindow:CreateWhitelistTab()
 
     -- Coming soon notice
     local comingSoonText = content:CreateFontString(nil, "OVERLAY")
-    comingSoonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    comingSoonText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     comingSoonText:SetPoint("BOTTOM", content, "BOTTOM", 0, 80)
     comingSoonText:SetText("🚧 Coming Soon! 🚧")
     comingSoonText:SetTextColor(1, 0.6, 0.2, 1)
 
     local implementationText = content:CreateFontString(nil, "OVERLAY")
-    implementationText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    implementationText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     implementationText:SetPoint("BOTTOM", content, "BOTTOM", 0, 50)
     implementationText:SetText("This feature will be implemented in a future update.")
     implementationText:SetTextColor(0.8, 0.8, 0.8, 1)
@@ -2556,21 +2556,21 @@ function EnhancedSessionDetailWindow:CreateParticipantsTab()
     content:SetAllPoints(self.frame.contentArea)
 
     local title = content:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     title:SetPoint("TOP", content, "TOP", 0, -20)
     title:SetText("Combat Participants")
 
     -- Check for enhanced data
     if not self.sessionData.enhancedData or not self.sessionData.enhancedData.participants then
         local noDataText = content:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
         noDataText:SetPoint("CENTER", content, "CENTER", 0, 0)
         noDataText:SetText("No participant data available\n(Enhanced logging was not active during this session)")
         noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
 
         -- Add instructions for enabling enhanced logging
         local instructionText = content:CreateFontString(nil, "OVERLAY")
-        instructionText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+        instructionText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
         instructionText:SetPoint("CENTER", content, "CENTER", 0, -40)
         instructionText:SetText(
             "To see participant data in future sessions:\n• Enhanced logging should be automatically enabled\n• Use '/myui enhancedlog' to check status")
@@ -2626,10 +2626,10 @@ function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
     searchBox:SetSize(180, 20)
     searchBox:SetPoint("LEFT", filterFrame, "LEFT", 10, 5)
     searchBox:SetAutoFocus(false)
-    searchBox:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    searchBox:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
 
     local searchLabel = filterFrame:CreateFontString(nil, "OVERLAY")
-    searchLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    searchLabel:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 9, "OUTLINE")
     searchLabel:SetPoint("BOTTOMLEFT", searchBox, "TOPLEFT", 0, 2)
     searchLabel:SetText("Search:")
     searchLabel:SetTextColor(0.8, 0.8, 0.8, 1)
@@ -2641,7 +2641,7 @@ function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
     UIDropDownMenu_SetText(typeFilter, "All Types")
 
     local typeLabel = filterFrame:CreateFontString(nil, "OVERLAY")
-    typeLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    typeLabel:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 9, "OUTLINE")
     typeLabel:SetPoint("BOTTOMLEFT", typeFilter, "TOPLEFT", 20, 2)
     typeLabel:SetText("Type:")
     typeLabel:SetTextColor(0.8, 0.8, 0.8, 1)
@@ -2653,7 +2653,7 @@ function EnhancedSessionDetailWindow:CreateParticipantFilters(parent)
     showZeroBtn:SetChecked(false)
 
     local showZeroLabel = filterFrame:CreateFontString(nil, "OVERLAY")
-    showZeroLabel:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    showZeroLabel:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 9, "OUTLINE")
     showZeroLabel:SetPoint("LEFT", showZeroBtn, "RIGHT", 3, 0)
     showZeroLabel:SetText("Show Zero")
     showZeroLabel:SetTextColor(0.8, 0.8, 0.8, 1)
@@ -2806,7 +2806,7 @@ function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
     nameHeaderBtn:SetScript("OnClick", function() self:SortParticipants("name") end)
 
     local nameHeader = nameHeaderBtn:CreateFontString(nil, "OVERLAY")
-    nameHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    nameHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     nameHeader:SetAllPoints(nameHeaderBtn)
     nameHeader:SetText("Name")
     nameHeader:SetJustifyH("LEFT")
@@ -2819,7 +2819,7 @@ function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
     typeHeaderBtn:SetScript("OnClick", function() self:SortParticipants("type") end)
 
     local typeHeader = typeHeaderBtn:CreateFontString(nil, "OVERLAY")
-    typeHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    typeHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     typeHeader:SetAllPoints(typeHeaderBtn)
     typeHeader:SetText("Type")
     typeHeader:SetJustifyH("CENTER")
@@ -2832,7 +2832,7 @@ function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
     damageHeaderBtn:SetScript("OnClick", function() self:SortParticipants("damage") end)
 
     local damageHeader = damageHeaderBtn:CreateFontString(nil, "OVERLAY")
-    damageHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    damageHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     damageHeader:SetAllPoints(damageHeaderBtn)
     damageHeader:SetText("Damage Dealt")
     damageHeader:SetJustifyH("RIGHT")
@@ -2845,7 +2845,7 @@ function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
     healingHeaderBtn:SetScript("OnClick", function() self:SortParticipants("healing") end)
 
     local healingHeader = healingHeaderBtn:CreateFontString(nil, "OVERLAY")
-    healingHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    healingHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     healingHeader:SetAllPoints(healingHeaderBtn)
     healingHeader:SetText("Healing Dealt")
     healingHeader:SetJustifyH("RIGHT")
@@ -2858,7 +2858,7 @@ function EnhancedSessionDetailWindow:CreateParticipantsList(parent)
     takenHeaderBtn:SetScript("OnClick", function() self:SortParticipants("taken") end)
 
     local takenHeader = takenHeaderBtn:CreateFontString(nil, "OVERLAY")
-    takenHeader:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    takenHeader:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     takenHeader:SetAllPoints(takenHeaderBtn)
     takenHeader:SetText("Damage Taken")
     takenHeader:SetJustifyH("RIGHT")
@@ -2923,7 +2923,7 @@ function EnhancedSessionDetailWindow:CreateParticipantRow(parent, index)
 
     -- Name
     local nameText = row:CreateFontString(nil, "OVERLAY")
-    nameText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    nameText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     nameText:SetPoint("LEFT", row, "LEFT", 10, 0)
     nameText:SetSize(150, 0)
     nameText:SetJustifyH("LEFT")
@@ -2931,7 +2931,7 @@ function EnhancedSessionDetailWindow:CreateParticipantRow(parent, index)
 
     -- Type
     local typeText = row:CreateFontString(nil, "OVERLAY")
-    typeText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    typeText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     typeText:SetPoint("LEFT", row, "LEFT", 170, 0)
     typeText:SetSize(80, 0)
     typeText:SetJustifyH("CENTER")
@@ -2940,7 +2940,7 @@ function EnhancedSessionDetailWindow:CreateParticipantRow(parent, index)
 
     -- Damage dealt
     local damageText = row:CreateFontString(nil, "OVERLAY")
-    damageText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    damageText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     damageText:SetPoint("LEFT", row, "LEFT", 260, 0)
     damageText:SetSize(100, 0)
     damageText:SetJustifyH("RIGHT")
@@ -2949,7 +2949,7 @@ function EnhancedSessionDetailWindow:CreateParticipantRow(parent, index)
 
     -- Healing dealt
     local healingText = row:CreateFontString(nil, "OVERLAY")
-    healingText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    healingText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     healingText:SetPoint("LEFT", row, "LEFT", 370, 0)
     healingText:SetSize(100, 0)
     healingText:SetJustifyH("RIGHT")
@@ -2958,7 +2958,7 @@ function EnhancedSessionDetailWindow:CreateParticipantRow(parent, index)
 
     -- Damage taken
     local takenText = row:CreateFontString(nil, "OVERLAY")
-    takenText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    takenText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     takenText:SetPoint("LEFT", row, "LEFT", 480, 0)
     takenText:SetSize(100, 0)
     takenText:SetJustifyH("RIGHT")
@@ -3133,13 +3133,13 @@ function EnhancedSessionDetailWindow:CreateDamageTab()
     content:SetAllPoints(self.frame.contentArea)
 
     local title = content:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     title:SetPoint("TOP", content, "TOP", 0, -20)
     title:SetText("Damage Analysis")
 
     if not self.sessionData.enhancedData then
         local noDataText = content:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
         noDataText:SetPoint("CENTER", content, "CENTER", 0, 0)
         noDataText:SetText("No damage analysis data available\n(Enhanced logging was not active during this session)")
         noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
@@ -3163,7 +3163,7 @@ function EnhancedSessionDetailWindow:CreateInsightsTab()
     content:SetAllPoints(self.frame.contentArea)
 
     local title = content:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     title:SetPoint("TOP", content, "TOP", 0, -20)
     title:SetText("Combat Insights & Recommendations")
 
@@ -3181,7 +3181,7 @@ function EnhancedSessionDetailWindow:CreateInsightsTab()
         insightBg:SetColorTexture(0.1, 0.1, 0.1, 0.6)
 
         local insightText = insightFrame:CreateFontString(nil, "OVERLAY")
-        insightText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        insightText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
         insightText:SetPoint("TOPLEFT", insightFrame, "TOPLEFT", 10, -10)
         insightText:SetSize(720, 0)
         insightText:SetText(insight.text)
@@ -3391,14 +3391,14 @@ function EnhancedSessionDetailWindow:CreateDamageTakenSection(parent, damageTake
     sectionBg:SetColorTexture(0.05, 0.05, 0.05, 0.6)
 
     local sectionTitle = sectionFrame:CreateFontString(nil, "OVERLAY")
-    sectionTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    sectionTitle:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     sectionTitle:SetPoint("TOP", sectionFrame, "TOP", 0, -10)
     sectionTitle:SetText(string.format("Personal Damage Taken (%d events)", #damageTaken))
     sectionTitle:SetTextColor(1, 0.8, 0.4, 1)
 
     if #damageTaken == 0 then
         local noDataText = sectionFrame:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
         noDataText:SetPoint("CENTER", sectionFrame, "CENTER", 0, 0)
         noDataText:SetText("No damage taken events recorded")
         noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
@@ -3433,7 +3433,7 @@ function EnhancedSessionDetailWindow:CreateDamageTakenSection(parent, damageTake
         local percent = totalDamage > 0 and (source.damage / totalDamage * 100) or 0
 
         local sourceText = sectionFrame:CreateFontString(nil, "OVERLAY")
-        sourceText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        sourceText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         sourceText:SetPoint("TOPLEFT", sectionFrame, "TOPLEFT", 10, yOffset)
         sourceText:SetText(string.format("%s: %s (%.1f%%) - %d hits",
             source.name, addon.CombatTracker:FormatNumber(source.damage), percent, source.hits))
@@ -3444,7 +3444,7 @@ function EnhancedSessionDetailWindow:CreateDamageTakenSection(parent, damageTake
 
     -- Total summary
     local totalText = sectionFrame:CreateFontString(nil, "OVERLAY")
-    totalText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    totalText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     totalText:SetPoint("BOTTOMRIGHT", sectionFrame, "BOTTOMRIGHT", -10, 10)
     local dtps = self.sessionData.duration > 0 and (totalDamage / self.sessionData.duration) or 0
     totalText:SetText(string.format("Total: %s (%.0f DTPS)",
@@ -3462,14 +3462,14 @@ function EnhancedSessionDetailWindow:CreateGroupDamageSection(parent, groupDamag
     sectionBg:SetColorTexture(0.05, 0.05, 0.05, 0.6)
 
     local sectionTitle = sectionFrame:CreateFontString(nil, "OVERLAY")
-    sectionTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    sectionTitle:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     sectionTitle:SetPoint("TOP", sectionFrame, "TOP", 0, -10)
     sectionTitle:SetText(string.format("Group Damage Events (%d events)", #groupDamage))
     sectionTitle:SetTextColor(0.8, 0.4, 1, 1)
 
     if #groupDamage == 0 then
         local noDataText = sectionFrame:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
         noDataText:SetPoint("CENTER", sectionFrame, "CENTER", 0, 0)
         noDataText:SetText("No group damage events recorded\n(Group damage tracking may be disabled)")
         noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
@@ -3509,7 +3509,7 @@ function EnhancedSessionDetailWindow:CreateGroupDamageSection(parent, groupDamag
         local percent = totalDamage > 0 and (source.damage / totalDamage * 100) or 0
 
         local sourceText = sectionFrame:CreateFontString(nil, "OVERLAY")
-        sourceText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+        sourceText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
         sourceText:SetPoint("TOPLEFT", sectionFrame, "TOPLEFT", 10, yOffset)
         sourceText:SetText(string.format("%s: %s (%.1f%%) - %d hits, %d targets",
             source.name, addon.CombatTracker:FormatNumber(source.damage),

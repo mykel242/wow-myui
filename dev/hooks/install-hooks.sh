@@ -1,6 +1,6 @@
 #!/bin/bash
-# hooks/install-hooks.sh
-# Script to install Git hooks from the hooks/ directory
+# dev/hooks/install-hooks.sh
+# Script to install Git hooks from the dev/hooks/ directory
 
 echo "Installing Git hooks..."
 
@@ -14,12 +14,12 @@ fi
 mkdir -p .git/hooks
 
 # Copy and install pre-commit hook
-if [ -f "hooks/pre-commit" ]; then
-    cp hooks/pre-commit .git/hooks/pre-commit
+if [ -f "dev/hooks/pre-commit" ]; then
+    cp dev/hooks/pre-commit .git/hooks/pre-commit
     chmod +x .git/hooks/pre-commit
     echo "✓ pre-commit hook installed"
 else
-    echo "✗ hooks/pre-commit not found"
+    echo "✗ dev/hooks/pre-commit not found"
 fi
 
 # You can add more hooks here in the future

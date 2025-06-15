@@ -59,7 +59,7 @@ function SessionDetailWindow:Create(sessionData)
 
     -- Session title
     local title = headerPanel:CreateFontString(nil, "OVERLAY")
-    title:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 16, "OUTLINE")
+    title:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 16, "OUTLINE")
     title:SetPoint("TOP", headerPanel, "TOP", 0, -8)
     title:SetText(string.format("Combat Session: %s", sessionData.sessionId))
     title:SetTextColor(1, 1, 1, 1)
@@ -70,7 +70,7 @@ function SessionDetailWindow:Create(sessionData)
 
     -- Left column
     local leftMeta = headerPanel:CreateFontString(nil, "OVERLAY")
-    leftMeta:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    leftMeta:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     leftMeta:SetPoint("TOPLEFT", headerPanel, "TOPLEFT", 10, -25)
     leftMeta:SetText(string.format("Start: %s\nDuration: %.1fs\nLocation: %s",
         startTime, sessionData.duration, sessionData.location or "Unknown"))
@@ -78,7 +78,7 @@ function SessionDetailWindow:Create(sessionData)
 
     -- Right column
     local rightMeta = headerPanel:CreateFontString(nil, "OVERLAY")
-    rightMeta:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    rightMeta:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     rightMeta:SetPoint("TOPRIGHT", headerPanel, "TOPRIGHT", -10, -25)
     rightMeta:SetText(string.format("Quality: %d\nContent: %s\nActions: %d",
         sessionData.qualityScore, sessionData.contentType or "normal", sessionData.actionCount or 0))
@@ -94,31 +94,31 @@ function SessionDetailWindow:Create(sessionData)
     summaryBg:SetColorTexture(0.05, 0.05, 0.05, 0.7)
 
     local summaryTitle = summaryPanel:CreateFontString(nil, "OVERLAY")
-    summaryTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    summaryTitle:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     summaryTitle:SetPoint("TOP", summaryPanel, "TOP", 0, -5)
     summaryTitle:SetText("Performance Summary")
 
     -- Performance metrics (4 columns)
     local dpsCol = summaryPanel:CreateFontString(nil, "OVERLAY")
-    dpsCol:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    dpsCol:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     dpsCol:SetPoint("TOPLEFT", summaryPanel, "TOPLEFT", 15, -25)
     dpsCol:SetText(string.format("Avg DPS\n%s", addon.CombatTracker:FormatNumber(sessionData.avgDPS)))
     dpsCol:SetTextColor(1, 0.3, 0.3, 1)
 
     local peakDpsCol = summaryPanel:CreateFontString(nil, "OVERLAY")
-    peakDpsCol:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    peakDpsCol:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     peakDpsCol:SetPoint("TOPLEFT", summaryPanel, "TOPLEFT", 145, -25)
     peakDpsCol:SetText(string.format("Peak DPS\n%s", addon.CombatTracker:FormatNumber(sessionData.peakDPS)))
     peakDpsCol:SetTextColor(1, 0.5, 0.5, 1)
 
     local hpsCol = summaryPanel:CreateFontString(nil, "OVERLAY")
-    hpsCol:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    hpsCol:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     hpsCol:SetPoint("TOPLEFT", summaryPanel, "TOPLEFT", 275, -25)
     hpsCol:SetText(string.format("Avg HPS\n%s", addon.CombatTracker:FormatNumber(sessionData.avgHPS)))
     hpsCol:SetTextColor(0.3, 1, 0.3, 1)
 
     local peakHpsCol = summaryPanel:CreateFontString(nil, "OVERLAY")
-    peakHpsCol:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 12, "OUTLINE")
+    peakHpsCol:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 12, "OUTLINE")
     peakHpsCol:SetPoint("TOPLEFT", summaryPanel, "TOPLEFT", 405, -25)
     peakHpsCol:SetText(string.format("Peak HPS\n%s", addon.CombatTracker:FormatNumber(sessionData.peakHPS)))
     peakHpsCol:SetTextColor(0.5, 1, 0.5, 1)
@@ -153,7 +153,7 @@ function SessionDetailWindow:Create(sessionData)
     end
     
     local comparisonText = comparisonPanel:CreateFontString(nil, "OVERLAY")
-    comparisonText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    comparisonText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     comparisonText:SetPoint("CENTER", comparisonPanel, "CENTER", 0, 5)
     comparisonText:SetText(string.format("Stored: %s DPS, %s HPS | Raw: %s DPS, %s HPS",
         addon.CombatTracker:FormatNumber(sessionData.avgDPS),
@@ -163,7 +163,7 @@ function SessionDetailWindow:Create(sessionData)
     comparisonText:SetTextColor(0.8, 0.8, 1, 1)
     
     local methodText = comparisonPanel:CreateFontString(nil, "OVERLAY")
-    methodText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    methodText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 9, "OUTLINE")
     methodText:SetPoint("CENTER", comparisonPanel, "CENTER", 0, -10)
     methodText:SetText(methodNote)
     methodText:SetTextColor(0.6, 0.6, 0.8, 1)
@@ -178,7 +178,7 @@ function SessionDetailWindow:Create(sessionData)
     chartBg:SetColorTexture(0.02, 0.02, 0.02, 0.8)
 
     local chartTitle = chartPanel:CreateFontString(nil, "OVERLAY")
-    chartTitle:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+    chartTitle:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
     chartTitle:SetPoint("TOP", chartPanel, "TOP", 0, -5)
     chartTitle:SetText("Performance Timeline")
 
@@ -308,7 +308,7 @@ function SessionDetailWindow:CreateTimelineVisualization(chartArea, sessionData)
     if #timelinePoints == 0 then
         -- Show "no data" message
         local noDataText = chartArea:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 14, "OUTLINE")
+        noDataText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 14, "OUTLINE")
         noDataText:SetPoint("CENTER", chartArea, "CENTER", 0, 0)
         noDataText:SetText("No timeline data available")
         noDataText:SetTextColor(0.6, 0.6, 0.6, 1)
@@ -416,7 +416,7 @@ function SessionDetailWindow:CreateTimelineVisualization(chartArea, sessionData)
 
     -- Add scale indicators
     local scaleText = chartArea:CreateFontString(nil, "OVERLAY")
-    scaleText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 9, "OUTLINE")
+    scaleText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 9, "OUTLINE")
     scaleText:SetPoint("TOPLEFT", chartArea, "TOPLEFT", 5, -5)
     scaleText:SetText(string.format("Max: %s DPS, %s HPS",
         addon.CombatTracker:FormatNumber(maxDPS),
@@ -425,7 +425,7 @@ function SessionDetailWindow:CreateTimelineVisualization(chartArea, sessionData)
 
     -- Add legend
     local legend = chartArea:CreateFontString(nil, "OVERLAY")
-    legend:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 10, "OUTLINE")
+    legend:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 10, "OUTLINE")
     legend:SetPoint("TOPRIGHT", chartArea, "TOPRIGHT", -5, -5)
     legend:SetText("Red: DPS  Green: HPS")
     legend:SetTextColor(0.8, 0.8, 0.8, 1)

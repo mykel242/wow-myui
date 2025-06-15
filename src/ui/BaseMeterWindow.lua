@@ -108,7 +108,7 @@ function BaseMeterWindow:Create()
 
     -- Main number (large, top-left with margin, aligned with label) - CUSTOM FONT
     local mainText = frame:CreateFontString(nil, "OVERLAY")
-    mainText:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 20, "OUTLINE")
+    mainText:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 20, "OUTLINE")
     mainText:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -8)
     mainText:SetText("0")
     mainText:SetTextColor(1, 1, 1, 1)
@@ -128,7 +128,7 @@ function BaseMeterWindow:Create()
     -- Calculation method indicator (smaller text under label)
     local methodIndicator = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     methodIndicator:SetPoint("TOPRIGHT", label, "BOTTOMRIGHT", 0, -2)
-    methodIndicator:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 8, "OUTLINE")
+    methodIndicator:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 8, "OUTLINE")
     methodIndicator:SetText("Rolling")
     methodIndicator:SetTextColor(0.7, 0.7, 0.7, 0.8)
     methodIndicator:SetJustifyH("RIGHT")
@@ -226,7 +226,7 @@ function BaseMeterWindow:Create()
     end
 
     local maxValue = frame:CreateFontString(nil, "OVERLAY")
-    maxValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    maxValue:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     maxValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -40) -- Just below main counter area
     maxValue:SetSize(106, 0)                               -- Wider to accommodate "123K max" format
     maxValue:SetText("0 peak")                             -- Include label in the text
@@ -239,7 +239,7 @@ function BaseMeterWindow:Create()
         print("Creating totalValue...")
     end
     local totalValue = frame:CreateFontString(nil, "OVERLAY")
-    totalValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+    totalValue:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     totalValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -52) -- Below peak counter
     totalValue:SetSize(106, 0)                               -- Wider to accommodate "456K total" format
     totalValue:SetText("0 total")                            -- Include label in the text
@@ -254,7 +254,7 @@ function BaseMeterWindow:Create()
             print("Creating absorb stats...")
         end
         local absorbValue = frame:CreateFontString(nil, "OVERLAY")
-        absorbValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        absorbValue:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
         absorbValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -40) -- Top row, right side
         absorbValue:SetSize(106, 0)                                  -- Wider to accommodate "456K absorb" format
         absorbValue:SetText("0 absorb")                              -- Include label in the text
@@ -272,7 +272,7 @@ function BaseMeterWindow:Create()
             print("Creating overheal stats...")
         end
         local overhealValue = frame:CreateFontString(nil, "OVERLAY")
-        overhealValue:SetFont("Interface\\AddOns\\myui2\\SCP-SB.ttf", 11, "OUTLINE")
+        overhealValue:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
         -- Position below absorb if absorb is shown, otherwise use top position
         if self.config.showAbsorb == true then
             overhealValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -52) -- Bottom row, right side

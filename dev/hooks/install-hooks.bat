@@ -1,5 +1,5 @@
 @echo off
-REM hooks/install-hooks.bat
+REM dev/hooks/install-hooks.bat
 REM Windows script to install Git hooks
 
 echo Installing Git hooks...
@@ -15,11 +15,11 @@ REM Create hooks directory if it doesn't exist
 if not exist ".git\hooks" mkdir ".git\hooks"
 
 REM Copy and install pre-commit hook
-if exist "hooks\pre-commit" (
-    copy "hooks\pre-commit" ".git\hooks\pre-commit" >nul
+if exist "dev\hooks\pre-commit" (
+    copy "dev\hooks\pre-commit" ".git\hooks\pre-commit" >nul
     echo ✓ pre-commit hook installed
 ) else (
-    echo ✗ hooks\pre-commit not found
+    echo ✗ dev\hooks\pre-commit not found
 )
 
 echo Git hooks installation complete!
