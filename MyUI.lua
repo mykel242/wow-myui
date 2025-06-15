@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "refactor-modularization-75b5e2c"
-addon.BUILD_DATE = "2025-06-15-12:21"
+addon.VERSION = "refactor-modularization-1713bdd"
+addon.BUILD_DATE = "2025-06-15-18:50"
 
 -- Debug flag (will be loaded from saved variables)
 addon.DEBUG = false
@@ -301,6 +301,11 @@ function addon:OnInitialize()
     -- 6. Initialize SessionBrowser (session table view)
     if self.SessionBrowser then
         self.SessionBrowser:Initialize()
+    end
+    
+    -- 7. Initialize SettingsWindow
+    if self.SettingsWindow then
+        self.SettingsWindow:Initialize()
     end
     
     --[[
@@ -599,30 +604,29 @@ function addon:CreateMainFrame()
         end
     end)
 
-    -- Export Tools button (redirects to session browser)
-    local exportBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
-    exportBtn:SetSize(140, 25)
-    exportBtn:SetPoint("TOPLEFT", toolPanel, "TOPLEFT", 10, -65)
-    exportBtn:SetText("Export Tools")
-    exportBtn:SetScript("OnClick", function()
-        if addon.SessionBrowser then
-            addon.SessionBrowser:Show()
-            print("Select a session in the browser, then click Export")
-        else
-            print("Session Browser not available")
-        end
-    end)
-
     -- Session Browser button
     local sessionBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
     sessionBtn:SetSize(140, 25)
-    sessionBtn:SetPoint("TOPRIGHT", toolPanel, "TOPRIGHT", -10, -65)
+    sessionBtn:SetPoint("TOPLEFT", toolPanel, "TOPLEFT", 10, -65)
     sessionBtn:SetText("Session Browser")
     sessionBtn:SetScript("OnClick", function()
         if addon.SessionBrowser then
             addon.SessionBrowser:Show()
         else
             print("Session Browser not available")
+        end
+    end)
+
+    -- Settings button
+    local settingsBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
+    settingsBtn:SetSize(140, 25)
+    settingsBtn:SetPoint("TOPRIGHT", toolPanel, "TOPRIGHT", -10, -65)
+    settingsBtn:SetText("Settings")
+    settingsBtn:SetScript("OnClick", function()
+        if addon.SettingsWindow then
+            addon.SettingsWindow:Show()
+        else
+            print("Settings window not available")
         end
     end)
 

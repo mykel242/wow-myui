@@ -47,6 +47,10 @@ local combatData = {
     -- Extended combat detection
     lastActivityTime = nil,
     lastDamageTime = nil,
+    lastIncomingDamageTime = nil,  -- Track incoming damage to player
+    lastGroupActivityTime = nil,   -- Track group member activity
+    playerDeathTime = nil,         -- Track when player died
+    playerIsAlive = true,          -- Track player death state
     playerRegenTime = nil,
     endCombatTimer = nil
 }
@@ -270,6 +274,12 @@ function CombatData:StartCombat(logTimestamp)
     end
     combatData.playerRegenTime = nil
     combatData.lastActivityTime = GetTime()
+    
+    -- Initialize enhanced combat detection variables
+    combatData.lastIncomingDamageTime = nil
+    combatData.lastGroupActivityTime = nil
+    combatData.playerDeathTime = nil
+    combatData.playerIsAlive = true  -- Assume player is alive at combat start
 
     -- Tell timeline tracker to reset
     if addon.TimelineTracker then
@@ -291,24 +301,71 @@ function CombatData:CheckCombatActivity()
     end
     
     local timeSinceRegen = GetTime() - combatData.playerRegenTime
-    local activityTimeout = 1.5 -- End combat if no damage for 1.5 seconds after player regen
+    local currentTime = GetTime()
     
-    -- Check if we've received any DAMAGE events recently (ignore healing for combat end)
-    local recentDamageActivity = false
-    if combatData.lastDamageTime and (GetTime() - combatData.lastDamageTime) < 1.5 then
-        recentDamageActivity = true
+    -- Determine appropriate timeout based on player state and settings
+    local settings = addon.SettingsWindow and addon.SettingsWindow:GetCurrentSettings() or {}
+    local normalTimeout = settings.combatTimeout or 1.5
+    local deadTimeout = settings.deadPlayerTimeout or 8.0
+    
+    local activityTimeout = normalTimeout
+    if not combatData.playerIsAlive then
+        -- Player is dead - use extended timeout
+        activityTimeout = deadTimeout
+        if addon.DEBUG then
+            addon:DebugPrint(string.format("Player is dead - using extended combat timeout (%.1fs)", deadTimeout))
+        end
     end
     
-    if recentDamageActivity then
+    -- Check multiple types of combat activity
+    local recentActivity = false
+    local activitySources = {}
+    
+    -- 1. Player outgoing damage (original logic)
+    if combatData.lastDamageTime and (currentTime - combatData.lastDamageTime) < activityTimeout then
+        recentActivity = true
+        table.insert(activitySources, "player damage")
+    end
+    
+    -- 2. Incoming damage to player (even when dead) - if enabled
+    local includeIncomingDamage = settings.includeIncomingDamage ~= false -- Default true
+    if includeIncomingDamage and combatData.lastIncomingDamageTime and (currentTime - combatData.lastIncomingDamageTime) < activityTimeout then
+        recentActivity = true
+        table.insert(activitySources, "incoming damage")
+    end
+    
+    -- 3. Group member activity (if in group/raid) - if enabled
+    local includeGroupActivity = settings.includeGroupActivity ~= false -- Default true
+    if includeGroupActivity and combatData.lastGroupActivityTime and (currentTime - combatData.lastGroupActivityTime) < activityTimeout then
+        recentActivity = true
+        table.insert(activitySources, "group activity")
+    end
+    
+    -- 4. Check if player was recently resurrected
+    if not combatData.playerIsAlive then
+        -- Check if player is now alive (resurrection)
+        if not UnitIsDeadOrGhost("player") then
+            combatData.playerIsAlive = true
+            combatData.playerDeathTime = nil
+            recentActivity = true
+            table.insert(activitySources, "player resurrected")
+            if addon.DEBUG then
+                addon:DebugPrint("Player resurrected - extending combat")
+            end
+        end
+    end
+    
+    if recentActivity then
         -- Reset the regen timer - combat is still ongoing
         combatData.playerRegenTime = GetTime()
         if addon.DEBUG then
-            addon:DebugPrint("Combat extended - player activity detected within 3 seconds")
+            addon:DebugPrint(string.format("Combat extended - activity detected: %s", table.concat(activitySources, ", ")))
         end
     elseif timeSinceRegen >= activityTimeout then
         -- No activity for timeout period - end combat for real
         if addon.DEBUG then
-            addon:DebugPrint(string.format("Combat ending after %.1fs of inactivity", timeSinceRegen))
+            addon:DebugPrint(string.format("Combat ending after %.1fs of inactivity (timeout: %.1fs, player alive: %s)", 
+                timeSinceRegen, activityTimeout, tostring(combatData.playerIsAlive)))
         end
         
         -- Cancel the timer and end combat
@@ -588,6 +645,74 @@ function CombatData:ParseCombatLog(timestamp, subevent, _, sourceGUID, sourceNam
     end
 end
 
+-- Parse all combat events for enhanced activity detection (supplements ParseCombatLog)
+function CombatData:ParseAllCombatEvents(timestamp, subevent, _, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
+                                        destGUID, destName, destFlags, destRaidFlags, ...)
+    local playerGUID = UnitGUID("player")
+    local currentTime = GetTime()
+    
+    -- Get settings for feature toggles
+    local settings = addon.SettingsWindow and addon.SettingsWindow:GetCurrentSettings() or {}
+    local includeIncomingDamage = settings.includeIncomingDamage ~= false -- Default true
+    local includeGroupActivity = settings.includeGroupActivity ~= false -- Default true
+    
+    -- Track incoming damage to player (for combat continuation even when player is dead)
+    if includeIncomingDamage and (subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or subevent == "RANGE_DAMAGE" or 
+        subevent == "SPELL_PERIODIC_DAMAGE") and destGUID == playerGUID then
+        
+        combatData.lastIncomingDamageTime = currentTime
+        if addon.DEBUG then
+            addon:DebugPrint(string.format("Incoming damage tracked: %s -> Player", sourceName or "Unknown"))
+        end
+    end
+    
+    -- Track group member activity if in group/raid and enabled
+    if includeGroupActivity and (IsInGroup() or IsInRaid()) then
+        local isGroupMemberSource = false
+        local isGroupMemberDest = false
+        
+        -- Check if source or destination is a group member
+        if IsInRaid() then
+            for i = 1, 40 do
+                local unit = "raid" .. i
+                if UnitExists(unit) then
+                    local unitGUID = UnitGUID(unit)
+                    if unitGUID == sourceGUID then isGroupMemberSource = true end
+                    if unitGUID == destGUID then isGroupMemberDest = true end
+                end
+            end
+        elseif IsInGroup() then
+            for i = 1, 5 do
+                local unit = i == 1 and "player" or ("party" .. (i - 1))
+                if UnitExists(unit) then
+                    local unitGUID = UnitGUID(unit)
+                    if unitGUID == sourceGUID then isGroupMemberSource = true end
+                    if unitGUID == destGUID then isGroupMemberDest = true end
+                end
+            end
+        end
+        
+        -- Track activity if group members are involved in combat
+        if isGroupMemberSource and (subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or 
+                                    subevent == "RANGE_DAMAGE" or subevent == "SPELL_PERIODIC_DAMAGE" or
+                                    subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_HEAL") then
+            combatData.lastGroupActivityTime = currentTime
+            if addon.DEBUG and math.random() < 0.1 then -- 10% debug sample rate
+                addon:DebugPrint(string.format("Group activity tracked: %s (%s)", sourceName or "Unknown", subevent))
+            end
+        end
+    end
+    
+    -- Track player death
+    if subevent == "UNIT_DIED" and destGUID == playerGUID then
+        combatData.playerIsAlive = false
+        combatData.playerDeathTime = currentTime
+        if addon.DEBUG then
+            addon:DebugPrint("Player death detected - extending combat timeout")
+        end
+    end
+end
+
 -- Event handler
 function CombatData:OnEvent(event, ...)
     if event == "PLAYER_REGEN_DISABLED" then
@@ -599,7 +724,11 @@ function CombatData:OnEvent(event, ...)
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
         -- Only process combat events if we're still in combat
         if combatData.inCombat then
-            self:ParseCombatLog(CombatLogGetCurrentEventInfo())
+            local eventInfo = {CombatLogGetCurrentEventInfo()}
+            -- Parse for player stats (original logic)
+            self:ParseCombatLog(unpack(eventInfo))
+            -- Parse for enhanced activity detection
+            self:ParseAllCombatEvents(unpack(eventInfo))
         end
     end
 end
@@ -675,6 +804,12 @@ function CombatData:ResetDisplayStats()
         combatData.startTime = nil
         combatData.endTime = nil
         combatData.lastSampleRelativeTime = 0
+        
+        -- Reset enhanced combat detection variables
+        combatData.lastIncomingDamageTime = nil
+        combatData.lastGroupActivityTime = nil
+        combatData.playerDeathTime = nil
+        combatData.playerIsAlive = true
 
         -- Clear timeline data
         if addon.TimelineTracker then
@@ -701,6 +836,12 @@ function CombatData:ResetDPSStats()
         -- Reset start time if no combat is active
         combatData.startTime = nil
         combatData.endTime = nil
+        
+        -- Reset enhanced combat detection variables
+        combatData.lastIncomingDamageTime = nil
+        combatData.lastGroupActivityTime = nil
+        combatData.playerDeathTime = nil
+        combatData.playerIsAlive = true
 
         print("DPS stats and peak values reset")
     else
@@ -730,6 +871,12 @@ function CombatData:ResetHPSStats()
         -- Reset start time if no combat is active
         combatData.startTime = nil
         combatData.endTime = nil
+        
+        -- Reset enhanced combat detection variables
+        combatData.lastIncomingDamageTime = nil
+        combatData.lastGroupActivityTime = nil
+        combatData.playerDeathTime = nil
+        combatData.playerIsAlive = true
 
         print("HPS stats and peak values reset")
     else
@@ -850,6 +997,48 @@ function CombatData:DebugPeakTracking()
         end
     end
     print("========================")
+end
+
+-- Debug enhanced combat detection
+function CombatData:DebugEnhancedCombatDetection()
+    print("=== ENHANCED COMBAT DETECTION DEBUG ===")
+    print("Combat State:", self:IsInCombat() and "IN COMBAT" or "OUT OF COMBAT")
+    print("Player Alive:", tostring(combatData.playerIsAlive))
+    
+    local currentTime = GetTime()
+    
+    if combatData.lastDamageTime then
+        print(string.format("Last Player Damage: %.1fs ago", currentTime - combatData.lastDamageTime))
+    else
+        print("Last Player Damage: Never")
+    end
+    
+    if combatData.lastIncomingDamageTime then
+        print(string.format("Last Incoming Damage: %.1fs ago", currentTime - combatData.lastIncomingDamageTime))
+    else
+        print("Last Incoming Damage: Never")
+    end
+    
+    if combatData.lastGroupActivityTime then
+        print(string.format("Last Group Activity: %.1fs ago", currentTime - combatData.lastGroupActivityTime))
+    else
+        print("Last Group Activity: Never")
+    end
+    
+    if combatData.playerDeathTime then
+        print(string.format("Player Death Time: %.1fs ago", currentTime - combatData.playerDeathTime))
+    else
+        print("Player Death Time: Never")
+    end
+    
+    if combatData.playerRegenTime then
+        print(string.format("Player Regen Time: %.1fs ago", currentTime - combatData.playerRegenTime))
+    else
+        print("Player Regen Time: Never")
+    end
+    
+    print("Group Status:", IsInGroup() and "In Group" or "Solo", IsInRaid() and "(Raid)" or "")
+    print("=======================================")
 end
 
 -- =============================================================================

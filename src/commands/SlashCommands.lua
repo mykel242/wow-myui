@@ -135,6 +135,12 @@ function SlashCommands:InitializeSimpleCommands()
             addon.DEBUG = not addon.DEBUG
             addon.db.debugMode = addon.DEBUG
             print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
+        elseif command == "settings" then
+            if addon.SettingsWindow then
+                addon.SettingsWindow:Show()
+            else
+                print("Settings window not available")
+            end
         elseif command == "timestamps" then
             if addon.TimestampManager then
                 print(addon.TimestampManager:GetDebugSummary())
@@ -206,6 +212,12 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("GUIDResolver not loaded")
             end
+        elseif command == "combatdetection" then
+            if addon.CombatTracker then
+                addon.CombatTracker:DebugEnhancedCombatDetection()
+            else
+                print("CombatTracker not loaded")
+            end
         elseif command:match("^guid%s+(.+)$") then
             local guid = command:match("^guid%s+(.+)$")
             if addon.GUIDResolver then
@@ -269,6 +281,7 @@ function SlashCommands:InitializeSimpleCommands()
             print("MyUI Commands (Simplified):")
             print("  /myui [ show | hide | toggle ] - Main window")
             print("  /myui debug - Toggle debug mode")
+            print("  /myui settings - Open settings panel")
             print("  /myui timestamps - Show TimestampManager debug info")
             print("")
             print("New Tools (Active):")
@@ -281,6 +294,7 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui counters - Show session counter status")
             print("  /myui guids - Show GUID resolver status")
             print("  /myui guid <guid> - Resolve specific GUID")
+            print("  /myui combatdetection - Debug enhanced combat detection")
             print("  /myui browser - Toggle session browser (table view)")
             print("  /myui viewer - Toggle combat log viewer window")
             print("  /myui export - Open session browser for export")

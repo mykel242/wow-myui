@@ -14,6 +14,7 @@ src/data/GUIDResolver.lua
 src/data/StorageManager.lua
 src/core/UnifiedCalculator.lua
 src/ui/BaseMeterWindow.lua
+src/ui/SettingsWindow.lua
 src/ui/CombatLogViewer.lua
 src/ui/SessionBrowser.lua
 src/ui/ExportDialog.lua

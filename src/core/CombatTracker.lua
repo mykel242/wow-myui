@@ -313,6 +313,11 @@ function CombatTracker:DebugPeakTracking()
     return addon.CombatData:DebugPeakTracking()
 end
 
+-- Debug enhanced combat detection
+function CombatTracker:DebugEnhancedCombatDetection()
+    return addon.CombatData:DebugEnhancedCombatDetection()
+end
+
 -- Debug content scaling analysis
 function CombatTracker:DebugContentScaling()
     return addon.ContentDetection:DebugContentScaling()
