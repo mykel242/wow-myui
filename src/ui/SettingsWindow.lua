@@ -125,7 +125,7 @@ function SettingsWindow:CreateWindow()
     
     -- Main frame
     local frame = CreateFrame("Frame", "MyUISettingsFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(500, 400)
+    frame:SetSize(480, 380)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -134,6 +134,11 @@ function SettingsWindow:CreateWindow()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     frame:SetFrameStrata("DIALOG")
     frame:Hide()
+    
+    -- Ensure the frame has proper background
+    if frame.Bg then
+        frame.Bg:SetColorTexture(0, 0, 0, 0.8)
+    end
     
     -- Title
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -153,6 +158,10 @@ function SettingsWindow:CreateWindow()
     self:CreateButtons(frame)
     
     settingsFrame = frame
+    
+    -- Show the first tab by default
+    self:SelectTab(1)
+    
     return frame
 end
 
@@ -212,6 +221,12 @@ function SettingsWindow:CreateCombatDetectionPanel(parent)
     local panel = CreateFrame("Frame", nil, parent)
     panel:SetPoint("TOPLEFT", parent.Inset, "TOPLEFT", 10, -10)
     panel:SetPoint("BOTTOMRIGHT", parent.Inset, "BOTTOMRIGHT", -10, 40)
+    
+    -- Add visible background for debugging
+    local bg = panel:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(panel)
+    bg:SetColorTexture(0.1, 0.1, 0.1, 0.8)
+    
     panel:Hide()
     
     local yOffset = -20
@@ -306,6 +321,12 @@ function SettingsWindow:CreateCalculationsPanel(parent)
     local panel = CreateFrame("Frame", nil, parent)
     panel:SetPoint("TOPLEFT", parent.Inset, "TOPLEFT", 10, -10)
     panel:SetPoint("BOTTOMRIGHT", parent.Inset, "BOTTOMRIGHT", -10, 40)
+    
+    -- Add visible background
+    local bg = panel:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(panel)
+    bg:SetColorTexture(0.1, 0.1, 0.1, 0.8)
+    
     panel:Hide()
     
     local yOffset = -20
@@ -424,6 +445,12 @@ function SettingsWindow:CreateStoragePanel(parent)
     local panel = CreateFrame("Frame", nil, parent)
     panel:SetPoint("TOPLEFT", parent.Inset, "TOPLEFT", 10, -10)
     panel:SetPoint("BOTTOMRIGHT", parent.Inset, "BOTTOMRIGHT", -10, 40)
+    
+    -- Add visible background
+    local bg = panel:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(panel)
+    bg:SetColorTexture(0.1, 0.1, 0.1, 0.8)
+    
     panel:Hide()
     
     local yOffset = -20
@@ -538,6 +565,12 @@ function SettingsWindow:CreateDebugPanel(parent)
     local panel = CreateFrame("Frame", nil, parent)
     panel:SetPoint("TOPLEFT", parent.Inset, "TOPLEFT", 10, -10)
     panel:SetPoint("BOTTOMRIGHT", parent.Inset, "BOTTOMRIGHT", -10, 40)
+    
+    -- Add visible background
+    local bg = panel:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(panel)
+    bg:SetColorTexture(0.1, 0.1, 0.1, 0.8)
+    
     panel:Hide()
     
     local yOffset = -20
@@ -662,8 +695,13 @@ function SettingsWindow:Show()
         self:LoadSettings()
     end
     
+    -- Ensure settings are current
+    self:LoadSettings()
+    
     settingsFrame:Show()
-    self:SelectTab(1) -- Show first tab by default
+    
+    -- Always select first tab when showing
+    self:SelectTab(1)
 end
 
 -- Hide the settings window
