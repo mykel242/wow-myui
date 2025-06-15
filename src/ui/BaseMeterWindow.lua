@@ -164,13 +164,13 @@ function BaseMeterWindow:Create()
     -- Button texture (your custom refresh icon)
     local texture = resetBtn:CreateTexture(nil, "ARTWORK")
     texture:SetAllPoints(resetBtn)
-    texture:SetTexture("Interface\\AddOns\\myui2\\refresh-icon") -- Your custom icon path
+    texture:SetTexture("Interface\\AddOns\\myui2\\assets\\refresh-icon") -- Your custom icon path
     texture:SetAlpha(0.6)
 
     -- Button highlight
     local highlight = resetBtn:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints(resetBtn)
-    highlight:SetTexture("Interface\\AddOns\\myui2\\refresh-icon") -- Your custom icon path
+    highlight:SetTexture("Interface\\AddOns\\myui2\\assets\\refresh-icon") -- Your custom icon path
     highlight:SetAlpha(1.0)
 
     -- Button functionality
