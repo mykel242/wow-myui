@@ -3,8 +3,14 @@
 
 local addonName, addon = ...
 
+print("Debug: MyLogger.lua loading...")
+print("Debug: addonName =", addonName)
+print("Debug: addon =", addon)
+
 addon.MyLogger = {}
 local MyLogger = addon.MyLogger
+
+print("Debug: MyLogger assigned to addon.MyLogger")
 
 -- =============================================================================
 -- LOG LEVELS

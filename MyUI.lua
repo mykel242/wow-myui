@@ -13,8 +13,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "refactor-modularization-ca0aaa8"
-addon.BUILD_DATE = "2025-06-16-11:11"
+addon.VERSION = "refactor-modularization-e933741"
+addon.BUILD_DATE = "2025-06-16-13:57"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -284,13 +284,30 @@ function addon:OnInitialize()
         fallbackToPrint = self.db.logFallbackToPrint ~= false
     })
 
-    -- Initialize core modules only (others disabled during modularization)
+    -- Initialize core modules with logger injection
     -- 0. Unified calculator must be available before combat data
     -- (UnifiedCalculator is loaded via file inclusion - no init needed)
     
     -- 0.5. Initialize MyTimestampManager first (single source of truth for timing)
     if self.MyTimestampManager then
-        self.MyTimestampManager:Initialize()
+        print("DEBUG: MyTimestampManager exists")
+        print("DEBUG: MyTimestampManager type:", type(self.MyTimestampManager))
+        print("DEBUG: Initialize method exists:", self.MyTimestampManager.Initialize ~= nil)
+        print("DEBUG: Available methods in MyTimestampManager:")
+        for k, v in pairs(self.MyTimestampManager) do
+            if type(v) == "function" then
+                print("  ", k, "->", type(v))
+            end
+        end
+        
+        if self.MyTimestampManager.Initialize then
+            self.MyTimestampManager:Initialize(self.MyLogger)
+            self:Debug("MyTimestampManager initialized with logger injection")
+        else
+            print("ERROR: Initialize method missing from MyTimestampManager")
+        end
+    else
+        print("DEBUG: MyTimestampManager is nil")
     end
     
     --[[
@@ -302,7 +319,8 @@ function addon:OnInitialize()
     
     -- 1. Initialize MySimpleCombatDetector (new reliable combat detection)
     if self.MySimpleCombatDetector then
-        self.MySimpleCombatDetector:Initialize()
+        self.MySimpleCombatDetector:Initialize(self.MyLogger)
+        self:Debug("MySimpleCombatDetector initialized with logger injection")
     end
     
     -- 2. Initialize MetadataCollector (context gathering)

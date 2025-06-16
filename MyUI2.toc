@@ -6,10 +6,10 @@
 ## SavedVariables: MyUIDB, EntityBlacklistDB
 ## DefaultState: enabled
 
-MyUI.lua
 src/core/MyLogger.lua
 src/core/MyTimestampManager.lua
 src/core/MySimpleCombatDetector.lua
+MyUI.lua
 src/data/MetadataCollector.lua
 src/data/GUIDResolver.lua
 src/data/StorageManager.lua

@@ -3,8 +3,39 @@
 -- Replaces the overly complex multi-system approach
 
 local addonName, addon = ...
+
+-- Self-contained module with internal debugging
 local MySimpleCombatDetector = {}
 addon.MySimpleCombatDetector = MySimpleCombatDetector
+
+-- Internal debug configuration
+local DEBUG_MODE = false
+local logger = nil -- Injected logger instance
+
+-- Internal debug functions with logger fallback
+local function debugPrint(...)
+    if logger and logger.Debug then
+        logger:Debug(...)
+    elseif DEBUG_MODE then
+        print("[MySimpleCombatDetector]", ...)
+    end
+end
+
+local function infoPrint(...)
+    if logger and logger.Info then
+        logger:Info(...)
+    else
+        print("[MySimpleCombatDetector]", ...)
+    end
+end
+
+local function errorPrint(...)
+    if logger and logger.Error then
+        logger:Error(...)
+    else
+        print("[MySimpleCombatDetector][ERROR]", ...)
+    end
+end
 
 -- Simple configuration
 local CONFIG = {
@@ -37,42 +68,45 @@ local MEANINGFUL_EVENTS = {
 }
 
 -- Initialize the detector
-function MySimpleCombatDetector:Initialize()
-    print("[MySimpleCombatDetector] Initialize() called")
+function MySimpleCombatDetector:Initialize(injectedLogger)
+    -- Inject logger if provided
+    logger = injectedLogger
+    
+    debugPrint("Initialize() called")
     
     if self.initialized then
-        print("[MySimpleCombatDetector] Already initialized, skipping")
+        debugPrint("Already initialized, skipping")
         return
     end
 
     -- Create event frame
     self.frame = CreateFrame("Frame", addonName .. "MySimpleCombatDetector")
-    print("[MySimpleCombatDetector] Event frame created")
+    debugPrint("Event frame created")
     
     -- Register for WoW combat state events
     self.frame:RegisterEvent("PLAYER_REGEN_DISABLED")  -- Entered combat
     self.frame:RegisterEvent("PLAYER_REGEN_ENABLED")   -- Left combat
     self.frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    print("[SimpleCombatDetector] Events registered: PLAYER_REGEN_DISABLED, PLAYER_REGEN_ENABLED, COMBAT_LOG_EVENT_UNFILTERED")
+    debugPrint("Events registered: PLAYER_REGEN_DISABLED, PLAYER_REGEN_ENABLED, COMBAT_LOG_EVENT_UNFILTERED")
     
     -- Set up event handler
     self.frame:SetScript("OnEvent", function(frame, event, ...)
         self:OnEvent(event, ...)
     end)
-    print("[SimpleCombatDetector] Event handler script set")
+    debugPrint("Event handler script set")
     
     self.initialized = true
     
-    print("[SimpleCombatDetector] Initialization complete")
+    debugPrint("Initialization complete")
 end
 
 -- Main event handler
-function SimpleCombatDetector:OnEvent(event, ...)
+function MySimpleCombatDetector:OnEvent(event, ...)
     if event == "PLAYER_REGEN_DISABLED" then
-        print("[SimpleCombatDetector] PLAYER_REGEN_DISABLED - calling StartCombat()")
+        debugPrint("PLAYER_REGEN_DISABLED - calling StartCombat()")
         self:StartCombat()
     elseif event == "PLAYER_REGEN_ENABLED" then
-        print("[SimpleCombatDetector] PLAYER_REGEN_ENABLED - calling BeginCombatTimeout()")
+        debugPrint("PLAYER_REGEN_ENABLED - calling BeginCombatTimeout()")
         self:BeginCombatTimeout()
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
         -- Only process combat log events if we're tracking combat
@@ -85,15 +119,15 @@ function SimpleCombatDetector:OnEvent(event, ...)
 end
 
 -- Start a new combat session
-function SimpleCombatDetector:StartCombat()
-    print("[SimpleCombatDetector] StartCombat() called")
+function MySimpleCombatDetector:StartCombat()
+    debugPrint("StartCombat() called")
     
     -- Cancel any existing timeout
     self:CancelTimeout()
     
     -- If already in combat, don't restart
     if inCombat then
-        print("[SimpleCombatDetector] Already in combat, ignoring start")
+        debugPrint("Already in combat, ignoring start")
         return
     end
     
@@ -146,23 +180,23 @@ function SimpleCombatDetector:StartCombat()
         groupSize = GetNumGroupMembers() or 1
     }
     
-    print(string.format("[SimpleCombatDetector] Combat started: %s", sessionId))
+    debugPrint("Combat started: %s", sessionId)
 end
 
 -- Begin combat timeout when player leaves WoW combat
-function SimpleCombatDetector:BeginCombatTimeout()
+function MySimpleCombatDetector:BeginCombatTimeout()
     if not inCombat then
         return
     end
     
-    addon:Debug("Player left WoW combat, starting activity timeout")
+    debugPrint("Player left WoW combat, starting activity timeout")
     
     -- Start timeout timer
     self:StartTimeoutTimer()
 end
 
 -- Process combat log events
-function SimpleCombatDetector:ProcessCombatEvent(...)
+function MySimpleCombatDetector:ProcessCombatEvent(...)
     local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
           destGUID, destName, destFlags, destRaidFlags = ...
     
@@ -217,8 +251,8 @@ function SimpleCombatDetector:ProcessCombatEvent(...)
     end
     
     -- Log recording with GUID info for debugging
-    print(string.format("[SimpleCombatDetector] RECORD: %s (%s -> %s)", 
-        eventType, sourceName or "nil", destName or "nil"))
+    debugPrint("RECORD: %s (%s -> %s)", 
+        eventType, sourceName or "nil", destName or "nil")
     
     -- Update activity time for relevant events
     if sourceGUID == playerGUID or sourceName == playerName then
@@ -250,12 +284,12 @@ function SimpleCombatDetector:ProcessCombatEvent(...)
     
     -- Only show count every 5 events to reduce spam
     if currentSessionData.eventCount % 5 == 0 then
-        print(string.format("[SimpleCombatDetector] Events recorded: %d", currentSessionData.eventCount))
+        debugPrint("Events recorded: %d", currentSessionData.eventCount)
     end
 end
 
 -- Start the activity timeout timer
-function SimpleCombatDetector:StartTimeoutTimer()
+function MySimpleCombatDetector:StartTimeoutTimer()
     -- Cancel any existing timer
     self:CancelTimeout()
     
@@ -266,7 +300,7 @@ function SimpleCombatDetector:StartTimeoutTimer()
 end
 
 -- Check if we should end combat due to inactivity
-function SimpleCombatDetector:CheckActivityTimeout()
+function MySimpleCombatDetector:CheckActivityTimeout()
     if not inCombat or not lastActivityTime then
         self:CancelTimeout()
         return
@@ -275,7 +309,7 @@ function SimpleCombatDetector:CheckActivityTimeout()
     local timeSinceActivity = GetTime() - lastActivityTime
     
     if timeSinceActivity >= CONFIG.ACTIVITY_TIMEOUT then
-        addon:Debug("Combat timeout reached: %.1fs since last activity", timeSinceActivity)
+        debugPrint("Combat timeout reached: %.1fs since last activity", timeSinceActivity)
         self:EndCombat()
     else
         addon:Trace("Combat continues: %.1fs since last activity", timeSinceActivity)
@@ -283,9 +317,9 @@ function SimpleCombatDetector:CheckActivityTimeout()
 end
 
 -- End the current combat session
-function SimpleCombatDetector:EndCombat()
+function MySimpleCombatDetector:EndCombat()
     if not inCombat or not currentSessionData then
-        print("[SimpleCombatDetector] EndCombat called but no active session")
+        debugPrint("EndCombat called but no active session")
         return
     end
     
@@ -305,7 +339,7 @@ function SimpleCombatDetector:EndCombat()
     local eventCount = currentSessionData.eventCount
     local activityRate = eventCount / duration
     
-    addon:Debug("Combat ended: %s (%.1fs, %d events, %.2f events/sec)", 
+    debugPrint("Combat ended: %s (%.1fs, %d events, %.2f events/sec)", 
         currentSessionData.id, duration, eventCount, activityRate)
     
     -- Check if session meets minimum criteria
@@ -315,9 +349,9 @@ function SimpleCombatDetector:EndCombat()
         
         self:StoreSession(currentSessionData)
         
-        addon:Info("Session stored: %s", currentSessionData.id)
+        infoPrint("Session stored: %s", currentSessionData.id)
     else
-        addon:Debug("Session discarded: insufficient activity (%s)", currentSessionData.id)
+        debugPrint("Session discarded: insufficient activity (%s)", currentSessionData.id)
     end
     
     -- Reset combat state
@@ -328,16 +362,16 @@ function SimpleCombatDetector:EndCombat()
 end
 
 -- Store the completed session
-function SimpleCombatDetector:StoreSession(sessionData)
+function MySimpleCombatDetector:StoreSession(sessionData)
     if addon.StorageManager then
         addon.StorageManager:StoreCombatSession(sessionData)
     else
-        addon:Error("StorageManager not available - session lost")
+        errorPrint("StorageManager not available - session lost")
     end
 end
 
 -- Cancel the timeout timer
-function SimpleCombatDetector:CancelTimeout()
+function MySimpleCombatDetector:CancelTimeout()
     if timeoutTimer then
         timeoutTimer:Cancel()
         timeoutTimer = nil
@@ -345,22 +379,22 @@ function SimpleCombatDetector:CancelTimeout()
 end
 
 -- Public API methods
-function SimpleCombatDetector:IsInCombat()
+function MySimpleCombatDetector:IsInCombat()
     return inCombat
 end
 
-function SimpleCombatDetector:GetCurrentSession()
+function MySimpleCombatDetector:GetCurrentSession()
     return currentSessionData
 end
 
-function SimpleCombatDetector:ForceEndCombat()
+function MySimpleCombatDetector:ForceEndCombat()
     if inCombat then
         self:EndCombat()
     end
 end
 
 -- Debug method to check current state
-function SimpleCombatDetector:GetDebugInfo()
+function MySimpleCombatDetector:GetDebugInfo()
     return {
         inCombat = inCombat,
         sessionId = currentSessionData and currentSessionData.id or nil,
@@ -372,7 +406,7 @@ function SimpleCombatDetector:GetDebugInfo()
 end
 
 -- Session ID validation helper
-function SimpleCombatDetector:ValidateSessionId(sessionId)
+function MySimpleCombatDetector:ValidateSessionId(sessionId)
     if not sessionId or type(sessionId) ~= "string" then
         return false, "Invalid session ID format"
     end
@@ -407,8 +441,14 @@ function SimpleCombatDetector:ValidateSessionId(sessionId)
 end
 
 -- Configuration methods
-function SimpleCombatDetector:GetConfig()
+function MySimpleCombatDetector:GetConfig()
     return CONFIG
+end
+
+-- Enable/disable internal debug mode
+function MySimpleCombatDetector:SetInternalDebug(enabled)
+    DEBUG_MODE = enabled
+    debugPrint("Internal debug mode:", enabled and "enabled" or "disabled")
 end
 
 return MySimpleCombatDetector
