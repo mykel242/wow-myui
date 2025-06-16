@@ -38,16 +38,16 @@ local MEANINGFUL_EVENTS = {
 
 -- Initialize the detector
 function MySimpleCombatDetector:Initialize()
-    print("[SimpleCombatDetector] Initialize() called")
+    print("[MySimpleCombatDetector] Initialize() called")
     
     if self.initialized then
-        print("[SimpleCombatDetector] Already initialized, skipping")
+        print("[MySimpleCombatDetector] Already initialized, skipping")
         return
     end
 
     -- Create event frame
-    self.frame = CreateFrame("Frame", addonName .. "SimpleCombatDetector")
-    print("[SimpleCombatDetector] Event frame created")
+    self.frame = CreateFrame("Frame", addonName .. "MySimpleCombatDetector")
+    print("[MySimpleCombatDetector] Event frame created")
     
     -- Register for WoW combat state events
     self.frame:RegisterEvent("PLAYER_REGEN_DISABLED")  -- Entered combat
