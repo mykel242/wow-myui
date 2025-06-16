@@ -71,26 +71,24 @@ local function CalculateQualityScore(sessionData)
     local flags = {}
     local combatActionCount = addon.CombatData:GetActionCount()
 
-    if addon.DEBUG then
-        addon:DebugPrint(string.format("Quality Debug: Duration=%.1f, Damage=%.0f, Healing=%.0f, DPS=%.0f, HPS=%.0f, Actions=%d",
-            sessionData.duration, sessionData.totalDamage, sessionData.totalHealing,
-            sessionData.avgDPS, sessionData.avgHPS, combatActionCount))
-    end
+    addon:Debug("Quality Debug: Duration=%.1f, Damage=%.0f, Healing=%.0f, DPS=%.0f, HPS=%.0f, Actions=%d",
+        sessionData.duration, sessionData.totalDamage, sessionData.totalHealing,
+        sessionData.avgDPS, sessionData.avgHPS, combatActionCount)
 
     -- Duration check - the only reliable absolute metric
     if sessionData.duration < 3 then
         score = score - 40 -- Really short fights are questionable
         flags.tooShort = true
-        if addon.DEBUG then addon:DebugPrint("Quality: Too short (-40)") end
+        addon:Debug("Quality: Too short (-40)")
     elseif sessionData.duration < 6 then
         score = score - 15 -- Short fights are less reliable
-        if addon.DEBUG then addon:DebugPrint("Quality: Short (-15)") end
+        addon:Debug("Quality: Short (-15)")
     elseif sessionData.duration > 30 then
         score = score + 10 -- Long fights are high quality
-        if addon.DEBUG then addon:DebugPrint("Quality: Long fight (+10)") end
+        addon:Debug("Quality: Long fight (+10)")
     else
         -- Normal duration 6-30s, no penalty
-        if addon.DEBUG then addon:DebugPrint("Quality: Normal duration (0)") end
+        addon:Debug("Quality: Normal duration (0)")
     end
 
     -- Activity check - based on actions per second (relative to duration)
@@ -98,13 +96,13 @@ local function CalculateQualityScore(sessionData)
     if actionsPerSecond < 0.3 then -- Less than 1 action per 3 seconds
         score = score - 25
         flags.lowActivity = true
-        if addon.DEBUG then addon:DebugPrint(string.format("Quality: Low activity %.2f APS (-25)", actionsPerSecond)) end
+        addon:Debug("Quality: Low activity %.2f APS (-25)", actionsPerSecond)
     elseif actionsPerSecond > 1.5 then -- More than 1.5 actions per second
         score = score + 15             -- High activity bonus
-        if addon.DEBUG then addon:DebugPrint(string.format("Quality: High activity %.2f APS (+15)", actionsPerSecond)) end
+        addon:Debug("Quality: High activity %.2f APS (+15)", actionsPerSecond)
     else
         score = score + 5 -- Normal activity
-        if addon.DEBUG then addon:DebugPrint(string.format("Quality: Normal activity %.2f APS (+5)", actionsPerSecond)) end
+        addon:Debug("Quality: Normal activity %.2f APS (+5)", actionsPerSecond)
     end
 
     -- Performance consistency check - DPS should be reasonable relative to duration
@@ -112,13 +110,10 @@ local function CalculateQualityScore(sessionData)
     if sessionData.avgDPS < expectedMinDPS then
         score = score - 20
         flags.lowDPS = true
-        if addon.DEBUG then
-            addon:DebugPrint(string.format("Quality: DPS too low %.0f < %.0f (-20)", sessionData.avgDPS,
-                expectedMinDPS))
-        end
+        addon:Debug("Quality: DPS too low %.0f < %.0f (-20)", sessionData.avgDPS, expectedMinDPS)
     else
         score = score + 10 -- Meeting minimum performance
-        if addon.DEBUG then addon:DebugPrint("Quality: DPS acceptable (+10)") end
+        addon:Debug("Quality: DPS acceptable (+10)")
     end
 
     -- Healing appropriateness (only matters if they did substantial healing relative to damage)
@@ -126,10 +121,10 @@ local function CalculateQualityScore(sessionData)
         local healingRatio = sessionData.totalHealing / sessionData.totalDamage
         if healingRatio > 0.5 then     -- Healing more than 50% of damage dealt (tank/healer)
             score = score + 10         -- Bonus for hybrid/support role
-            if addon.DEBUG then print(string.format("Quality: High healing ratio %.2f (+10)", healingRatio)) end
+            addon:Debug("Quality: High healing ratio %.2f (+10)", healingRatio)
         elseif healingRatio > 0.1 then -- Some healing (tank/hybrid)
             score = score + 5          -- Small bonus
-            if addon.DEBUG then print(string.format("Quality: Some healing ratio %.2f (+5)", healingRatio)) end
+            addon:Debug("Quality: Some healing ratio %.2f (+5)", healingRatio)
         end
         -- Pure DPS with minimal healing gets no penalty or bonus
     end
@@ -139,16 +134,14 @@ local function CalculateQualityScore(sessionData)
     if sessionData.totalDamage == 0 then
         score = score - 50 -- No damage at all = not real combat
         flags.noDamage = true
-        if addon.DEBUG then print("Quality: No damage (-50)") end
+        addon:Debug("Quality: No damage (-50)")
     end
 
     -- Cap score bounds
     score = math.max(0, math.min(100, score))
 
-    if addon.DEBUG then
-        print(string.format("Quality Final: %d, Flags: %s", score,
-            next(flags) and table.concat(flags, ", ") or "none"))
-    end
+    addon:Debug("Quality Final: %d, Flags: %s", score,
+        next(flags) and table.concat(flags, ", ") or "none")
 
     return score, flags
 end
@@ -158,10 +151,8 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
     local combatData = addon.CombatData:GetRawCombatData()
 
     if not combatData.startTime or not combatData.endTime then
-        print("[MyUI2 DEBUG] Cannot create session: missing start/end time (start:", combatData.startTime, "end:", combatData.endTime, ")")
-        if addon.DEBUG then
-            print("Combat data keys:", table.concat(addon:GetTableKeys(combatData), ", "))
-        end
+        addon:Error("Cannot create session: missing start/end time (start: %s, end: %s)", tostring(combatData.startTime), tostring(combatData.endTime))
+        addon:Debug("Combat data keys: %s", table.concat(addon:GetTableKeys(combatData), ", "))
         return nil
     end
 
@@ -229,35 +220,34 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
         sessionData.detectionMethod = "none"
     end
 
-    if addon.DEBUG then
-        local enhancedInfo = ""
-        if enhancedData then
-            local participants = 0
-            local cooldowns = 0
-            local deaths = 0
+    -- Debug enhanced data info
+    local enhancedInfo = ""
+    if enhancedData then
+        local participants = 0
+        local cooldowns = 0
+        local deaths = 0
 
-            if enhancedData.participants then
-                for _ in pairs(enhancedData.participants) do
-                    participants = participants + 1
-                end
+        if enhancedData.participants then
+            for _ in pairs(enhancedData.participants) do
+                participants = participants + 1
             end
-            if enhancedData.cooldownUsage then
-                cooldowns = #enhancedData.cooldownUsage
-            end
-            if enhancedData.deaths then
-                deaths = #enhancedData.deaths
-            end
-
-            enhancedInfo = string.format(", Enhanced: %dP/%dC/%dD", participants, cooldowns, deaths)
-        else
-            enhancedInfo = ", Enhanced: NO DATA"
+        end
+        if enhancedData.cooldownUsage then
+            cooldowns = #enhancedData.cooldownUsage
+        end
+        if enhancedData.deaths then
+            deaths = #enhancedData.deaths
         end
 
-        print(string.format(
-            "Session created: %s, Quality: %d, Duration: %.1fs, DPS: %.0f, Type: %s, Timeline points: %d%s",
-            sessionData.sessionId, sessionData.qualityScore, sessionData.duration, sessionData.avgDPS,
-            sessionData.contentType, #sessionData.timelineData, enhancedInfo))
+        enhancedInfo = string.format(", Enhanced: %dP/%dC/%dD", participants, cooldowns, deaths)
+    else
+        enhancedInfo = ", Enhanced: NO DATA"
     end
+
+    addon:Debug(
+        "Session created: %s, Quality: %d, Duration: %.1fs, DPS: %.0f, Type: %s, Timeline points: %d%s",
+        sessionData.sessionId, sessionData.qualityScore, sessionData.duration, sessionData.avgDPS,
+        sessionData.contentType, #sessionData.timelineData, enhancedInfo)
 
     return sessionData
 end
@@ -348,10 +338,7 @@ function SessionManager:AddSessionToHistory(session)
         addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
     end
 
-    if addon.DEBUG then
-        print(string.format("Session added to history for %s. Total sessions: %d", GetCharacterSpecKey(), #
-            sessionHistory))
-    end
+    addon:Debug("Session added to history for %s. Total sessions: %d", GetCharacterSpecKey(), #sessionHistory)
 end
 
 -- =============================================================================
@@ -411,9 +398,7 @@ function SessionManager:CleanupMemory()
         end
     end
     
-    if addon.DEBUG then
-        addon:DebugPrint(string.format("Memory cleanup: %d operations, %d->%d sessions", cleaned, before, #sessionHistory))
-    end
+    addon:Debug("Memory cleanup: %d operations, %d->%d sessions", cleaned, before, #sessionHistory)
     
     return cleaned
 end
@@ -448,9 +433,7 @@ function SessionManager:MarkSession(sessionId, status)
                 addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
             end
 
-            if addon.DEBUG then
-                print(string.format("Session %s marked as: %s", sessionId, fullStatus))
-            end
+            addon:Debug("Session %s marked as: %s", sessionId, fullStatus)
             return true
         end
     end
@@ -478,12 +461,10 @@ function SessionManager:DeleteSession(sessionId)
                 addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
             end
 
-            print(string.format("MyUI2: Session %s deleted and saved to character data", sessionId))
+            addon:Info("Session %s deleted", sessionId)
             
             -- Debug: Show current session count
-            if addon.DEBUG then
-                print(string.format("MyUI2: %d sessions remaining for %s", #sessionHistory, GetCharacterSpecKey()))
-            end
+            addon:Debug("%d sessions remaining for %s", #sessionHistory, GetCharacterSpecKey())
             
             return true
         end
@@ -507,8 +488,7 @@ function SessionManager:ClearHistory()
         end
         addon.db.sessionHistory[GetCharacterKey()] = {}
     end
-
-    print(string.format("Session history cleared for %s", GetCharacterSpecKey()))
+    addon:Debug("Session history cleared for %s", GetCharacterSpecKey())
 end
 
 -- Get quality sessions only (score >= 70 or user marked as representative)
@@ -550,10 +530,8 @@ function SessionManager:GetScalingSessions(contentType, maxCount)
         table.insert(result, filteredSessions[i])
     end
 
-    if addon.VERBOSE_DEBUG then
-        print(string.format("GetScalingSessions(%s): Found %d sessions, returning %d",
-            contentType, #filteredSessions, #result))
-    end
+    addon:Trace("GetScalingSessions(%s): Found %d sessions, returning %d",
+        contentType, #filteredSessions, #result)
 
     return result
 end
@@ -607,29 +585,21 @@ function SessionManager:InitializeSessionHistory()
     -- Try to load spec-specific data first
     if addon.db and addon.db.sessionHistoryBySpec and addon.db.sessionHistoryBySpec[characterSpecKey] then
         sessionHistory = addon.db.sessionHistoryBySpec[characterSpecKey]
-        if addon.DEBUG then
-            print(string.format("Loaded %d sessions for %s", #sessionHistory, characterSpecKey))
-        end
+        addon:Debug("Loaded %d sessions for %s", #sessionHistory, characterSpecKey)
         -- Fallback to legacy character-only data
     elseif addon.db and addon.db.sessionHistory and addon.db.sessionHistory[characterKey] then
         sessionHistory = addon.db.sessionHistory[characterKey]
-        if addon.DEBUG then
-            print(string.format("Loaded %d legacy sessions for %s", #sessionHistory, characterKey))
-        end
+        addon:Debug("Loaded %d legacy sessions for %s", #sessionHistory, characterKey)
 
         -- Migrate to new spec-specific format
         if not addon.db.sessionHistoryBySpec then
             addon.db.sessionHistoryBySpec = {}
         end
         addon.db.sessionHistoryBySpec[characterSpecKey] = sessionHistory
-        if addon.DEBUG then
-            print(string.format("Migrated sessions to spec-specific storage: %s", characterSpecKey))
-        end
+        addon:Debug("Migrated sessions to spec-specific storage: %s", characterSpecKey)
     else
         sessionHistory = {}
-        if addon.DEBUG then
-            print(string.format("Initialized empty session history for %s", characterSpecKey))
-        end
+        addon:Debug("Initialized empty session history for %s", characterSpecKey)
     end
 end
 
@@ -639,9 +609,7 @@ end
 
 -- Initialize session manager
 function SessionManager:Initialize()
-    if addon.DEBUG then
-        print("SessionManager module initialized")
-    end
+    addon:Debug("SessionManager module initialized")
 end
 
 -- =============================================================================
@@ -650,32 +618,32 @@ end
 
 -- Debug session history
 function SessionManager:DebugSessionHistory()
-    print("=== SESSION HISTORY DEBUG ===")
-    print(string.format("Total sessions: %d", #sessionHistory))
-    print(string.format("History limit: %d", SESSION_HISTORY_LIMIT))
+    addon:Info("=== SESSION HISTORY DEBUG ===")
+    addon:Info("Total sessions: %d", #sessionHistory)
+    addon:Info("History limit: %d", SESSION_HISTORY_LIMIT)
 
     if #sessionHistory > 0 then
-        print("Recent sessions:")
+        addon:Info("Recent sessions:")
         for i = 1, math.min(5, #sessionHistory) do
             local s = sessionHistory[i]
-            print(string.format("[%d] %s: %.1fs, DPS:%.0f, HPS:%.0f, Q:%d, Type:%s%s",
+            addon:Info("[%d] %s: %.1fs, DPS:%.0f, HPS:%.0f, Q:%d, Type:%s%s",
                 i, s.sessionId:sub(-8), s.duration, s.avgDPS, s.avgHPS, s.qualityScore,
                 s.contentType or "unknown",
                 s.userMarked and (" (" .. s.userMarked .. ")") or ""
-            ))
+            )
         end
 
         if #sessionHistory > 5 then
-            print(string.format("... and %d more", #sessionHistory - 5))
+            addon:Info("... and %d more", #sessionHistory - 5)
         end
     else
-        print("No sessions recorded")
+        addon:Info("No sessions recorded")
     end
 
     local qualitySessions = self:GetQualitySessions()
-    print(string.format("Quality sessions: %d", #qualitySessions))
+    addon:Debug("Quality sessions: %d", #qualitySessions)
 
-    print("=========================")
+    addon:Info("=========================")
 end
 
 -- Generate test session data for development
@@ -834,12 +802,10 @@ function SessionManager:GenerateTestData()
         addon.db.sessionHistory[GetCharacterKey()] = sessionHistory
     end
 
-    if addon.DEBUG then
-        print(string.format("Generated %d %s test sessions for %s", #testSessions,
-            isDPS and "DPS" or (isHealer and "Healer" or (isTank and "Tank" or "Hybrid")),
-            GetCharacterSpecKey()))
-        self:DebugSessionHistory()
-    end
+    addon:Debug("Generated %d %s test sessions for %s", #testSessions,
+        isDPS and "DPS" or (isHealer and "Healer" or (isTank and "Tank" or "Hybrid")),
+        GetCharacterSpecKey())
+    self:DebugSessionHistory()
 end
 
 -- =============================================================================

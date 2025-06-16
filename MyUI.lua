@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "refactor-modularization-e7a9d36"
-addon.BUILD_DATE = "2025-06-16-17:10"
+addon.VERSION = "refactor-modularization-2255c44"
+addon.BUILD_DATE = "2025-06-16-18:05"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -42,10 +42,11 @@ addon.defaults = {
     calculationMethod = "ROLLING_AVERAGE", -- Default calculation method
     -- Logging configuration  
     logLevel = "WARN", -- OFF, ERROR, WARN, INFO, DEBUG, TRACE
-    logFallbackToPrint = true -- Fallback to print() if logging fails
+    logFallbackToPrint = false -- Don't print to chat (except PANIC)
 }
 
 -- Logging shortcuts (MyLogger must be initialized first)
+function addon:Panic(...) self.MyLogger:Panic(...) end
 function addon:Error(...) self.MyLogger:Error(...) end
 function addon:Warn(...) self.MyLogger:Warn(...) end  
 function addon:Info(...) self.MyLogger:Info(...) end
@@ -505,7 +506,7 @@ function addon:ToggleMainWindow()
     else
         self.mainFrame:Show()
         self.db.showMainWindow = true
-        print("Main window shown")
+        self:Info("Main window shown")
     end
 end
 

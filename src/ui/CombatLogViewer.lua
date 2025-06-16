@@ -32,9 +32,7 @@ function CombatLogViewer:Initialize()
     self:CreateViewerWindow()
     isInitialized = true
     
-    if addon.DEBUG then
-        print("CombatLogViewer initialized - ready to display combat logs")
-    end
+    addon:Debug("CombatLogViewer initialized - ready to display combat logs")
 end
 
 -- Create the main viewer window
@@ -162,9 +160,7 @@ function CombatLogViewer:Show()
         viewerFrame:Show()
         self:RefreshContent()
         
-        if addon.DEBUG then
-            print("Combat log viewer shown")
-        end
+        addon:Debug("Combat log viewer shown")
     end
 end
 
@@ -240,11 +236,31 @@ function CombatLogViewer:GenerateLogContent()
             for i = startIndex, #events do
                 local event = events[i]
                 local timestamp = string.format("%.3f", tonumber(event.realTime) or 0)
-                local line = string.format("[%s] %s: %s -> %s", 
-                    tostring(timestamp),
-                    tostring(event.subevent or "UNKNOWN"),
-                    tostring(event.sourceName or "?"),
-                    tostring(event.destName or "?"))
+                -- Format based on event type
+                local line
+                if event.subevent and event.subevent:match("DAMAGE") then
+                    local amount = event.args and event.args[12] or "?"
+                    line = string.format("[%s] %s: %s -> %s for %s", 
+                        timestamp,
+                        event.subevent,
+                        event.sourceName or "Unknown",
+                        event.destName or "Unknown",
+                        amount)
+                elseif event.subevent and event.subevent:match("HEAL") then
+                    local amount = event.args and event.args[12] or "?"
+                    line = string.format("[%s] %s: %s -> %s for %s", 
+                        timestamp,
+                        event.subevent,
+                        event.sourceName or "Unknown",
+                        event.destName or "Unknown",
+                        amount)
+                else
+                    line = string.format("[%s] %s: %s -> %s", 
+                        timestamp,
+                        event.subevent or "UNKNOWN",
+                        event.sourceName or "Unknown",
+                        event.destName or "Unknown")
+                end
                 
                 if event.args and #event.args > 0 then
                     -- Convert all args to strings to prevent nil concatenation

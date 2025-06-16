@@ -17,31 +17,34 @@ addon.MyLogger = MyLogger
 -- Log levels (lower numbers = higher priority)
 MyLogger.LOG_LEVELS = {
     OFF = 0,
-    ERROR = 1,
-    WARN = 2,
-    INFO = 3,
-    DEBUG = 4,
-    TRACE = 5
+    PANIC = 1,    -- Critical errors that should always show
+    ERROR = 2,
+    WARN = 3,
+    INFO = 4,
+    DEBUG = 5,
+    TRACE = 6
 }
 
 -- Level names for display
 MyLogger.LEVEL_NAMES = {
     [0] = "OFF",
-    [1] = "ERROR",
-    [2] = "WARN",
-    [3] = "INFO",
-    [4] = "DEBUG",
-    [5] = "TRACE"
+    [1] = "PANIC",
+    [2] = "ERROR",
+    [3] = "WARN",
+    [4] = "INFO",
+    [5] = "DEBUG",
+    [6] = "TRACE"
 }
 
 -- Level colors for console output
 MyLogger.LEVEL_COLORS = {
     [0] = "|cFFFFFFFF", -- White
-    [1] = "|cFFFF0000", -- Red
-    [2] = "|cFFFFFF00", -- Yellow
-    [3] = "|cFF00FF00", -- Green
-    [4] = "|cFF00FFFF", -- Cyan
-    [5] = "|cFFFF00FF"  -- Magenta
+    [1] = "|cFFFF00FF", -- Magenta (PANIC - stands out)
+    [2] = "|cFFFF0000", -- Red (ERROR)
+    [3] = "|cFFFFFF00", -- Yellow (WARN)
+    [4] = "|cFF00FF00", -- Green (INFO)
+    [5] = "|cFF00FFFF", -- Cyan (DEBUG)
+    [6] = "|cFF8080FF"  -- Light Blue (TRACE)
 }
 
 -- =============================================================================
@@ -152,7 +155,7 @@ function MyLogger:StoreLogMessage(level, message)
         table.remove(self.memoryLogs, 1)
     end
     
-    -- Store important logs (ERROR, WARN) in SavedVariables
+    -- Store important logs (PANIC, ERROR, WARN) in SavedVariables
     if level <= self.LOG_LEVELS.WARN and config.savedVariables then
         local entry = {
             timestamp = time(),
@@ -215,7 +218,8 @@ function MyLogger:Log(level, message, ...)
     self:StoreLogMessage(level, message)
     
     -- Output to console if fallback enabled
-    if config.fallbackToPrint then
+    -- NOTE: PANIC level is handled separately in :Panic() method
+    if config.fallbackToPrint and level ~= self.LOG_LEVELS.PANIC then
         print(formattedMessage)
     end
 end
@@ -223,6 +227,16 @@ end
 -- =============================================================================
 -- CONVENIENCE METHODS
 -- =============================================================================
+
+-- Log at PANIC level (always shows, always saved)
+function MyLogger:Panic(message, ...)
+    -- PANIC always prints regardless of log level
+    local formattedMessage = self:FormatMessage(self.LOG_LEVELS.PANIC, message, ...)
+    print(formattedMessage)
+    
+    -- Also log normally for consistency
+    self:Log(self.LOG_LEVELS.PANIC, message, ...)
+end
 
 -- Log at ERROR level
 function MyLogger:Error(message, ...)

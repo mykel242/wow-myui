@@ -51,9 +51,7 @@ function StorageManager:Initialize()
         self:CheckStorageLimits()
     end)
     
-    if addon.DEBUG then
-        print(string.format("StorageManager initialized - %d sessions loaded", #sessionStorage))
-    end
+    addon:Debug("StorageManager initialized - %d sessions loaded", #sessionStorage)
 end
 
 -- Store a completed combat session
@@ -90,12 +88,10 @@ function StorageManager:StoreCombatSession(sessionData)
     -- Auto-save after storing new session
     self:SaveToSavedVariables()
     
-    if addon.DEBUG then
-        print(string.format("Combat session stored: %s (%d events, %.1fKB)", 
-            sessionData.id, 
-            sessionData.eventCount,
-            self:EstimateSessionSizeKB(sessionData)))
-    end
+    addon:Debug("Combat session stored: %s (%d events, %.1fKB)", 
+        sessionData.id, 
+        sessionData.eventCount,
+        self:EstimateSessionSizeKB(sessionData))
     
     -- Notify Session Browser to refresh if it's open
     if addon.SessionBrowser and addon.SessionBrowser:IsShown() then
@@ -313,13 +309,13 @@ function StorageManager:PerformMemoryCleanup()
     
     if cleaned then
         self:UpdateMemoryStats()
-        if addon.DEBUG or #cleanupLog > 0 then
-            print("Storage cleanup performed:")
+        if #cleanupLog > 0 then
+            addon:Info("Storage cleanup performed:")
             for _, msg in ipairs(cleanupLog) do
-                print("  " .. msg)
+                addon:Info("  " .. msg)
             end
-            print(string.format("  Final: %d sessions, %.1fKB", 
-                memoryStats.sessionsStored, memoryStats.totalMemoryKB))
+            addon:Info("  Final: %d sessions, %.1fKB", 
+                memoryStats.sessionsStored, memoryStats.totalMemoryKB)
         end
     end
 end
@@ -368,9 +364,7 @@ end
 function StorageManager:LoadFromSavedVariables()
     if MyUIDB and MyUIDB[STORAGE_KEY] then
         sessionStorage = MyUIDB[STORAGE_KEY]
-        if addon.DEBUG then
-            print(string.format("Loaded %d combat sessions from saved variables", #sessionStorage))
-        end
+        addon:Debug("Loaded %d combat sessions from saved variables", #sessionStorage)
     else
         sessionStorage = {}
     end
@@ -447,9 +441,7 @@ function StorageManager:ClearAllSessions()
     memoryStats.totalMemoryKB = 0
     self:SaveToSavedVariables() -- Auto-save after clearing
     
-    if addon.DEBUG then
-        print("All combat sessions cleared")
-    end
+    addon:Debug("All combat sessions cleared")
 end
 
 function StorageManager:GetMemoryStats()

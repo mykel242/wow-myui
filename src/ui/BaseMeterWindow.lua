@@ -33,17 +33,13 @@ end
 function BaseMeterWindow:Create()
     if self.frame then return end
 
-    if addon.DEBUG then
-        print("BaseMeterWindow:Create() starting for", self.config.label)
-    end
+    addon:Debug("BaseMeterWindow:Create() starting for", self.config.label)
 
     -- Set desired window width
     local windowWidth = 220
     local frame = CreateFrame("Frame", addonName .. self.config.frameName, UIParent)
     frame:SetSize(windowWidth, 85) -- Use fixed 220px width
-    if addon.DEBUG then
-        print("Created main frame with width:", windowWidth)
-    end
+    addon:Debug("Created main frame with width:", windowWidth)
 
 
     -- Restore saved position or use default
@@ -65,9 +61,7 @@ function BaseMeterWindow:Create()
             self.config.defaultPosition.yOffset
         )
     end
-    if addon.DEBUG then
-        print("Frame positioned")
-    end
+    addon:Debug("Frame positioned")
 
 
     -- Make it draggable
@@ -86,9 +80,7 @@ function BaseMeterWindow:Create()
             yOffset = yOfs
         }
     end)
-    if addon.DEBUG then
-        print("Frame made draggable")
-    end
+    addon:Debug("Frame made draggable")
 
 
     -- Background (black semi-transparent)
@@ -102,9 +94,7 @@ function BaseMeterWindow:Create()
     topBg:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     topBg:SetHeight(32)
     topBg:SetColorTexture(0, 0, 0, 0.8)
-    if addon.DEBUG then
-        print("Backgrounds created")
-    end
+    addon:Debug("Backgrounds created")
 
     -- Main number (large, top-left with margin, aligned with label) - CUSTOM FONT
     local mainText = frame:CreateFontString(nil, "OVERLAY")
@@ -114,9 +104,7 @@ function BaseMeterWindow:Create()
     mainText:SetTextColor(1, 1, 1, 1)
     mainText:SetJustifyH("LEFT")
     frame.mainText = mainText
-    if addon.DEBUG then
-        print("Main text created with custom font")
-    end
+    addon:Debug("Main text created with custom font")
 
     -- Label (top right, aligned with main number)
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -136,9 +124,7 @@ function BaseMeterWindow:Create()
     self.methodIndicator = methodIndicator
     self.label = label
     
-    if addon.DEBUG then
-        print("Label and method indicator created")
-    end
+    addon:Debug("Label and method indicator created")
 
     -- Store frame reference
     self.frame = frame
@@ -201,7 +187,7 @@ function BaseMeterWindow:Create()
             end
         end
 
-        print(self.config.label .. " meter and peak values reset")
+        addon:Info(self.config.label .. " meter and peak values reset")
     end)
 
     -- Tooltip
@@ -221,9 +207,7 @@ function BaseMeterWindow:Create()
     -- Secondary stats - redesigned with better alignment and inline labels
     -- Row 1: Left side (max value with inline label) - CUSTOM FONT
 
-    if addon.DEBUG then
-        print("Creating maxValue...")
-    end
+    addon:Debug("Creating maxValue...")
 
     local maxValue = frame:CreateFontString(nil, "OVERLAY")
     maxValue:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
@@ -235,9 +219,7 @@ function BaseMeterWindow:Create()
     frame.maxValue = maxValue
 
     -- Row 2: Left side (total value with inline label) - CUSTOM FONT
-    if addon.DEBUG then
-        print("Creating totalValue...")
-    end
+    addon:Debug("Creating totalValue...")
     local totalValue = frame:CreateFontString(nil, "OVERLAY")
     totalValue:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
     totalValue:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -52) -- Below peak counter
@@ -250,9 +232,7 @@ function BaseMeterWindow:Create()
 
     -- Absorb (only if enabled in config) - Right side, top position - CUSTOM FONT
     if self.config.showAbsorb == true then
-        if addon.DEBUG then
-            print("Creating absorb stats...")
-        end
+        addon:Debug("Creating absorb stats...")
         local absorbValue = frame:CreateFontString(nil, "OVERLAY")
         absorbValue:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
         absorbValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -40) -- Top row, right side
@@ -261,16 +241,12 @@ function BaseMeterWindow:Create()
         absorbValue:SetTextColor(0.7, 0.7, 1.0, 1)                   -- Light blue for absorb
         absorbValue:SetJustifyH("RIGHT")
         frame.absorbValue = absorbValue
-        if addon.DEBUG then
-            print("Absorb stats created")
-        end
+        addon:Debug("Absorb stats created")
     end
 
     -- Overheal (only if enabled in config) - Right side, bottom position - CUSTOM FONT
     if self.config.showOverheal == true then
-        if addon.DEBUG then
-            print("Creating overheal stats...")
-        end
+        addon:Debug("Creating overheal stats...")
         local overhealValue = frame:CreateFontString(nil, "OVERLAY")
         overhealValue:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 11, "OUTLINE")
         -- Position below absorb if absorb is shown, otherwise use top position
@@ -284,9 +260,7 @@ function BaseMeterWindow:Create()
         overhealValue:SetTextColor(0.8, 0.8, 0.8, 1)
         overhealValue:SetJustifyH("RIGHT")
         frame.overhealValue = overhealValue
-        if addon.DEBUG then
-            print("Overheal stats created")
-        end
+        addon:Debug("Overheal stats created")
     end
 
     frame:Hide()
@@ -295,9 +269,7 @@ function BaseMeterWindow:Create()
         frame:Show()
     end
 
-    if addon.DEBUG then
-        print("BaseMeterWindow:Create() completed for", self.config.label)
-    end
+    addon:Debug("BaseMeterWindow:Create() completed for", self.config.label)
 end
 
 -- Update the meter indicator display
@@ -368,7 +340,7 @@ function BaseMeterWindow:UpdateDisplay()
         local formattedMax = addon.CombatTracker:FormatNumber(maxValue)
         self.frame.maxValue:SetText(formattedMax .. " peak") -- Changed from "max" to "peak"
     else
-        print("ERROR: maxValue is nil in UpdateDisplay for", self.config.label)
+        addon:Error("ERROR: maxValue is nil in UpdateDisplay for", self.config.label)
     end
 
     if self.frame.totalValue then

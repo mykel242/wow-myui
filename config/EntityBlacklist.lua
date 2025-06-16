@@ -62,7 +62,7 @@ EntityBlacklistDB = EntityBlacklistDB or {}
 function EntityBlacklist:Initialize()
     -- Migrate existing encounter-specific data to zone-specific (if needed)
     if EntityBlacklistDB.encounters then
-        print("MyUI2: Migrating encounter-specific blacklists to zone-specific...")
+        addon:Info("Migrating encounter-specific blacklists to zone-specific...")
         if not EntityBlacklistDB.zones then
             EntityBlacklistDB.zones = {}
         end
@@ -80,7 +80,7 @@ function EntityBlacklist:Initialize()
         
         -- Remove old encounters structure
         EntityBlacklistDB.encounters = nil
-        print("MyUI2: Migration complete - encounter-specific blacklists moved to zone-specific")
+        addon:Info("Migration complete - encounter-specific blacklists moved to zone-specific")
     end
     
     -- Merge default blacklists with saved customizations
@@ -114,11 +114,9 @@ function EntityBlacklist:Initialize()
     -- Register slash commands
     self:RegisterSlashCommands()
     
-    if MyUI2 and MyUI2.DEBUG then
-        print("MyUI2: EntityBlacklist initialized with " .. 
-              (EntityBlacklistDB.global and self:TableCount(EntityBlacklistDB.global) or 0) .. " global entries, " ..
-              (EntityBlacklistDB.zones and self:TableCount(EntityBlacklistDB.zones) or 0) .. " zone-specific lists")
-    end
+    addon:Debug("EntityBlacklist initialized with " .. 
+          (EntityBlacklistDB.global and self:TableCount(EntityBlacklistDB.global) or 0) .. " global entries, " ..
+          (EntityBlacklistDB.zones and self:TableCount(EntityBlacklistDB.zones) or 0) .. " zone-specific lists")
 end
 
 -- Helper function to count table entries

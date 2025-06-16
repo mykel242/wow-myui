@@ -26,9 +26,7 @@ local contentDetection = {
 function ContentDetection:DetectContentType(sessionData)
     -- Check manual override first
     if contentDetection.manualOverride and GetTime() < contentDetection.overrideExpiry then
-        if addon.DEBUG then
-            print(string.format("Using manual content override: %s", contentDetection.manualOverride))
-        end
+        addon:Debug("Using manual content override: %s", contentDetection.manualOverride)
         return contentDetection.manualOverride
     end
 
@@ -46,18 +44,14 @@ function ContentDetection:DetectContentType(sessionData)
         -- Check if either DPS or HPS indicates scaling
         if dpsRatio < scaledThreshold or dpsRatio > boostedThreshold or
             hpsRatio < scaledThreshold or hpsRatio > boostedThreshold then
-            if addon.DEBUG then
-                print(string.format(
-                    "Detected scaled content: DPS ratio %.2f, HPS ratio %.2f (baseline: %.0f DPS, %.0f HPS)",
-                    dpsRatio, hpsRatio, normalBaseline.avgDPS, normalBaseline.avgHPS))
-            end
+            addon:Debug(
+                "Detected scaled content: DPS ratio %.2f, HPS ratio %.2f (baseline: %.0f DPS, %.0f HPS)",
+                dpsRatio, hpsRatio, normalBaseline.avgDPS, normalBaseline.avgHPS)
             return "scaled"
         end
     end
 
-    if addon.DEBUG then
-        print(string.format("Detected normal content (baseline: %d samples)", normalBaseline.sampleCount))
-    end
+    addon:Debug("Detected normal content (baseline: %d samples)", normalBaseline.sampleCount)
     return "normal"
 end
 
@@ -90,11 +84,11 @@ function ContentDetection:SetContentOverride(contentType, durationHours)
     if contentType == "auto" then
         contentDetection.manualOverride = nil
         contentDetection.overrideExpiry = 0
-        print("Content detection set to automatic")
+        addon:Info("Content detection set to automatic")
     else
         contentDetection.manualOverride = contentType
         contentDetection.overrideExpiry = GetTime() + (durationHours * 3600)
-        print(string.format("Content type manually set to '%s' for %d hours", contentType, durationHours))
+        addon:Info("Content type manually set to '%s' for %d hours", contentType, durationHours)
     end
 end
 
@@ -123,9 +117,7 @@ end
 
 -- Initialize content detection module
 function ContentDetection:Initialize()
-    if addon.DEBUG then
-        print("ContentDetection module initialized")
-    end
+    addon:Debug("ContentDetection module initialized")
 end
 
 -- =============================================================================
@@ -134,10 +126,10 @@ end
 
 -- Debug method for content scaling analysis
 function ContentDetection:DebugContentScaling()
-    print("=== CONTENT SCALING DEBUG ===")
+    addon:Info("=== CONTENT SCALING DEBUG ===")
 
     local currentType = self:GetCurrentContentType()
-    print(string.format("Current content type: %s", currentType))
+    addon:Info("Current content type: %s", currentType)
 
     -- Show baseline for each content type
     for _, contentType in ipairs({ "normal", "scaled" }) do
@@ -148,20 +140,20 @@ function ContentDetection:DebugContentScaling()
             sessions = addon.SessionManager:GetScalingSessions(contentType, 10)
         end
 
-        print(string.format("\n%s Content:", string.upper(contentType)))
-        print(string.format("  Sessions: %d (baseline from %d)", #sessions, baseline.sampleCount))
-        print(string.format("  Avg DPS: %s", addon.CombatTracker:FormatNumber(baseline.avgDPS)))
-        print(string.format("  Avg HPS: %s", addon.CombatTracker:FormatNumber(baseline.avgHPS)))
-        print(string.format("  Peak DPS: %s", addon.CombatTracker:FormatNumber(baseline.peakDPS)))
-        print(string.format("  Peak HPS: %s", addon.CombatTracker:FormatNumber(baseline.peakHPS)))
+        addon:Info("\n%s Content:", string.upper(contentType))
+        addon:Info("  Sessions: %d (baseline from %d)", #sessions, baseline.sampleCount)
+        addon:Info("  Avg DPS: %s", addon.CombatTracker:FormatNumber(baseline.avgDPS))
+        addon:Info("  Avg HPS: %s", addon.CombatTracker:FormatNumber(baseline.avgHPS))
+        addon:Info("  Peak DPS: %s", addon.CombatTracker:FormatNumber(baseline.peakDPS))
+        addon:Info("  Peak HPS: %s", addon.CombatTracker:FormatNumber(baseline.peakHPS))
 
         if #sessions > 0 then
-            print("  Recent sessions:")
+            addon:Info("  Recent sessions:")
             for i = 1, math.min(3, #sessions) do
                 local s = sessions[i]
-                print(string.format("    %s: DPS %.0f, HPS %.0f, Q:%d%s",
+                addon:Info("    %s: DPS %.0f, HPS %.0f, Q:%d%s",
                     s.sessionId:sub(-8), s.avgDPS, s.avgHPS, s.qualityScore,
-                    s.userMarked and (" (" .. s.userMarked .. ")") or ""))
+                    s.userMarked and (" (" .. s.userMarked .. ")") or "")
             end
         end
     end
@@ -177,15 +169,15 @@ function ContentDetection:DebugContentScaling()
                 local dpsRatio = normalBaseline.avgDPS > 0 and (lastSession.avgDPS / normalBaseline.avgDPS) or 1
                 local hpsRatio = normalBaseline.avgHPS > 0 and (lastSession.avgHPS / normalBaseline.avgHPS) or 1
 
-                print(string.format("\nLast Session Detection:"))
-                print(string.format("  DPS Ratio: %.2f (%.0f / %.0f)", dpsRatio, lastSession.avgDPS,
-                    normalBaseline.avgDPS))
-                print(string.format("  HPS Ratio: %.2f (%.0f / %.0f)", hpsRatio, lastSession.avgHPS,
-                    normalBaseline.avgHPS))
-                print(string.format("  Detected as: %s", lastSession.contentType))
+                addon:Info("\nLast Session Detection:")
+                addon:Info("  DPS Ratio: %.2f (%.0f / %.0f)", dpsRatio, lastSession.avgDPS,
+                    normalBaseline.avgDPS)
+                addon:Info("  HPS Ratio: %.2f (%.0f / %.0f)", hpsRatio, lastSession.avgHPS,
+                    normalBaseline.avgHPS)
+                addon:Info("  Detected as: %s", lastSession.contentType)
             end
         end
     end
 
-    print("========================")
+    addon:Info("========================")
 end

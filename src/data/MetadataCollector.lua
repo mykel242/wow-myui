@@ -39,9 +39,7 @@ end
 
 -- Event handler for context changes
 function MetadataCollector:OnEvent(event, ...)
-    if addon.DEBUG then
-        print("MetadataCollector: Context changed (" .. event .. ")")
-    end
+    addon:Debug("MetadataCollector: Context changed (" .. event .. ")")
     
     -- Refresh metadata when context changes
     self:RefreshMetadata()
@@ -82,12 +80,10 @@ function MetadataCollector:RefreshMetadata()
         },
     }
     
-    if addon.DEBUG then
-        print(string.format("Metadata refreshed: %s in %s (%s)", 
-            currentMetadata.player.name,
-            currentMetadata.zone.name,
-            currentMetadata.group.type))
-    end
+    addon:Debug("Metadata refreshed: %s in %s (%s)", 
+        currentMetadata.player.name,
+        currentMetadata.zone.name,
+        currentMetadata.group.type)
 end
 
 -- Get player specialization info

@@ -27,7 +27,7 @@ function SlashCommands:InitializeLegacyCommands()
             end
             addon.mainFrame:Show()
             addon.db.showMainWindow = true
-            print("Main window shown")
+            addon:Info("Main window toggled")
         elseif command == "hide" then
             if addon.mainFrame then
                 addon.mainFrame:Hide()
@@ -122,7 +122,7 @@ function SlashCommands:InitializeSimpleCommands()
             end
             addon.mainFrame:Show()
             addon.db.showMainWindow = true
-            print("Main window shown")
+            addon:Info("Main window toggled")
         elseif command == "hide" then
             if addon.mainFrame then
                 addon.mainFrame:Hide()
