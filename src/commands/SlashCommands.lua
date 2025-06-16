@@ -79,10 +79,10 @@ function SlashCommands:InitializeLegacyCommands()
         elseif command == "timers" then
             print("Timer commands disabled during modularization")
         elseif command == "timestamps" then
-            if addon.TimestampManager then
-                print(addon.TimestampManager:GetDebugSummary())
+            if addon.MyTimestampManager then
+                print(addon.MyTimestampManager:GetDebugSummary())
             else
-                print("TimestampManager not loaded")
+                print("MyTimestampManager not loaded")
             end
         elseif command == "cleardata" then
             print("Data clearing disabled during modularization")
@@ -96,7 +96,7 @@ function SlashCommands:InitializeLegacyCommands()
             print("MyUI Commands (Simplified):")
             print("  /myui [ show | hide | toggle ] - Main window")
             print("  /myui debug - Toggle debug mode")
-            print("  /myui timestamps - Show TimestampManager debug info")
+            print("  /myui timestamps - Show MyTimestampManager debug info")
             print("")
             print("New Tools (Coming Soon):")
             print("  /myui logger - Combat log viewer")
@@ -142,10 +142,10 @@ function SlashCommands:InitializeSimpleCommands()
                 print("Settings window not available")
             end
         elseif command == "timestamps" then
-            if addon.TimestampManager then
-                print(addon.TimestampManager:GetDebugSummary())
+            if addon.MyTimestampManager then
+                print(addon.MyTimestampManager:GetDebugSummary())
             else
-                print("TimestampManager not loaded")
+                print("MyTimestampManager not loaded")
             end
         elseif command == "logger" then
             if addon.CombatEventLogger then
@@ -290,7 +290,7 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui [ show | hide | toggle ] - Main window")
             print("  /myui debug - Toggle debug mode")
             print("  /myui settings - Open settings panel")
-            print("  /myui timestamps - Show TimestampManager debug info")
+            print("  /myui timestamps - Show MyTimestampManager debug info")
             print("")
             print("New Tools (Active):")
             print("  /myui logger - Combat event logger status")

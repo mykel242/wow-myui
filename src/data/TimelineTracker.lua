@@ -41,8 +41,8 @@ local timelineData = {
 local function CreateSample(deltaTime)
     local dt = deltaTime or SAMPLE_INTERVAL
 
-    -- UNIFIED TIMESTAMP: Use only TimestampManager for all time calculations
-    if not addon.TimestampManager or not addon.TimestampManager:IsActive() then
+    -- UNIFIED TIMESTAMP: Use only MyTimestampManager for all time calculations
+    if not addon.MyTimestampManager or not addon.MyTimestampManager:IsActive() then
         return nil  -- Cannot create samples without active timestamp manager
     end
 
@@ -78,8 +78,8 @@ local function CreateSample(deltaTime)
         overhealPercent = (overhealDelta / healingDelta) * 100
     end
 
-    -- UNIFIED TIMESTAMP: Get elapsed time from TimestampManager only
-    local elapsed = addon.TimestampManager:GetCurrentRelativeTime()
+    -- UNIFIED TIMESTAMP: Get elapsed time from MyTimestampManager only
+    local elapsed = addon.MyTimestampManager:GetCurrentRelativeTime()
 
     return {
         -- REMOVED: No more storing absolute timestamps, only relative time
@@ -138,14 +138,14 @@ end
 local function CalculateRollingAverages()
     local validSamples = {}
     
-    -- UNIFIED TIMESTAMP: Use TimestampManager for rolling window calculation
-    if not addon.TimestampManager or not addon.TimestampManager:IsActive() then
+    -- UNIFIED TIMESTAMP: Use MyTimestampManager for rolling window calculation
+    if not addon.MyTimestampManager or not addon.MyTimestampManager:IsActive() then
         return {
             dps = 0, hps = 0, effectiveHPS = 0, overhealPercent = 0, absorbRate = 0, sampleCount = 0
         }
     end
     
-    local currentRelativeTime = addon.TimestampManager:GetCurrentRelativeTime()
+    local currentRelativeTime = addon.MyTimestampManager:GetCurrentRelativeTime()
     local windowStart = currentRelativeTime - ROLLING_WINDOW_SIZE
 
     -- Collect valid samples from rolling window (using relative time)
@@ -195,14 +195,14 @@ end
 
 -- Sample combat data
 local function SampleCombatData()
-    -- Only sample when in combat and TimestampManager is active
+    -- Only sample when in combat and MyTimestampManager is active
     if not addon.CombatData:IsInCombat() then return end
-    if not addon.TimestampManager or not addon.TimestampManager:IsActive() then return end
+    if not addon.MyTimestampManager or not addon.MyTimestampManager:IsActive() then return end
 
     local combatData = addon.CombatData:GetRawCombatData()
     
-    -- UNIFIED TIMESTAMP: Calculate delta time using TimestampManager
-    local currentRelativeTime = addon.TimestampManager:GetCurrentRelativeTime()
+    -- UNIFIED TIMESTAMP: Calculate delta time using MyTimestampManager
+    local currentRelativeTime = addon.MyTimestampManager:GetCurrentRelativeTime()
     local deltaTime = currentRelativeTime - (combatData.lastSampleRelativeTime or 0)
     
     -- Ensure reasonable delta time

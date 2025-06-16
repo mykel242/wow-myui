@@ -816,7 +816,7 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
             print("Death", i, "- elapsed:", death.elapsed, "destName:", death.destName)
         end
 
-        -- UNIFIED: Use death.elapsed directly (already calculated by TimestampManager)
+        -- UNIFIED: Use death.elapsed directly (already calculated by MyTimestampManager)
         local relativeTime = death.elapsed
 
         if relativeTime and relativeTime > 0 and relativeTime <= duration then

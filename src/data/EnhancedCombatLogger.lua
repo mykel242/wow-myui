@@ -107,10 +107,10 @@ local enhancedSessionData = {
 local function TrackParticipant(guid, name, flags)
     if not guid or not name then return end
 
-    -- UNIFIED TIMESTAMP: Use TimestampManager for participant tracking
+    -- UNIFIED TIMESTAMP: Use MyTimestampManager for participant tracking
     local currentRelativeTime = 0
-    if addon.TimestampManager then
-        currentRelativeTime = addon.TimestampManager:GetCurrentRelativeTime()
+    if addon.MyTimestampManager then
+        currentRelativeTime = addon.MyTimestampManager:GetCurrentRelativeTime()
     end
 
     -- Skip if we already have this participant
@@ -150,10 +150,10 @@ local function TrackDamageTaken(timestamp, sourceGUID, sourceName, destGUID, des
     local playerGUID = UnitGUID("player")
 
     if destGUID == playerGUID then
-        -- UNIFIED TIMESTAMP: Use TimestampManager for consistent time calculation
+        -- UNIFIED TIMESTAMP: Use MyTimestampManager for consistent time calculation
         local elapsed = 0
-        if addon.TimestampManager then
-            elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+        if addon.MyTimestampManager then
+            elapsed = addon.MyTimestampManager:GetRelativeTime(timestamp)
         end
         
         table.insert(enhancedSessionData.damageTaken, {
@@ -194,10 +194,10 @@ local function TrackGroupDamage(timestamp, sourceGUID, sourceName, destGUID, des
     end
 
     if isGroupMember then
-        -- UNIFIED TIMESTAMP: Use TimestampManager for consistent time calculation
+        -- UNIFIED TIMESTAMP: Use MyTimestampManager for consistent time calculation
         local elapsed = 0
-        if addon.TimestampManager then
-            elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+        if addon.MyTimestampManager then
+            elapsed = addon.MyTimestampManager:GetRelativeTime(timestamp)
         end
         
         table.insert(enhancedSessionData.groupDamage, {
@@ -226,10 +226,10 @@ local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, destGUID, s
         if sourceGUID ~= playerGUID and destGUID ~= playerGUID then
             return -- Skip cooldowns from other players not affecting player
         end
-        -- UNIFIED TIMESTAMP: Use TimestampManager for consistent time calculation
+        -- UNIFIED TIMESTAMP: Use MyTimestampManager for consistent time calculation
         local elapsed = 0
-        if addon.TimestampManager then
-            elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+        if addon.MyTimestampManager then
+            elapsed = addon.MyTimestampManager:GetRelativeTime(timestamp)
         end
         
         -- Check for duplicates within 0.1 seconds
@@ -321,10 +321,10 @@ local function TrackDeath(timestamp, destGUID, destName, destFlags)
         entityType = isBoss and "boss" or "minion"
     end
     
-    -- Use TimestampManager for consistent time calculations
+    -- Use MyTimestampManager for consistent time calculations
     local elapsed = 0
-    if addon.TimestampManager then
-        elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+    if addon.MyTimestampManager then
+        elapsed = addon.MyTimestampManager:GetRelativeTime(timestamp)
     else
         -- Fallback to old method
         local combatData = addon.CombatData:GetRawCombatData()
@@ -335,7 +335,7 @@ local function TrackDeath(timestamp, destGUID, destName, destFlags)
     
     table.insert(enhancedSessionData.deaths, {
         timestamp = timestamp,           -- Original combat log timestamp
-        elapsed = elapsed,               -- Time since combat start (from TimestampManager)
+        elapsed = elapsed,               -- Time since combat start (from MyTimestampManager)
         destGUID = destGUID,
         destName = destName,
         entityType = entityType,         -- "player", "boss", "minion"
@@ -418,16 +418,16 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
                 enhancedSessionData.participants[sourceGUID].damageDealt =
                     (enhancedSessionData.participants[sourceGUID].damageDealt or 0) + amount
                 -- UNIFIED TIMESTAMP: Use relative time for lastSeen
-                if addon.TimestampManager then
-                    enhancedSessionData.participants[sourceGUID].lastSeen = addon.TimestampManager:GetRelativeTime(timestamp)
+                if addon.MyTimestampManager then
+                    enhancedSessionData.participants[sourceGUID].lastSeen = addon.MyTimestampManager:GetRelativeTime(timestamp)
                 end
             end
             if enhancedSessionData.participants[destGUID] then
                 enhancedSessionData.participants[destGUID].damageTaken =
                     (enhancedSessionData.participants[destGUID].damageTaken or 0) + amount
                 -- UNIFIED TIMESTAMP: Use relative time for lastSeen
-                if addon.TimestampManager then
-                    enhancedSessionData.participants[destGUID].lastSeen = addon.TimestampManager:GetRelativeTime(timestamp)
+                if addon.MyTimestampManager then
+                    enhancedSessionData.participants[destGUID].lastSeen = addon.MyTimestampManager:GetRelativeTime(timestamp)
                 end
             end
         end
@@ -435,10 +435,10 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
         local spellId, spellName, spellSchool, amount = select(1, ...)
 
         if amount and amount > 0 then
-            -- UNIFIED TIMESTAMP: Use TimestampManager for consistent time calculation
+            -- UNIFIED TIMESTAMP: Use MyTimestampManager for consistent time calculation
             local elapsed = 0
-            if addon.TimestampManager then
-                elapsed = addon.TimestampManager:GetRelativeTime(timestamp)
+            if addon.MyTimestampManager then
+                elapsed = addon.MyTimestampManager:GetRelativeTime(timestamp)
             end
             
             table.insert(enhancedSessionData.healingEvents, {
@@ -458,8 +458,8 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
                 enhancedSessionData.participants[sourceGUID].healingDealt =
                     (enhancedSessionData.participants[sourceGUID].healingDealt or 0) + amount
                 -- UNIFIED TIMESTAMP: Use relative time for lastSeen
-                if addon.TimestampManager then
-                    enhancedSessionData.participants[sourceGUID].lastSeen = addon.TimestampManager:GetRelativeTime(timestamp)
+                if addon.MyTimestampManager then
+                    enhancedSessionData.participants[sourceGUID].lastSeen = addon.MyTimestampManager:GetRelativeTime(timestamp)
                 end
             end
         end

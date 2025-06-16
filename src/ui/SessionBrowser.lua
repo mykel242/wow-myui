@@ -510,19 +510,30 @@ end
 function SessionBrowser:GenerateSessionLog(session)
     local lines = {}
     
+    -- Calculate duration if not present
+    local duration = session.duration
+    if not duration and session.startTime and session.endTime then
+        duration = session.endTime - session.startTime
+    end
+    
     -- Header
     table.insert(lines, "=== Combat Session Log ===")
     table.insert(lines, "Session ID: " .. (session.id or "Unknown"))
-    table.insert(lines, "Duration: " .. string.format("%.1fs", session.duration or 0))
+    table.insert(lines, "Duration: " .. string.format("%.1fs", duration or 0))
     table.insert(lines, "Total Events: " .. tostring(session.eventCount or 0))
     
-    if session.serverTime then
-        table.insert(lines, "Timestamp: " .. date("%Y-%m-%d %H:%M:%S", session.serverTime))
+    -- Use session time if available, otherwise try startTime
+    local sessionTime = session.serverTime or session.startTime
+    if sessionTime then
+        table.insert(lines, "Timestamp: " .. date("%Y-%m-%d %H:%M:%S", sessionTime))
     end
     
+    -- Handle both old metadata format and SimpleCombatDetector format
+    table.insert(lines, "")
+    table.insert(lines, "=== Context ===")
+    
     if session.metadata then
-        table.insert(lines, "")
-        table.insert(lines, "=== Context ===")
+        -- Old format with nested metadata
         local meta = session.metadata
         if meta.zone then
             table.insert(lines, "Zone: " .. (meta.zone.name or "Unknown"))
@@ -542,6 +553,32 @@ function SessionBrowser:GenerateSessionLog(session)
                 meta.group.type or "unknown",
                 meta.group.size or 1))
         end
+    else
+        -- SimpleCombatDetector format with direct fields
+        table.insert(lines, "Zone: " .. (session.zone or "Unknown"))
+        if session.instance and session.instance ~= session.zone then
+            table.insert(lines, "Instance: " .. session.instance)
+        end
+        table.insert(lines, string.format("Player: %s (%s %s, Level %d)",
+            session.player or "Unknown",
+            "Unknown", -- spec not tracked yet
+            session.playerClass or "Unknown",
+            session.playerLevel or 0))
+        table.insert(lines, string.format("Group: %s (%d members)",
+            session.groupType or "unknown",
+            session.groupSize or 1))
+    end
+    
+    -- GUID Map (if available)
+    if session.guidMap and next(session.guidMap) then
+        table.insert(lines, "")
+        table.insert(lines, "=== Entity GUID Map ===")
+        local guidCount = 0
+        for guid, name in pairs(session.guidMap) do
+            guidCount = guidCount + 1
+            table.insert(lines, string.format("%s = %s", guid, name))
+        end
+        table.insert(lines, string.format("Total entities: %d", guidCount))
     end
     
     -- Full event log
@@ -550,12 +587,53 @@ function SessionBrowser:GenerateSessionLog(session)
     
     if session.events and #session.events > 0 then
         for i, event in ipairs(session.events) do
-            local timestamp = string.format("%.3f", event.realTime or 0)
+            -- Get relative timestamp (new format uses 'time', old format needs calculation)
+            local relativeTime = event.time or 0
+            if relativeTime == 0 then
+                -- Fallback for old format
+                if event.timestamp and session.startTime then
+                    relativeTime = event.timestamp - session.startTime
+                elseif event.realTime then
+                    relativeTime = event.realTime
+                end
+            end
+            
+            local timestamp = string.format("%.3f", relativeTime)
+            
+            -- Resolve names from multiple sources (priority order)
+            local sourceName = "?"
+            local destName = "?"
+            
+            -- 1. Try session's GUID map first (most accurate)
+            if event.sourceGUID and session.guidMap and session.guidMap[event.sourceGUID] then
+                sourceName = session.guidMap[event.sourceGUID]
+            elseif event.sourceName then
+                -- 2. Use stored name if available (old format)
+                sourceName = event.sourceName
+            elseif event.sourceGUID and addon.GUIDResolver then
+                -- 3. Try GUIDResolver as fallback
+                local resolved = addon.GUIDResolver:GetCachedName(event.sourceGUID)
+                if resolved then
+                    sourceName = resolved
+                end
+            end
+            
+            if event.destGUID and session.guidMap and session.guidMap[event.destGUID] then
+                destName = session.guidMap[event.destGUID]
+            elseif event.destName then
+                destName = event.destName
+            elseif event.destGUID and addon.GUIDResolver then
+                local resolved = addon.GUIDResolver:GetCachedName(event.destGUID)
+                if resolved then
+                    destName = resolved
+                end
+            end
+            
             local eventLine = string.format("[%s] %s: %s -> %s",
                 timestamp,
                 event.subevent or "UNKNOWN",
-                event.sourceName or "?",
-                event.destName or "?")
+                sourceName,
+                destName)
             
             if event.args and #event.args > 0 then
                 local argStrings = {}
@@ -658,19 +736,13 @@ function SessionBrowser:FormatAsRaw(session)
         table.insert(lines, "")
     end
     
-    -- Raw events (first 50 to avoid overwhelming)
+    -- Raw events (all events, no truncation)
     if session.events then
-        table.insert(lines, "=== RAW EVENTS (" .. #session.events .. " total, showing first 50) ===")
-        for i = 1, math.min(50, #session.events) do
-            local event = session.events[i]
+        table.insert(lines, "=== RAW EVENTS (" .. #session.events .. " total) ===")
+        for i, event in ipairs(session.events) do
             table.insert(lines, "Event " .. i .. ":")
             self:DumpTableToLines(event, lines, 1)
             table.insert(lines, "")
-            
-            if i >= 50 and #session.events > 50 then
-                table.insert(lines, "... and " .. (#session.events - 50) .. " more events")
-                break
-            end
         end
     end
     

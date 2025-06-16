@@ -1,10 +1,10 @@
--- TimestampManager.lua
+-- MyTimestampManager.lua
 -- Unified timestamp management - single source of truth for all combat timing
 
 local addonName, addon = ...
 
-addon.TimestampManager = {}
-local TimestampManager = addon.TimestampManager
+addon.MyTimestampManager = {}
+local MyTimestampManager = addon.MyTimestampManager
 
 -- =============================================================================
 -- UNIFIED TIMESTAMP SYSTEM
@@ -25,26 +25,26 @@ local timestampData = {
 -- =============================================================================
 
 -- Start a new combat session
-function TimestampManager:StartCombat(logTimestamp)
+function MyTimestampManager:StartCombat(logTimestamp)
     timestampData.combatStartTime = GetTime()
     timestampData.combatEndTime = nil
     timestampData.isActive = true
     timestampData.logTimeOffset = nil  -- Will be set when we get the first combat log event
     
-    if addon.DEBUG or timestampData.debugMode then
-        addon:DebugPrint(string.format("TimestampManager: Combat started - GetTime: %.3f", 
-            timestampData.combatStartTime))
+    if timestampData.debugMode then
+        addon:Debug("TimestampManager: Combat started - GetTime: %.3f", 
+            timestampData.combatStartTime)
     end
 end
 
 -- End the current combat session
-function TimestampManager:EndCombat()
+function MyTimestampManager:EndCombat()
     timestampData.combatEndTime = GetTime()
     timestampData.isActive = false
     
-    if addon.DEBUG or timestampData.debugMode then
+    if timestampData.debugMode then
         local duration = self:GetCombatDuration()
-        addon:DebugPrint(string.format("TimestampManager: Combat ended - Duration: %.3fs", duration))
+        addon:Debug("TimestampManager: Combat ended - Duration: %.3fs", duration)
     end
 end
 
@@ -54,9 +54,9 @@ function TimestampManager:SetLogTimeOffset(firstLogTimestamp)
         local currentGetTime = GetTime()
         timestampData.logTimeOffset = firstLogTimestamp - timestampData.combatStartTime
         
-        if addon.DEBUG or timestampData.debugMode then
-            addon:DebugPrint(string.format("TimestampManager: Set log offset - FirstLog: %.3f, Offset: %.3f", 
-                firstLogTimestamp, timestampData.logTimeOffset))
+        if timestampData.debugMode then
+            addon:Debug("TimestampManager: Set log offset - FirstLog: %.3f, Offset: %.3f", 
+                firstLogTimestamp, timestampData.logTimeOffset)
         end
     end
 end
@@ -79,16 +79,16 @@ function TimestampManager:GetRelativeTime(inputTimestamp)
         local relativeTime = inputTimestamp - (timestampData.combatStartTime + timestampData.logTimeOffset)
         
         if timestampData.debugMode then
-            addon:DebugPrint(string.format("TimestampManager: LogTime %.3f - Offset %.3f = Relative %.3f", 
-                inputTimestamp, (timestampData.combatStartTime + timestampData.logTimeOffset), relativeTime))
+            addon:Trace("TimestampManager: LogTime %.3f - Offset %.3f = Relative %.3f", 
+                inputTimestamp, (timestampData.combatStartTime + timestampData.logTimeOffset), relativeTime)
         end
         return relativeTime
     else
         -- This is already a GetTime() timestamp
         local relativeTime = inputTimestamp - timestampData.combatStartTime
         if timestampData.debugMode then
-            addon:DebugPrint(string.format("TimestampManager: GetTime %.3f -> Relative %.3f", 
-                inputTimestamp, relativeTime))
+            addon:Trace("TimestampManager: GetTime %.3f -> Relative %.3f", 
+                inputTimestamp, relativeTime)
         end
         return relativeTime
     end
@@ -137,7 +137,7 @@ end
 function TimestampManager:SetDebugMode(enabled)
     timestampData.debugMode = enabled
     if enabled then
-        addon:DebugPrint("TimestampManager: Debug mode enabled")
+        addon:Debug("TimestampManager: Debug mode enabled")
     end
 end
 
@@ -148,9 +148,7 @@ function TimestampManager:Reset()
     timestampData.isActive = false
     timestampData.logTimeOffset = nil
     
-    if addon.DEBUG then
-        addon:DebugPrint("TimestampManager: Reset complete")
-    end
+    addon:Debug("TimestampManager: Reset complete")
 end
 
 -- =============================================================================
@@ -169,8 +167,8 @@ function TimestampManager:ValidateTimestamp(inputTimestamp, expectedRange)
     end
     
     if timestampData.debugMode then
-        addon:DebugPrint(string.format("TimestampManager: Validation - Input: %.3f, Relative: %.3f, Valid: %s", 
-            inputTimestamp, relativeTime, tostring(isValid)))
+        addon:Trace("TimestampManager: Validation - Input: %.3f, Relative: %.3f, Valid: %s", 
+            inputTimestamp, relativeTime, tostring(isValid))
     end
     
     return isValid, relativeTime
@@ -196,7 +194,5 @@ end
 function TimestampManager:Initialize()
     self:Reset()
     
-    if addon.DEBUG then
-        addon:DebugPrint("TimestampManager: Initialized")
-    end
+    addon:Debug("TimestampManager: Initialized")
 end

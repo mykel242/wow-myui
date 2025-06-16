@@ -7,8 +7,9 @@
 ## DefaultState: enabled
 
 MyUI.lua
-src/core/TimestampManager.lua
-src/data/CombatEventLogger.lua
+src/core/MyLogger.lua
+src/core/MyTimestampManager.lua
+src/core/MySimpleCombatDetector.lua
 src/data/MetadataCollector.lua
 src/data/GUIDResolver.lua
 src/data/StorageManager.lua
@@ -18,8 +19,6 @@ src/ui/SettingsWindow.lua
 src/ui/CombatLogViewer.lua
 src/ui/SessionBrowser.lua
 src/ui/ExportDialog.lua
-src/data/CombatData.lua
-src/core/CombatTracker.lua
 src/data/ContentDetection.lua
 config/EntityBlacklist.lua
 src/ui/DPSWindow.lua

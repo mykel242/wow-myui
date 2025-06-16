@@ -13,13 +13,10 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "refactor-modularization-1d67b02"
-addon.BUILD_DATE = "2025-06-15-19:14"
+addon.VERSION = "refactor-modularization-520cc10"
+addon.BUILD_DATE = "2025-06-16-11:09"
 
--- Debug flag (will be loaded from saved variables)
-addon.DEBUG = false
--- Separate flag for very spammy debug messages (timers, frequent updates)
-addon.VERBOSE_DEBUG = false
+-- Legacy debug flags removed - now using MyLogger system
 
 -- Addon variables
 addon.db = {}
@@ -33,7 +30,6 @@ addon.defaults = {
     showDPSWindow = false,
     hpsWindowPosition = nil,
     showHPSWindow = false,
-    debugMode = false,
     showMainWindow = false,
     enhancedLogging = true,
     trackAllParticipants = true,
@@ -41,13 +37,30 @@ addon.defaults = {
     trackGroupDamage = false, -- Disabled by default for performance
     maxEnhancedEvents = 1000,
     calculationMethod = "ROLLING_AVERAGE", -- Default calculation method
+    -- Logging configuration
+    logLevel = "OFF", -- OFF, ERROR, WARN, INFO, DEBUG, TRACE
+    useLogChannel = false, -- Use chat channel for logging
+    logFallbackToPrint = true -- Fallback to print() if channel fails
 }
 
--- Debug print function
-function addon:DebugPrint(...)
-    if self.DEBUG then
-        print("[" .. addonName .. " DEBUG]", ...)
-    end
+-- Logging shortcuts (MyLogger must be initialized first)
+function addon:Error(...) self.MyLogger:Error(...) end
+function addon:Warn(...) self.MyLogger:Warn(...) end  
+function addon:Info(...) self.MyLogger:Info(...) end
+function addon:Debug(...) self.MyLogger:Debug(...) end
+function addon:Trace(...) self.MyLogger:Trace(...) end
+
+-- Legacy DebugPrint for compatibility during transition
+function addon:DebugPrint(...) self.MyLogger:Debug(...) end
+
+-- Test function for new logging system
+function addon:TestLogging()
+    self:Error("This is an ERROR message")
+    self:Warn("This is a WARN message") 
+    self:Info("This is an INFO message")
+    self:Debug("This is a DEBUG message")
+    self:Trace("This is a TRACE message")
+    self.MyLogger:DumpConfig()
 end
 
 -- Window focus management system
@@ -256,21 +269,40 @@ function addon:OnInitialize()
 
     self.db = MyUIDB
 
-    -- Load debug state from saved variables
-    self.DEBUG = self.db.debugMode
+    -- CRITICAL: Initialize MyLogger first - everything else depends on it
+    if not self.MyLogger then
+        error(addonName .. ": MyLogger module not available - cannot continue")
+    end
+    
+    -- Extract version hash for unique channel naming
+    local versionHash = self.VERSION:match("%-([^%-]+)$") or "dev"
+    
+    self.MyLogger:Initialize({
+        level = self.db.logLevel or "OFF",
+        useChannel = self.db.useLogChannel or false,
+        versionHash = versionHash,
+        fallbackToPrint = self.db.logFallbackToPrint ~= false
+    })
 
     -- Initialize core modules only (others disabled during modularization)
     -- 0. Unified calculator must be available before combat data
     -- (UnifiedCalculator is loaded via file inclusion - no init needed)
     
-    -- 0.5. Initialize TimestampManager first (single source of truth for timing)
-    if self.TimestampManager then
-        self.TimestampManager:Initialize()
+    -- 0.5. Initialize MyTimestampManager first (single source of truth for timing)
+    if self.MyTimestampManager then
+        self.MyTimestampManager:Initialize()
     end
     
-    -- 1. Initialize CombatEventLogger (new core system)
+    --[[
+    -- 1. Initialize CombatEventLogger (DISABLED - replaced by SimpleCombatDetector)
     if self.CombatEventLogger then
         self.CombatEventLogger:Initialize()
+    end
+    --]]
+    
+    -- 1. Initialize MySimpleCombatDetector (new reliable combat detection)
+    if self.MySimpleCombatDetector then
+        self.MySimpleCombatDetector:Initialize()
     end
     
     -- 2. Initialize MetadataCollector (context gathering)
@@ -309,7 +341,7 @@ function addon:OnInitialize()
     end
     
     --[[
-    DISABLED DURING MODULARIZATION - PRESERVE FOR RE-ENABLE
+    OLD COMBAT TRACKING MODULES - DISABLED IN FAVOR OF MySimpleCombatDetector
     
     -- 1. Core combat tracking first
     if self.CombatData then
@@ -365,10 +397,10 @@ function addon:OnInitialize()
     end
 
     -- Debug enhanced logging status
-    if self.DEBUG and self.EnhancedCombatLogger then
+    if self.EnhancedCombatLogger then
         local status = self.EnhancedCombatLogger:GetStatus()
-        print(string.format("Enhanced logging status: initialized=%s, tracking=%s, participants=%d",
-            tostring(status.isInitialized), tostring(status.isTracking), status.participantCount))
+        self:Debug("Enhanced logging status: initialized=%s, tracking=%s, participants=%d",
+            tostring(status.isInitialized), tostring(status.isTracking), status.participantCount)
     end
     --]]
     
@@ -383,19 +415,13 @@ function addon:OnEnable()
         self:CreateMainFrame()
 
         -- Debug the state
-        if addon.DEBUG then
-            addon:DebugPrint("showMainWindow value: " .. tostring(self.db.showMainWindow))
-        end
+        self:Debug("showMainWindow value: %s", tostring(self.db.showMainWindow))
 
         if self.db.showMainWindow then
-            if addon.DEBUG then
-                addon:DebugPrint("Showing main window")
-            end
+            self:Debug("Showing main window")
             self.mainFrame:Show()
         else
-            if addon.DEBUG then
-                addon:DebugPrint("Not showing main window")
-            end
+            self:Debug("Not showing main window")
         end
 
         --[[
@@ -411,9 +437,7 @@ function addon:OnEnable()
         end
         --]]
 
-        if addon.DEBUG then
-            addon:DebugPrint(addonName .. " is now active!")
-        end
+        self:Info("%s is now active!", addonName)
     end
 end
 
@@ -441,6 +465,11 @@ function addon:OnDisable()
     -- Save GUID cache
     if self.GUIDResolver then
         self.GUIDResolver:SaveToSavedVariables()
+    end
+    
+    -- Cleanup MyLogger channel
+    if self.MyLogger then
+        self.MyLogger:CleanupChannel()
     end
 
     --[[
@@ -641,9 +670,7 @@ function addon:CreateMainFrame()
     frame:Hide()
 
     -- No complex update timer needed for simplified launcher
-    if addon.DEBUG then
-        print("Simplified main window created")
-    end
+    self:Debug("Simplified main window created")
 end
 
 -- Simplified update for launcher window

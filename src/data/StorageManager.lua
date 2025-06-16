@@ -96,6 +96,11 @@ function StorageManager:StoreCombatSession(sessionData)
             sessionData.eventCount,
             self:EstimateSessionSizeKB(sessionData)))
     end
+    
+    -- Notify Session Browser to refresh if it's open
+    if addon.SessionBrowser and addon.SessionBrowser:IsShown() then
+        addon.SessionBrowser:RefreshSessionList()
+    end
 end
 
 -- Compress event data for storage
@@ -334,9 +339,9 @@ function StorageManager:ShowStorageWarning(warnings, cleanupNeeded)
     
     message = message .. "\n\nOpen Session Browser to export sessions?\nOpen Settings to adjust limits?"
     
-    -- Create warning dialog
+    -- Create warning dialog (escape % characters to prevent format errors)
     StaticPopupDialogs["MYUI_STORAGE_WARNING"] = {
-        text = message,
+        text = message:gsub("%%", "%%%%"),
         button1 = "Session Browser",
         button2 = "Settings", 
         button3 = "Dismiss",

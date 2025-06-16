@@ -10,7 +10,7 @@ local SettingsWindow = addon.SettingsWindow
 -- Default settings
 local DEFAULT_SETTINGS = {
     -- Combat Detection Settings
-    combatTimeout = 1.5,           -- Normal combat timeout in seconds
+    combatTimeout = 3.0,           -- Normal combat timeout in seconds
     deadPlayerTimeout = 8.0,       -- Timeout when player is dead
     includeGroupActivity = true,   -- Track group member activity
     includeIncomingDamage = true,  -- Track incoming damage to player
@@ -99,9 +99,9 @@ function SettingsWindow:ApplySettings()
     addon.DEBUG = currentSettings.debugMode
     addon.VERBOSE_DEBUG = currentSettings.verboseLogging
     
-    -- Apply TimestampManager debug if available
-    if addon.TimestampManager and addon.TimestampManager.SetDebugMode then
-        addon.TimestampManager:SetDebugMode(currentSettings.enhancedDetectionDebug)
+    -- Apply MyTimestampManager debug if available
+    if addon.MyTimestampManager and addon.MyTimestampManager.SetDebugMode then
+        addon.MyTimestampManager:SetDebugMode(currentSettings.enhancedDetectionDebug)
     end
     
     -- Note: Combat timeout settings will be applied via GetCurrentSettings() calls
@@ -135,10 +135,7 @@ function SettingsWindow:CreateWindow()
     frame:SetFrameStrata("DIALOG")
     frame:Hide()
     
-    -- Ensure the frame has proper background
-    if frame.Bg then
-        frame.Bg:SetColorTexture(0, 0, 0, 0.8)
-    end
+    -- Remove problematic background setting - template handles this
     
     -- Title
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -179,9 +176,9 @@ function SettingsWindow:CreateTabs(parent)
         -- Set up click handler
         tab:SetScript("OnClick", function() self:SelectTab(i) end)
         
-        -- Position tabs
+        -- Position tabs inside the window
         if i == 1 then
-            tab:SetPoint("BOTTOMLEFT", parent, "TOPLEFT", 5, -28)
+            tab:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -30)
         else
             tab:SetPoint("LEFT", tabs[i-1], "RIGHT", 5, 0)
         end
@@ -219,8 +216,8 @@ end
 -- Create Combat Detection panel
 function SettingsWindow:CreateCombatDetectionPanel(parent)
     local panel = CreateFrame("Frame", nil, parent)
-    panel:SetPoint("TOPLEFT", parent.Inset, "TOPLEFT", 10, -10)
-    panel:SetPoint("BOTTOMRIGHT", parent.Inset, "BOTTOMRIGHT", -10, 40)
+    panel:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -70)
+    panel:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 50)
     
     -- Add visible background for debugging
     local bg = panel:CreateTexture(nil, "BACKGROUND")
@@ -319,8 +316,8 @@ end
 -- Create Calculations panel
 function SettingsWindow:CreateCalculationsPanel(parent)
     local panel = CreateFrame("Frame", nil, parent)
-    panel:SetPoint("TOPLEFT", parent.Inset, "TOPLEFT", 10, -10)
-    panel:SetPoint("BOTTOMRIGHT", parent.Inset, "BOTTOMRIGHT", -10, 40)
+    panel:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -70)
+    panel:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 50)
     
     -- Add visible background
     local bg = panel:CreateTexture(nil, "BACKGROUND")
@@ -443,8 +440,8 @@ end
 -- Create Storage panel
 function SettingsWindow:CreateStoragePanel(parent)
     local panel = CreateFrame("Frame", nil, parent)
-    panel:SetPoint("TOPLEFT", parent.Inset, "TOPLEFT", 10, -10)
-    panel:SetPoint("BOTTOMRIGHT", parent.Inset, "BOTTOMRIGHT", -10, 40)
+    panel:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -70)
+    panel:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 50)
     
     -- Add visible background
     local bg = panel:CreateTexture(nil, "BACKGROUND")
@@ -563,8 +560,8 @@ end
 -- Create Debug panel
 function SettingsWindow:CreateDebugPanel(parent)
     local panel = CreateFrame("Frame", nil, parent)
-    panel:SetPoint("TOPLEFT", parent.Inset, "TOPLEFT", 10, -10)
-    panel:SetPoint("BOTTOMRIGHT", parent.Inset, "BOTTOMRIGHT", -10, 40)
+    panel:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -70)
+    panel:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 50)
     
     -- Add visible background
     local bg = panel:CreateTexture(nil, "BACKGROUND")
