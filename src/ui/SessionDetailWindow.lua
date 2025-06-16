@@ -233,7 +233,7 @@ function SessionDetailWindow:Create(sessionData)
                 addon.CombatTracker:MarkSession(sessionData.sessionId, "representative")
                 markRepBtn:SetText("★ Representative")
                 markRepBtn:Disable()
-                print(string.format("Session %s marked as representative", sessionData.sessionId))
+                addon:Debug("Session %s marked as representative", sessionData.sessionId)
             end
         end)
     end
@@ -251,15 +251,11 @@ function SessionDetailWindow:CreateTimelineVisualization(chartArea, sessionData)
     if sessionData.timelineData and #sessionData.timelineData > 0 then
         -- Use actual timeline data
         timelinePoints = sessionData.timelineData
-        if addon.DEBUG then
-            print(string.format("Using real timeline data: %d points", #timelinePoints))
-        end
+        addon:Debug("Using real timeline data: %d points", #timelinePoints)
     else
         -- Fall back to estimated timeline for older sessions
         timelinePoints = self:GenerateEstimatedTimeline(sessionData)
-        if addon.DEBUG then
-            print("Using estimated timeline data (no real data available)")
-        end
+        addon:Debug("Using estimated timeline data (no real data available)")
     end
 
     -- OPTION 3: Smart baseline - ensure timeline starts at 0 and ends properly
@@ -276,9 +272,7 @@ function SessionDetailWindow:CreateTimelineVisualization(chartArea, sessionData)
                 totalHealing = 0,
                 overhealPercent = 0
             })
-            if addon.DEBUG then
-                print("Added starting point at elapsed=0")
-            end
+            addon:Debug("Added starting point at elapsed=0")
         end
 
         -- Add ending point if needed
@@ -294,15 +288,11 @@ function SessionDetailWindow:CreateTimelineVisualization(chartArea, sessionData)
                 totalHealing = sessionData.totalHealing,
                 overhealPercent = 0
             })
-            if addon.DEBUG then
-                print(string.format("Added ending point at elapsed=%.1f", sessionData.duration))
-            end
+            addon:Debug("Added ending point at elapsed=%.1f", sessionData.duration)
         end
 
-        if addon.DEBUG then
-            print(string.format("Timeline after smart baseline: %d points, %.1fs to %.1fs",
-                #timelinePoints, timelinePoints[1].elapsed, timelinePoints[#timelinePoints].elapsed))
-        end
+        addon:Debug("Timeline after smart baseline: %d points, %.1fs to %.1fs",
+                #timelinePoints, timelinePoints[1].elapsed, timelinePoints[#timelinePoints].elapsed)
     end
 
     if #timelinePoints == 0 then
@@ -323,20 +313,19 @@ function SessionDetailWindow:CreateTimelineVisualization(chartArea, sessionData)
     end
 
     -- Timeline debug (no spam)
-    if addon.DEBUG then
-        print("=== TIMELINE DEBUG ===")
-        print(string.format("Chart max DPS: %.0f vs Summary peak: %.0f", maxDPS, sessionData.peakDPS))
-        print(string.format("Chart max HPS: %.0f vs Summary peak: %.0f", maxHPS, sessionData.peakHPS))
-        print(string.format("Timeline points: %d", #timelinePoints))
+    -- Timeline debug
+    addon:Debug("=== TIMELINE DEBUG ===")
+    addon:Debug("Chart max DPS: %.0f vs Summary peak: %.0f", maxDPS, sessionData.peakDPS)
+    addon:Debug("Chart max HPS: %.0f vs Summary peak: %.0f", maxHPS, sessionData.peakHPS)
+    addon:Debug("Timeline points: %d", #timelinePoints)
 
-        -- Show first few points
-        for i = 1, math.min(3, #timelinePoints) do
-            local p = timelinePoints[i]
-            print(string.format("Point %d: elapsed=%.1f, DPS=%.0f, HPS=%.0f",
-                i, p.elapsed, p.instantDPS or 0, p.instantHPS or 0))
-        end
-        print("==================")
+    -- Show first few points
+    for i = 1, math.min(3, #timelinePoints) do
+        local p = timelinePoints[i]
+        addon:Debug("Point %d: elapsed=%.1f, DPS=%.0f, HPS=%.0f",
+            i, p.elapsed, p.instantDPS or 0, p.instantHPS or 0)
     end
+    addon:Debug("==================")
 
     -- Create connected line visualization instead of dots
     local chartWidth = 540

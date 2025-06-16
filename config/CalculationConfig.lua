@@ -170,8 +170,6 @@ function CalculationConfig:ShowConfigWindow()
 end
 
 function CalculationConfig:Initialize()
-    if addon.DEBUG then
-        print("CalculationConfig module initialized")
-    end
+    addon:Debug("CalculationConfig module initialized")
 end
 

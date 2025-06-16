@@ -4,7 +4,8 @@
       "Bash(grep:*)",
       "Bash(git checkout:*)",
       "Bash(rg:*)",
-      "Bash(lua:*)"
+      "Bash(lua:*)",
+      "Bash(python3:*)"
     ],
     "deny": []
   }

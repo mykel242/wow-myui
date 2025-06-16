@@ -56,9 +56,7 @@ function ExportDialog:Initialize()
     self:CreateExportDialog()
     isInitialized = true
     
-    if addon.DEBUG then
-        print("ExportDialog initialized - ready for data export")
-    end
+    addon:Debug("ExportDialog initialized - ready for data export")
 end
 
 -- Create the export dialog window
@@ -228,9 +226,7 @@ function ExportDialog:CreateExportDialog()
     
     exportFrame = frame
     
-    if addon.DEBUG then
-        print("Export dialog window created")
-    end
+    addon:Debug("Export dialog window created")
 end
 
 -- Set data source selection
@@ -263,9 +259,7 @@ function ExportDialog:Show()
     if exportFrame then
         exportFrame:Show()
         
-        if addon.DEBUG then
-            print("Export dialog shown")
-        end
+        addon:Debug("Export dialog shown")
     end
 end
 
@@ -274,9 +268,7 @@ function ExportDialog:Hide()
     if exportFrame then
         exportFrame:Hide()
         
-        if addon.DEBUG then
-            print("Export dialog hidden")
-        end
+        addon:Debug("Export dialog hidden")
     end
 end
 

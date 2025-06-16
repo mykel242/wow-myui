@@ -226,11 +226,10 @@ local function SampleCombatData()
         combatData.lastSampleAbsorb = combatData.absorb
     end
 
-    if addon.VERBOSE_DEBUG then
-        local rolling = CalculateRollingAverages()
-        addon:DebugPrint(string.format("Sample: DPS=%.0f, HPS=%.0f (%.0f effective), OH=%.1f%%, Samples=%d",
-            rolling.dps, rolling.hps, rolling.effectiveHPS, rolling.overhealPercent, rolling.sampleCount))
-    end
+    -- Trace logging for sampling (controlled by log level)
+    local rolling = CalculateRollingAverages()
+    addon:Trace("Sample: DPS=%.0f, HPS=%.0f (%.0f effective), OH=%.1f%%, Samples=%d",
+        rolling.dps, rolling.hps, rolling.effectiveHPS, rolling.overhealPercent, rolling.sampleCount)
 end
 
 -- =============================================================================
@@ -282,9 +281,7 @@ function TimelineTracker:StartCombat()
     rollingData.initialized = false
     timelineData.samples = {}
 
-    if addon.DEBUG then
-        addon:DebugPrint("TimelineTracker: Combat started, data cleared")
-    end
+    addon:Debug("TimelineTracker: Combat started, data cleared")
 end
 
 -- End combat tracking
@@ -292,9 +289,7 @@ function TimelineTracker:EndCombat()
     -- Take one final sample
     SampleCombatData()
 
-    if addon.DEBUG then
-        addon:DebugPrint(string.format("TimelineTracker: Combat ended, %d timeline samples recorded", #timelineData.samples))
-    end
+    addon:Debug("TimelineTracker: Combat ended, %d timeline samples recorded", #timelineData.samples)
 end
 
 -- Reset data
@@ -304,9 +299,7 @@ function TimelineTracker:Reset()
     rollingData.initialized = false
     timelineData.samples = {}
 
-    if addon.DEBUG then
-        addon:DebugPrint("TimelineTracker: Data reset")
-    end
+    addon:Debug("TimelineTracker: Data reset")
 end
 
 -- =============================================================================
@@ -384,15 +377,15 @@ function TimelineTracker:GetTimelineForSession(duration, enhancedData)
     end
 
     -- Debug information for enhanced data integration
-    if addon.DEBUG and enhancedData then
+    if enhancedData then
         local enhancedPoints = 0
         for _, point in ipairs(sessionTimeline) do
             if point.damageTaken or point.groupDamageTaken or point.enhancedHealing then
                 enhancedPoints = enhancedPoints + 1
             end
         end
-        print(string.format("Timeline enhanced: %d/%d points have enhanced data",
-            enhancedPoints, #sessionTimeline))
+        addon:Debug("Timeline enhanced: %d/%d points have enhanced data",
+            enhancedPoints, #sessionTimeline)
     end
 
     return sessionTimeline
@@ -535,9 +528,7 @@ function TimelineTracker:ClearEnhancedData()
         sample.enhancedHealing = nil
     end
 
-    if addon.DEBUG then
-        print("Timeline enhanced data cleared")
-    end
+    addon:Debug("Timeline enhanced data cleared")
 end
 
 -- Get performance metrics for timeline
@@ -627,7 +618,5 @@ function TimelineTracker:Initialize()
         SampleCombatData()
     end)
 
-    if addon.DEBUG then
-        print("TimelineTracker module initialized with enhanced data integration")
-    end
+    addon:Debug("TimelineTracker module initialized with enhanced data integration")
 end

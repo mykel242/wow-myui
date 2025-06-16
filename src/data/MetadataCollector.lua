@@ -32,9 +32,7 @@ function MetadataCollector:Initialize()
     
     isInitialized = true
     
-    if addon.DEBUG then
-        print("MetadataCollector initialized - tracking context changes")
-    end
+    addon:Debug("MetadataCollector initialized - tracking context changes")
 end
 
 -- Event handler for context changes

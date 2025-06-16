@@ -34,9 +34,7 @@ function addon.HPSWindow:Initialize()
     addon.BaseMeterWindow.Initialize(self)
     --]]
     
-    if addon.DEBUG then
-        print("HPSWindow initialization disabled during modularization")
-    end
+    addon:Debug("HPSWindow initialization disabled during modularization")
 end
 
 -- Function to position pixel meter relative to window

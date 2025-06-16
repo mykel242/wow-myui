@@ -33,9 +33,7 @@ function addon.DPSWindow:Initialize()
     addon.BaseMeterWindow.Initialize(self)
     --]]
     
-    if addon.DEBUG then
-        print("DPSWindow initialization disabled during modularization")
-    end
+    addon:Debug("DPSWindow initialization disabled during modularization")
 end
 
 -- Function to position pixel meter relative to window

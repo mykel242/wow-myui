@@ -106,7 +106,7 @@ function CombatLogViewer:CreateViewerWindow()
         if addon.SessionBrowser then
             addon.SessionBrowser:Show()
         else
-            print("Session Browser not available")
+            addon:Error("Session Browser not available")
         end
     end)
     
@@ -145,9 +145,7 @@ function CombatLogViewer:CreateViewerWindow()
         self:StartAutoRefresh()
     end
     
-    if addon.DEBUG then
-        print("Combat log viewer window created")
-    end
+    addon:Debug("Combat log viewer window created")
 end
 
 -- Show the viewer window
@@ -170,9 +168,7 @@ function CombatLogViewer:Hide()
         viewerFrame:Hide()
         self:StopAutoRefresh()
         
-        if addon.DEBUG then
-            print("Combat log viewer hidden")
-        end
+        addon:Debug("Combat log viewer hidden")
     end
 end
 
@@ -406,9 +402,7 @@ function CombatLogViewer:StartAutoRefresh()
         end
     end)
     
-    if addon.DEBUG then
-        print("Combat log auto-refresh started")
-    end
+    addon:Debug("Combat log auto-refresh started")
 end
 
 -- Stop auto-refresh timer
@@ -418,9 +412,7 @@ function CombatLogViewer:StopAutoRefresh()
         refreshTimer = nil
     end
     
-    if addon.DEBUG then
-        print("Combat log auto-refresh stopped")
-    end
+    addon:Debug("Combat log auto-refresh stopped")
 end
 
 -- Public API

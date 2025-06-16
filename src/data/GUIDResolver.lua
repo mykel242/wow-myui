@@ -47,9 +47,7 @@ function GUIDResolver:Initialize()
     
     isInitialized = true
     
-    if addon.DEBUG then
-        print(string.format("GUIDResolver initialized - %d cached entries loaded", self:GetCacheSize()))
-    end
+    addon:Debug("GUIDResolver initialized - %d cached entries loaded", self:GetCacheSize())
 end
 
 -- Event handler for name resolution opportunities
@@ -329,8 +327,8 @@ function GUIDResolver:PerformCleanup()
         end
     end
     
-    if addon.DEBUG and removed > 0 then
-        print(string.format("GUIDResolver cleanup: removed %d expired entries", removed))
+    if removed > 0 then
+        addon:Debug("GUIDResolver cleanup: removed %d expired entries", removed)
     end
     
     -- Save after cleanup
@@ -343,9 +341,7 @@ function GUIDResolver:LoadFromSavedVariables()
         guidNameCache = MyUIDB[CACHE_KEY].cache or {}
         recentEncounters = MyUIDB[CACHE_KEY].encounters or {}
         
-        if addon.DEBUG then
-            print(string.format("GUIDResolver: loaded %d cached entries", self:GetCacheSize()))
-        end
+        addon:Debug("GUIDResolver: loaded %d cached entries", self:GetCacheSize())
     else
         guidNameCache = {}
         recentEncounters = {}
@@ -388,9 +384,7 @@ function GUIDResolver:ClearCache()
     recentEncounters = {}
     self:SaveToSavedVariables()
     
-    if addon.DEBUG then
-        print("GUIDResolver cache cleared")
-    end
+    addon:Debug("GUIDResolver cache cleared")
 end
 
 function GUIDResolver:GetStatus()

@@ -64,9 +64,7 @@ function SettingsWindow:LoadSettings()
         end
     end
     
-    if addon.DEBUG then
-        print("SettingsWindow: Settings loaded")
-    end
+    addon:Debug("SettingsWindow: Settings loaded")
 end
 
 -- Save settings to saved variables
@@ -83,9 +81,7 @@ function SettingsWindow:SaveSettings()
     -- Apply settings to active systems
     self:ApplySettings()
     
-    if addon.DEBUG then
-        print("SettingsWindow: Settings saved and applied")
-    end
+    addon:Debug("SettingsWindow: Settings saved and applied")
 end
 
 -- Apply current settings to active systems
@@ -722,7 +718,5 @@ function SettingsWindow:Initialize()
     self:LoadSettings()
     self:ApplySettings()
     
-    if addon.DEBUG then
-        -- SettingsWindow initialized
-    end
+    addon:Debug("SettingsWindow initialized")
 end
