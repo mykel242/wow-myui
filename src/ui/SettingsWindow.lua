@@ -723,6 +723,6 @@ function SettingsWindow:Initialize()
     self:ApplySettings()
     
     if addon.DEBUG then
-        print("SettingsWindow: Initialized")
+        -- SettingsWindow initialized
     end
 end
