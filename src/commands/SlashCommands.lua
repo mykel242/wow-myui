@@ -250,6 +250,51 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("SessionBrowser not loaded")
             end
+        elseif command == "dumplogs" or command == "recentlogs" then
+            if addon.MyLogger then
+                addon.MyLogger:DumpRecentLogs()
+            else
+                print("MyLogger not loaded")
+            end
+        elseif command == "copylogs" or command == "copyrecentlogs" then
+            if addon.MyLogger then
+                addon.MyLogger:ExportRecentLogs()
+            else
+                print("MyLogger not loaded")
+            end
+        elseif command == "exportlogs" or command == "persistentlogs" then
+            if addon.MyLogger then
+                addon.MyLogger:DumpPersistentLogs()
+            else
+                print("MyLogger not loaded")
+            end
+        elseif command == "copyexportlogs" or command == "copypersistentlogs" then
+            if addon.MyLogger then
+                addon.MyLogger:ExportPersistentLogs()
+            else
+                print("MyLogger not loaded")
+            end
+        elseif command == "testlog" then
+            if addon.MyLogger then
+                addon.MyLogger:Error("Test error message for logging")
+                addon.MyLogger:Warn("Test warning message for logging")
+                addon.MyLogger:Info("Test info message for logging")
+                print("Test messages logged. Use /myui logs to open log viewer.")
+            else
+                print("MyLogger not loaded")
+            end
+        elseif command == "logs" or command == "logwindow" then
+            if addon.MyLoggerWindow then
+                addon.MyLoggerWindow:Toggle()
+            else
+                print("MyLoggerWindow not loaded")
+            end
+        elseif command == "clearlogs" then
+            if addon.MyLoggerWindow then
+                StaticPopup_Show("MYLOGGER_CLEAR_CONFIRM")
+            else
+                print("MyLoggerWindow not loaded")
+            end
         elseif command == "browser" then
             if addon.SessionBrowser then
                 addon.SessionBrowser:Toggle()
@@ -307,6 +352,9 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui browser - Toggle session browser (table view)")
             print("  /myui viewer - Toggle combat log viewer window")
             print("  /myui export - Open session browser for export")
+            print("  /myui logchannel - Join logger chat channel")
+            print("  /myui leavechannel - Leave logger chat channel")
+            print("  /myui testchannel - Send test message to logger channel")
             print("")
             print("Note: Most features disabled during modularization.")
             print("They will return with the new combat logging system.")
@@ -319,7 +367,5 @@ function SlashCommands:Initialize()
     -- Use simple commands during modularization
     self:InitializeSimpleCommands()
     
-    if addon.DEBUG then
-        print("SlashCommands initialized (simplified mode)")
-    end
+    -- SlashCommands initialized
 end

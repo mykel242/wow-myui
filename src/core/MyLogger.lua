@@ -1,47 +1,47 @@
 -- MyLogger.lua
--- Professional logging system with configurable levels and chat channel support
+-- Simplified logging system with in-memory buffer + SavedVariables persistence
 
 local addonName, addon = ...
 
-print("Debug: MyLogger.lua loading...")
-print("Debug: addonName =", addonName)
-print("Debug: addon =", addon)
-
-addon.MyLogger = {}
-local MyLogger = addon.MyLogger
-
-print("Debug: MyLogger assigned to addon.MyLogger")
-
 -- =============================================================================
--- LOG LEVELS
+-- LOGGER MODULE
 -- =============================================================================
 
+local MyLogger = {}
+addon.MyLogger = MyLogger
+
+-- =============================================================================
+-- LOG LEVELS AND CONSTANTS
+-- =============================================================================
+
+-- Log levels (lower numbers = higher priority)
 MyLogger.LOG_LEVELS = {
-    OFF = 0,      -- No logging
-    ERROR = 1,    -- Critical errors only
-    WARN = 2,     -- Warnings and errors
-    INFO = 3,     -- General information
-    DEBUG = 4,    -- Debug information
-    TRACE = 5     -- Verbose tracing
+    OFF = 0,
+    ERROR = 1,
+    WARN = 2,
+    INFO = 3,
+    DEBUG = 4,
+    TRACE = 5
 }
 
 -- Level names for display
 MyLogger.LEVEL_NAMES = {
     [0] = "OFF",
-    [1] = "ERROR", 
+    [1] = "ERROR",
     [2] = "WARN",
     [3] = "INFO",
     [4] = "DEBUG",
     [5] = "TRACE"
 }
 
--- Level colors for chat output
+-- Level colors for console output
 MyLogger.LEVEL_COLORS = {
-    [1] = "|cffff4444", -- ERROR: Red
-    [2] = "|cfffff444", -- WARN: Yellow  
-    [3] = "|cff44ff44", -- INFO: Green
-    [4] = "|cff4444ff", -- DEBUG: Blue
-    [5] = "|cffff44ff"  -- TRACE: Magenta
+    [0] = "|cFFFFFFFF", -- White
+    [1] = "|cFFFF0000", -- Red
+    [2] = "|cFFFFFF00", -- Yellow
+    [3] = "|cFF00FF00", -- Green
+    [4] = "|cFF00FFFF", -- Cyan
+    [5] = "|cFFFF00FF"  -- Magenta
 }
 
 -- =============================================================================
@@ -50,14 +50,10 @@ MyLogger.LEVEL_COLORS = {
 
 local config = {
     currentLevel = MyLogger.LOG_LEVELS.OFF,
-    useChannel = false,
-    channelName = nil,
-    channelId = nil,
-    channelConnected = false,
     fallbackToPrint = true,
     includeTimestamp = true,
     includeLevel = true,
-    maxMessageLength = 255 -- WoW chat message limit
+    savedVariables = nil -- Reference to addon's saved variables
 }
 
 -- =============================================================================
@@ -78,10 +74,9 @@ function MyLogger:SetLevel(level)
     
     if type(level) == "number" and level >= 0 and level <= 5 then
         config.currentLevel = level
-        self:Info("Log level set to: %s (%d)", self.LEVEL_NAMES[level], level)
         return true
     else
-        self:Error("Invalid log level: %s", tostring(level))
+        print(string.format("[%s] Invalid log level: %s", addonName, tostring(level)))
         return false
     end
 end
@@ -97,67 +92,80 @@ function MyLogger:ShouldLog(level)
 end
 
 -- =============================================================================
--- CHAT CHANNEL MANAGEMENT
+-- INITIALIZATION
 -- =============================================================================
 
--- Initialize chat channel for logging
-function MyLogger:InitializeChannel(versionHash)
-    if not config.useChannel then return false end
+-- Initialize the logger
+function MyLogger:Initialize(options)
+    options = options or {}
     
-    -- Create unique channel name
-    versionHash = versionHash or "dev"
-    config.channelName = string.format("MyUI-%s-Log", versionHash)
+    -- Set log level
+    local levelName = options.level or "OFF"
+    config.currentLevel = self.LOG_LEVELS[levelName] or self.LOG_LEVELS.OFF
     
-    -- Try to join/create the channel
-    local channelId, actualChannelName = JoinChannelByName(config.channelName)
+    -- Set other options
+    config.fallbackToPrint = options.fallbackToPrint ~= false -- Default true
+    config.includeTimestamp = options.includeTimestamp ~= false -- Default true
+    config.includeLevel = options.includeLevel ~= false -- Default true
+    config.savedVariables = options.savedVariables -- Reference for persistence
     
-    if channelId then
-        config.channelId = channelId
-        config.channelConnected = true
-        
-        -- Send session header
-        self:SendToChannel("=== MyUI Logging Session Started ===")
-        self:SendToChannel("Channel: %s | Level: %s", 
-            actualChannelName or config.channelName, 
-            self.LEVEL_NAMES[config.currentLevel])
-        
-        if config.fallbackToPrint then
-            print(string.format("[%s] Logging to channel: %s", addonName, actualChannelName or config.channelName))
+    -- Initialize logging storage
+    self:InitializeStorage()
+    
+    -- Log initialization
+    self:Info("Log level set to: %s (%d)", levelName, config.currentLevel)
+end
+
+-- Initialize logging storage
+function MyLogger:InitializeStorage()
+    -- Initialize in-memory buffer
+    if not self.memoryLogs then
+        self.memoryLogs = {}
+    end
+    
+    -- Initialize SavedVariables logs if reference provided
+    if config.savedVariables then
+        if not config.savedVariables.logs then
+            config.savedVariables.logs = {}
         end
-        
-        return true
-    else
-        if config.fallbackToPrint then
-            print(string.format("[%s] Failed to create logging channel: %s", addonName, config.channelName))
-        end
-        return false
     end
 end
 
--- Send message directly to channel
-function MyLogger:SendToChannel(message, ...)
-    if not config.channelConnected or not config.channelId then return false end
-    
-    -- Format message if needed
-    if ... then
-        message = string.format(message, ...)
-    end
-    
-    -- Truncate if too long
-    if #message > config.maxMessageLength then
-        message = message:sub(1, config.maxMessageLength - 3) .. "..."
-    end
-    
-    SendChatMessage(message, "CHANNEL", nil, config.channelId)
-    return true
-end
+-- =============================================================================
+-- MESSAGE STORAGE
+-- =============================================================================
 
--- Clean up channel on shutdown
-function MyLogger:CleanupChannel()
-    if config.channelConnected and config.channelName then
-        self:SendToChannel("=== MyUI Logging Session Ended ===")
-        LeaveChannelByName(config.channelName)
-        config.channelConnected = false
+-- Store log message in both memory and SavedVariables
+function MyLogger:StoreLogMessage(level, message)
+    local timestamp = date("%H:%M:%S")
+    local levelName = self.LEVEL_NAMES[level] or "UNKNOWN"
+    local formattedMessage = string.format("[%s] [%s] %s", timestamp, levelName, message)
+    
+    -- Always store in memory buffer
+    if not self.memoryLogs then
+        self.memoryLogs = {}
+    end
+    table.insert(self.memoryLogs, formattedMessage)
+    
+    -- Keep only last 100 messages in memory
+    if #self.memoryLogs > 100 then
+        table.remove(self.memoryLogs, 1)
+    end
+    
+    -- Store important logs (ERROR, WARN) in SavedVariables
+    if level <= self.LOG_LEVELS.WARN and config.savedVariables then
+        local entry = {
+            timestamp = time(),
+            level = levelName,
+            message = message,
+            session = date("%Y-%m-%d %H:%M:%S")
+        }
+        table.insert(config.savedVariables.logs, entry)
+        
+        -- Keep only last 500 persistent logs
+        if #config.savedVariables.logs > 500 then
+            table.remove(config.savedVariables.logs, 1)
+        end
     end
 end
 
@@ -203,63 +211,150 @@ function MyLogger:Log(level, message, ...)
     -- Format the message
     local formattedMessage = self:FormatMessage(level, message, ...)
     
-    -- Try to send to channel first
-    local sentToChannel = false
-    if config.useChannel and config.channelConnected then
-        sentToChannel = self:SendToChannel(formattedMessage)
-    end
+    -- Store the message
+    self:StoreLogMessage(level, message)
     
-    -- Fallback to print if needed
-    if not sentToChannel and config.fallbackToPrint then
+    -- Output to console if fallback enabled
+    if config.fallbackToPrint then
         print(formattedMessage)
     end
 end
 
 -- =============================================================================
--- CONVENIENCE LOGGING METHODS
+-- CONVENIENCE METHODS
 -- =============================================================================
 
--- Error logging (always important)
+-- Log at ERROR level
 function MyLogger:Error(message, ...)
     self:Log(self.LOG_LEVELS.ERROR, message, ...)
 end
 
--- Warning logging  
+-- Log at WARN level
 function MyLogger:Warn(message, ...)
     self:Log(self.LOG_LEVELS.WARN, message, ...)
 end
 
--- Info logging
+-- Log at INFO level
 function MyLogger:Info(message, ...)
     self:Log(self.LOG_LEVELS.INFO, message, ...)
 end
 
--- Debug logging
+-- Log at DEBUG level
 function MyLogger:Debug(message, ...)
     self:Log(self.LOG_LEVELS.DEBUG, message, ...)
 end
 
--- Trace logging (most verbose)
+-- Log at TRACE level
 function MyLogger:Trace(message, ...)
     self:Log(self.LOG_LEVELS.TRACE, message, ...)
 end
 
 -- =============================================================================
--- CONFIGURATION API
+-- EXPORT FUNCTIONS
 -- =============================================================================
 
--- Enable/disable chat channel logging
-function MyLogger:SetUseChannel(enabled)
-    config.useChannel = enabled
-    if enabled then
-        self:Info("Chat channel logging enabled")
-    else
-        self:Info("Chat channel logging disabled")
-        if config.channelConnected then
-            self:CleanupChannel()
-        end
-    end
+-- Get recent logs from memory buffer
+function MyLogger:GetRecentLogs()
+    return self.memoryLogs or {}
 end
+
+-- Get all persistent logs from SavedVariables
+function MyLogger:GetPersistentLogs()
+    if config.savedVariables and config.savedVariables.logs then
+        return config.savedVariables.logs
+    end
+    return {}
+end
+
+-- Export recent logs to clipboard
+function MyLogger:ExportRecentLogs()
+    local logs = self:GetRecentLogs()
+    if #logs == 0 then
+        print("No recent logs available")
+        return
+    end
+    
+    local exportText = string.format("=== %d Recent MyUI2 Logs ===\n", #logs)
+    for i, log in ipairs(logs) do
+        exportText = exportText .. log .. "\n"
+    end
+    exportText = exportText .. "=== End Recent Logs ==="
+    
+    -- Copy to clipboard using WoW's API
+    if C_System and C_System.SetClipboard then
+        C_System.SetClipboard(exportText)
+    else
+        -- Fallback: show in a copy-friendly format
+        print("=== COPY THIS TEXT ===")
+        print(exportText)
+        print("=== END COPY TEXT ===")
+    end
+    
+    print(string.format("Recent logs (%d messages) copied to clipboard", #logs))
+end
+
+-- Export persistent logs to clipboard
+function MyLogger:ExportPersistentLogs()
+    local logs = self:GetPersistentLogs()
+    if #logs == 0 then
+        print("No persistent logs available")
+        return
+    end
+    
+    local exportText = string.format("=== %d Persistent MyUI2 Logs ===\n", #logs)
+    for i, entry in ipairs(logs) do
+        exportText = exportText .. string.format("[%s] [%s] %s\n", entry.session, entry.level, entry.message)
+    end
+    exportText = exportText .. "=== End Persistent Logs ==="
+    
+    -- Copy to clipboard using WoW's API
+    if C_System and C_System.SetClipboard then
+        C_System.SetClipboard(exportText)
+    else
+        -- Fallback: show in a copy-friendly format
+        print("=== COPY THIS TEXT ===")
+        print(exportText)
+        print("=== END COPY TEXT ===")
+    end
+    
+    print(string.format("Persistent logs (%d messages) copied to clipboard", #logs))
+end
+
+-- Print recent logs for copying (fallback)
+function MyLogger:DumpRecentLogs()
+    local logs = self:GetRecentLogs()
+    if #logs == 0 then
+        print("No recent logs available")
+        return
+    end
+    
+    print(string.format("=== %d Recent Logs ===", #logs))
+    for i, log in ipairs(logs) do
+        print(log)
+    end
+    print("=== End Recent Logs ===")
+    print("Use /myui copylogs to copy to clipboard")
+end
+
+-- Print all persistent logs for copying (fallback)
+function MyLogger:DumpPersistentLogs()
+    local logs = self:GetPersistentLogs()
+    if #logs == 0 then
+        print("No persistent logs available")
+        return
+    end
+    
+    print(string.format("=== %d Persistent Logs ===", #logs))
+    for i, entry in ipairs(logs) do
+        print(string.format("[%s] [%s] %s", entry.session, entry.level, entry.message))
+    end
+    print("=== End Persistent Logs ===")
+    print("Use /myui copyexportlogs to copy to clipboard")
+end
+
+-- =============================================================================
+-- CONFIGURATION METHODS
+-- =============================================================================
 
 -- Enable/disable fallback to print
 function MyLogger:SetFallbackToPrint(enabled)
@@ -281,52 +376,24 @@ function MyLogger:GetConfig()
     return {
         level = config.currentLevel,
         levelName = self.LEVEL_NAMES[config.currentLevel],
-        useChannel = config.useChannel,
-        channelConnected = config.channelConnected,
-        channelName = config.channelName,
         fallbackToPrint = config.fallbackToPrint,
         includeTimestamp = config.includeTimestamp,
-        includeLevel = config.includeLevel
+        includeLevel = config.includeLevel,
+        memoryLogCount = self.memoryLogs and #self.memoryLogs or 0,
+        persistentLogCount = config.savedVariables and config.savedVariables.logs and #config.savedVariables.logs or 0
     }
 end
-
--- =============================================================================
--- INITIALIZATION
--- =============================================================================
-
-function MyLogger:Initialize(settings)
-    settings = settings or {}
-    
-    -- Apply settings
-    self:SetLevel(settings.level or self.LOG_LEVELS.OFF)
-    self:SetUseChannel(settings.useChannel or false)
-    self:SetFallbackToPrint(settings.fallbackToPrint ~= false) -- Default true
-    self:SetIncludeTimestamp(settings.includeTimestamp ~= false) -- Default true
-    self:SetIncludeLevel(settings.includeLevel ~= false) -- Default true
-    
-    -- Initialize channel if requested
-    if settings.useChannel then
-        self:InitializeChannel(settings.versionHash)
-    end
-    
-    self:Info("MyLogger initialized")
-end
-
--- =============================================================================
--- DEBUG UTILITIES
--- =============================================================================
 
 -- Debug dump of current configuration
 function MyLogger:DumpConfig()
     local cfg = self:GetConfig()
     self:Info("=== MyLogger Configuration ===")
     self:Info("Level: %s (%d)", cfg.levelName, cfg.level)
-    self:Info("Use Channel: %s", tostring(cfg.useChannel))
-    self:Info("Channel Connected: %s", tostring(cfg.channelConnected))
-    self:Info("Channel Name: %s", cfg.channelName or "none")
     self:Info("Fallback to Print: %s", tostring(cfg.fallbackToPrint))
     self:Info("Include Timestamp: %s", tostring(cfg.includeTimestamp))
     self:Info("Include Level: %s", tostring(cfg.includeLevel))
+    self:Info("Memory Logs: %d", cfg.memoryLogCount)
+    self:Info("Persistent Logs: %d", cfg.persistentLogCount)
     self:Info("==============================")
 end
 

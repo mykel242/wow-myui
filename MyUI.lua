@@ -4,6 +4,9 @@
 -- Create addon namespace
 local addonName, addon = ...
 
+-- Expose addon globally for debugging (optional)
+_G.MyUI2 = addon
+
 -- Force reload flag for development
 if not addon.devMode then
     addon.devMode = true
@@ -13,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "refactor-modularization-e933741"
-addon.BUILD_DATE = "2025-06-16-13:57"
+addon.VERSION = "refactor-modularization-3ed67df"
+addon.BUILD_DATE = "2025-06-16-17:01"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -37,10 +40,9 @@ addon.defaults = {
     trackGroupDamage = false, -- Disabled by default for performance
     maxEnhancedEvents = 1000,
     calculationMethod = "ROLLING_AVERAGE", -- Default calculation method
-    -- Logging configuration
-    logLevel = "OFF", -- OFF, ERROR, WARN, INFO, DEBUG, TRACE
-    useLogChannel = false, -- Use chat channel for logging
-    logFallbackToPrint = true -- Fallback to print() if channel fails
+    -- Logging configuration  
+    logLevel = "WARN", -- OFF, ERROR, WARN, INFO, DEBUG, TRACE
+    logFallbackToPrint = true -- Fallback to print() if logging fails
 }
 
 -- Logging shortcuts (MyLogger must be initialized first)
@@ -279,10 +281,15 @@ function addon:OnInitialize()
     
     self.MyLogger:Initialize({
         level = self.db.logLevel or "OFF",
-        useChannel = self.db.useLogChannel or false,
-        versionHash = versionHash,
-        fallbackToPrint = self.db.logFallbackToPrint ~= false
+        fallbackToPrint = self.db.logFallbackToPrint ~= false,
+        savedVariables = self.db -- Pass reference for persistent logging
     })
+    
+    -- Initialize MyLoggerWindow and register with logger
+    if self.MyLoggerWindow then
+        self.MyLoggerWindow:RegisterWithLogger()
+        self:Debug("MyLoggerWindow initialized and registered")
+    end
 
     -- Initialize core modules with logger injection
     -- 0. Unified calculator must be available before combat data
@@ -290,24 +297,8 @@ function addon:OnInitialize()
     
     -- 0.5. Initialize MyTimestampManager first (single source of truth for timing)
     if self.MyTimestampManager then
-        print("DEBUG: MyTimestampManager exists")
-        print("DEBUG: MyTimestampManager type:", type(self.MyTimestampManager))
-        print("DEBUG: Initialize method exists:", self.MyTimestampManager.Initialize ~= nil)
-        print("DEBUG: Available methods in MyTimestampManager:")
-        for k, v in pairs(self.MyTimestampManager) do
-            if type(v) == "function" then
-                print("  ", k, "->", type(v))
-            end
-        end
-        
-        if self.MyTimestampManager.Initialize then
-            self.MyTimestampManager:Initialize(self.MyLogger)
-            self:Debug("MyTimestampManager initialized with logger injection")
-        else
-            print("ERROR: Initialize method missing from MyTimestampManager")
-        end
-    else
-        print("DEBUG: MyTimestampManager is nil")
+        self.MyTimestampManager:Initialize(self.MyLogger)
+        self:Debug("MyTimestampManager initialized with logger injection")
     end
     
     --[[
@@ -485,10 +476,7 @@ function addon:OnDisable()
         self.GUIDResolver:SaveToSavedVariables()
     end
     
-    -- Cleanup MyLogger channel
-    if self.MyLogger then
-        self.MyLogger:CleanupChannel()
-    end
+    -- MyLogger cleanup not needed (no channels)
 
     --[[
     DISABLED DURING MODULARIZATION - PRESERVE FOR RE-ENABLE
