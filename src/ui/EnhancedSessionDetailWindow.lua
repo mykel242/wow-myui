@@ -46,9 +46,7 @@ function EnhancedSessionDetailWindow:Create(sessionData)
         local storedSession = addon.SessionManager:GetSession(sessionData.sessionId)
         if storedSession and storedSession.enhancedData then
             sessionData.enhancedData = storedSession.enhancedData
-            if addon.DEBUG then
-                print("Retrieved enhanced data from stored session")
-            end
+            addon:Debug("Retrieved enhanced data from stored session")
         end
     end
 
@@ -57,9 +55,7 @@ function EnhancedSessionDetailWindow:Create(sessionData)
         local currentEnhancedData = addon.EnhancedCombatLogger:GetEnhancedSessionData()
         if currentEnhancedData then
             sessionData.enhancedData = currentEnhancedData
-            if addon.DEBUG then
-                print("Using current enhanced data from logger")
-            end
+            addon:Debug("Using current enhanced data from logger")
         end
     end
 
@@ -362,31 +358,31 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
     -- Draw death markers if enhanced data is available and filters allow
     if sessionData.enhancedData and sessionData.enhancedData.deaths and #sessionData.enhancedData.deaths > 0 and
        self.chartFilters and (self.chartFilters.showPlayerDeaths or self.chartFilters.showMinionDeaths) then
-        -- print("Drawing", #sessionData.enhancedData.deaths, "death markers")
+        -- addon:Debug("Drawing %d death markers", #sessionData.enhancedData.deaths)
         self:DrawDeathMarkers(chartArea, sessionData.enhancedData.deaths, sessionData.duration, chartWidth, chartHeight)
     else
         -- One-time debug for enhanced data structure (only when opening chart)
-        print("=== ENHANCED DATA DEBUG ===")
+        addon:Debug("=== ENHANCED DATA DEBUG ===")
         if sessionData.enhancedData then
-            print("Enhanced data keys available:")
+            addon:Debug("Enhanced data keys available:")
             for k, v in pairs(sessionData.enhancedData) do
                 if type(v) == "table" then
-                    print("  " .. tostring(k) .. ": table with " .. #v .. " items")
+                    addon:Debug("  %s: table with %d items", tostring(k), #v)
                     if k == "deaths" and #v > 0 then
-                        print("    First death event keys:", table.concat(addon:GetTableKeys(v[1]), ", "))
-                        print("    First death event:")
+                        addon:Debug("    First death event keys: %s", table.concat(addon:GetTableKeys(v[1]), ", "))
+                        addon:Debug("    First death event:")
                         for dk, dv in pairs(v[1]) do
-                            print("      " .. tostring(dk) .. ": " .. tostring(dv))
+                            addon:Debug("      %s: %s", tostring(dk), tostring(dv))
                         end
                     end
                 else
-                    print("  " .. tostring(k) .. ": " .. tostring(v))
+                    addon:Debug("  %s: %s", tostring(k), tostring(v))
                 end
             end
         else
-            print("No enhanced data found in session")
+            addon:Debug("No enhanced data found in session")
         end
-        print("========================")
+        addon:Debug("========================")
     end
 
     -- TEST: Temporarily removed - test markers were working
@@ -812,9 +808,7 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
     filteredDeaths = chartFilteredDeaths
 
     for i, death in ipairs(filteredDeaths) do
-        if addon.DEBUG then
-            print("Death", i, "- elapsed:", death.elapsed, "destName:", death.destName)
-        end
+        addon:Debug("Death", i, "- elapsed:", death.elapsed, "destName:", death.destName)
 
         -- UNIFIED: Use death.elapsed directly (already calculated by MyTimestampManager)
         local relativeTime = death.elapsed
@@ -1019,10 +1013,8 @@ function EnhancedSessionDetailWindow:DrawDeathMarkers(chartArea, deaths, duratio
                 end
             end)
         else
-            if addon.DEBUG then
-                print("  Death", i, "SKIPPED - relativeTime:", relativeTime, "duration:", duration)
-                print("    Reason: relativeTime outside bounds [0,", duration, "]")
-            end
+            addon:Debug("  Death %d SKIPPED - relativeTime: %f, duration: %f", i, relativeTime, duration)
+            addon:Debug("    Reason: relativeTime outside bounds [0, %f]", duration)
         end
     end
 
@@ -1058,9 +1050,7 @@ function EnhancedSessionDetailWindow:DrawTestMarkers(chartArea, duration, width,
     testDeathMarker:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_8") -- Skull raid marker
     testDeathMarker:SetVertexColor(1, 0, 1, 1)                                      -- Magenta skull
 
-    if addon.DEBUG then
-        print("Drew test markers at", testX, "and", testDeathX)
-    end
+    addon:Debug("Drew test markers at", testX, "and", testDeathX)
 end
 
 -- Create chart legend (removed - was the light gray summary data)
@@ -2388,10 +2378,8 @@ function EnhancedSessionDetailWindow:ImportBlacklistData(encodedData)
 
     -- Decode and parse the data
     local decodedData = base64Decode(encodedData)
-    if addon.DEBUG then
-        print("MyUI2: Decoded data length:", #decodedData)
-        print("MyUI2: First 100 chars:", decodedData:sub(1, 100))
-    end
+    addon:Debug("Decoded data length: %d", #decodedData)
+    addon:Debug("First 100 chars: %s", decodedData:sub(1, 100))
     
     local importedBlacklist = deserializeTable(decodedData)
     
@@ -3534,9 +3522,7 @@ function EnhancedSessionDetailWindow:Show(sessionData)
             local enhancedData = addon.EnhancedCombatLogger:GetEnhancedSessionData()
             if enhancedData then
                 sessionData.enhancedData = enhancedData
-                if addon.DEBUG then
-                    print("Attached current enhanced data to session")
-                end
+                addon:Debug("Attached current enhanced data to session")
             end
         end
 
@@ -3545,9 +3531,7 @@ function EnhancedSessionDetailWindow:Show(sessionData)
             local storedSession = addon.SessionManager:GetSession(sessionData.sessionId)
             if storedSession and storedSession.enhancedData then
                 sessionData.enhancedData = storedSession.enhancedData
-                if addon.DEBUG then
-                    print("Retrieved enhanced data from stored session")
-                end
+                addon:Debug("Retrieved enhanced data from stored session")
             end
         end
     end

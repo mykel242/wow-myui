@@ -137,11 +137,10 @@ local function TrackParticipant(guid, name, flags)
         damageTaken = 0
     }
 
-    if addon.DEBUG and math.random() < 0.2 then -- 20% sample rate for debug
+    -- 20% sample rate for trace logging
+    if math.random() < 0.2 then
         local typeStr = isPlayer and "Player" or (isPet and "Pet" or "NPC")
-        if addon.VERBOSE_DEBUG then
-            addon:DebugPrint(string.format("Enhanced: Tracked %s (%s)", name, typeStr))
-        end
+        addon:Trace("Enhanced: Tracked %s (%s)", name, typeStr)
     end
 end
 
@@ -252,10 +251,8 @@ local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, destGUID, s
             color = cooldownInfo.color
         })
 
-        if addon.DEBUG then
-            addon:DebugPrint(string.format("Cooldown tracked: %s used %s at %.1fs",
-                sourceName, spellName, elapsed))
-        end
+        addon:Debug("Cooldown tracked: %s used %s at %.1fs",
+            sourceName, spellName, elapsed)
     end
 end
 
@@ -351,10 +348,8 @@ local function TrackDeath(timestamp, destGUID, destName, destFlags)
         timestamp = timestamp
     }
 
-    if addon.DEBUG then
-        addon:DebugPrint(string.format("Death tracked: %s (GUID: %s) died at %.3fs (logTime: %.3f)",
-            destName, destGUID, elapsed, timestamp))
-    end
+    addon:Debug("Death tracked: %s (GUID: %s) died at %.3fs (logTime: %.3f)",
+        destName, destGUID, elapsed, timestamp)
 end
 
 -- Enhanced combat log parser
@@ -377,10 +372,8 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
     if subevent == "SPELL_DAMAGE" or subevent == "SWING_DAMAGE" or subevent == "RANGE_DAMAGE" then
         -- Filter out damage events to dead targets
         if deadTargets[destGUID] then
-            if addon.DEBUG then
-                addon:DebugPrint(string.format("FILTERED: Damage to dead target %s (died at %.1fs)", 
-                    destName or "Unknown", deadTargets[destGUID].deathTime))
-            end
+            addon:Debug("FILTERED: Damage to dead target %s (died at %.1fs)", 
+                destName or "Unknown", deadTargets[destGUID].deathTime)
             return
         end
         
@@ -400,11 +393,10 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
             if destGUID == playerGUID then
                 TrackDamageTaken(timestamp, sourceGUID, sourceName, destGUID, destName, spellId, spellName, amount)
 
-                if addon.DEBUG and math.random() < 0.1 then -- 10% sample rate for debug
-                    if addon.VERBOSE_DEBUG then
-                        addon:DebugPrint(string.format("Enhanced: Player took %s damage from %s",
-                            addon.CombatTracker:FormatNumber(amount), sourceName or "Unknown"))
-                    end
+                -- 10% sample rate for trace logging
+                if math.random() < 0.1 then
+                    addon:Trace("Enhanced: Player took %s damage from %s",
+                        addon.CombatTracker:FormatNumber(amount), sourceName or "Unknown")
                 end
             end
 
@@ -569,18 +561,14 @@ function EnhancedCombatLogger:StartEnhancedTracking()
     -- Clear dead targets list for new combat session
     deadTargets = {}
 
-    if addon.DEBUG then
-        addon:DebugPrint("Enhanced combat logging started - data structures reset")
-    end
+    addon:Debug("Enhanced combat logging started - data structures reset")
 end
 
 -- End enhanced tracking
 function EnhancedCombatLogger:EndEnhancedTracking()
-    if addon.DEBUG then
-        local summary = self:GetParticipantsSummary()
-        addon:DebugPrint(string.format("Enhanced logging ended: %d players, %d NPCs, %d cooldowns used, %d deaths",
-            #summary.players, #summary.npcs, #enhancedSessionData.cooldownUsage, #enhancedSessionData.deaths))
-    end
+    local summary = self:GetParticipantsSummary()
+    addon:Debug("Enhanced logging ended: %d players, %d NPCs, %d cooldowns used, %d deaths",
+        #summary.players, #summary.npcs, #enhancedSessionData.cooldownUsage, #enhancedSessionData.deaths)
 end
 
 -- Reset enhanced data
@@ -618,6 +606,5 @@ function EnhancedCombatLogger:Initialize()
         EnhancedCombatLogger:OnEvent(event, ...)
     end)
 
-    if addon.DEBUG then
-    end
+    -- Enhanced combat logger initialized
 end
