@@ -36,9 +36,7 @@ function SessionBrowser:Initialize()
     self:CreateSessionViewer()
     isInitialized = true
     
-    if addon.DEBUG then
-        print("SessionBrowser initialized - ready to browse stored sessions")
-    end
+    addon:Debug("SessionBrowser initialized - ready to browse stored sessions")
 end
 
 -- Create the main browser window with session table
@@ -153,9 +151,7 @@ function SessionBrowser:CreateBrowserWindow()
     frame.selectedRow = nil
     frame.sessionRows = {}
     
-    if addon.DEBUG then
-        print("Session browser window created")
-    end
+    addon:Debug("Session browser window created")
 end
 
 -- Create the session detail viewer
@@ -283,9 +279,7 @@ function SessionBrowser:CreateSessionViewer()
     viewerFrame = frame
     viewerEditBox = editbox
     
-    if addon.DEBUG then
-        print("Session viewer window created")
-    end
+    addon:Debug("Session viewer window created")
 end
 
 -- Show the session browser
@@ -298,9 +292,7 @@ function SessionBrowser:Show()
         browserFrame:Show()
         self:RefreshSessionList()
         
-        if addon.DEBUG then
-            print("Session browser shown")
-        end
+        addon:Debug("Session browser shown")
     end
 end
 
@@ -313,9 +305,7 @@ function SessionBrowser:Hide()
         viewerFrame:Hide()
     end
     
-    if addon.DEBUG then
-        print("Session browser hidden")
-    end
+    addon:Debug("Session browser hidden")
 end
 
 -- Toggle browser visibility
@@ -365,9 +355,7 @@ function SessionBrowser:RefreshSessionList()
     local totalHeight = #browserFrame.sessionRows * CONFIG.ROW_HEIGHT + 20
     browserFrame.contentFrame:SetSize(CONFIG.BROWSER_WIDTH - 60, totalHeight)
     
-    if addon.DEBUG then
-        print(string.format("Session list refreshed: %d sessions", #sessions))
-    end
+    addon:Debug("Session list refreshed: %d sessions", #sessions)
 end
 
 -- Create a row for a session
@@ -453,22 +441,20 @@ function SessionBrowser:SelectSession(session)
     
     selectedSession = session
     
-    if addon.DEBUG then
-        print("Selected session: " .. (session.id or "Unknown"))
-    end
+    addon:Debug("Selected session: " .. (session.id or "Unknown"))
 end
 
 -- View the selected session in detail viewer
 function SessionBrowser:ViewSelectedSession()
     if not selectedSession or not viewerFrame then
-        print("No session selected")
+        addon:Warn("No session selected")
         return
     end
     
     -- Get full session data with decompressed events
     local fullSession = addon.StorageManager:GetSession(selectedSession.id)
     if not fullSession then
-        print("Could not load session data")
+        addon:Error("Could not load session data")
         return
     end
     
@@ -502,9 +488,7 @@ function SessionBrowser:ViewSelectedSession()
     -- Show viewer
     viewerFrame:Show()
     
-    if addon.DEBUG then
-        print(string.format("Viewing session: %s (%d events)", fullSession.id, #(fullSession.events or {})))
-    end
+    addon:Debug("Viewing session: %s (%d events)", fullSession.id, #(fullSession.events or {}))
 end
 
 -- Generate complete session log
@@ -647,9 +631,7 @@ function SessionBrowser:RefreshViewerContent()
     viewerEditBox:SetText(content)
     viewerFrame.lastContent = content
     
-    if addon.DEBUG then
-        print("Refreshed viewer content in " .. selectedFormat .. " format")
-    end
+    addon:Debug("Refreshed viewer content in " .. selectedFormat .. " format")
 end
 
 -- Generate content in different formats for the viewer
@@ -765,21 +747,21 @@ end
 -- Delete selected session
 function SessionBrowser:DeleteSelectedSession()
     if not selectedSession then
-        print("No session selected")
+        addon:Warn("No session selected")
         return
     end
     
     if addon.StorageManager then
         local deleted = addon.StorageManager:DeleteSession(selectedSession.id)
         if deleted then
-            print("Session deleted: " .. selectedSession.id)
+            addon:Info("Session deleted: " .. selectedSession.id)
             selectedSession = nil
             self:RefreshSessionList()
             if viewerFrame and viewerFrame:IsShown() then
                 viewerFrame:Hide()
             end
         else
-            print("Failed to delete session")
+            addon:Error("Failed to delete session")
         end
     end
 end
@@ -788,7 +770,7 @@ end
 function SessionBrowser:ClearAllSessions()
     if addon.StorageManager then
         addon.StorageManager:ClearAllSessions()
-        print("All sessions cleared")
+        addon:Info("All sessions cleared")
         selectedSession = nil
         self:RefreshSessionList()
         if viewerFrame and viewerFrame:IsShown() then

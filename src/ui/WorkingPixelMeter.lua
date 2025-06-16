@@ -52,10 +52,8 @@ function WorkingPixelMeter:Create()
     local totalWidth = (self.cols * self.pixelSize) + ((self.cols - 1) * self.gap)
     local totalHeight = (self.rows * self.pixelSize) + ((self.rows - 1) * self.gap)
 
-    if addon.DEBUG then
-        print(string.format("WorkingPixelMeter: Creating %dx%d grid, window size %dx%d",
-            self.cols, self.rows, totalWidth, totalHeight))
-    end
+    addon:Debug("WorkingPixelMeter: Creating %dx%d grid, window size %dx%d",
+            self.cols, self.rows, totalWidth, totalHeight)
 
     -- Create main window frame - match parent width
     local frame = CreateFrame("Frame", nil, UIParent)
@@ -91,9 +89,7 @@ function WorkingPixelMeter:Create()
 
             self.pixels[row][col] = pixel
 
-            if addon.DEBUG then
-                print(string.format("Created pixel [%d,%d] at (%d,%d)", row, col, x, y))
-            end
+            addon:Trace("Created pixel [%d,%d] at (%d,%d)", row, col, x, y)
         end
     end
 
@@ -167,9 +163,7 @@ function WorkingPixelMeter:Create()
         end)
     end
 
-    if addon.DEBUG then
-        print("WorkingPixelMeter created successfully")
-    end
+    addon:Debug("WorkingPixelMeter created successfully")
 end
 
 function WorkingPixelMeter:SetValueSource(getValue)
@@ -179,18 +173,14 @@ end
 -- Manual scaling functions
 function WorkingPixelMeter:SetMaxValue(newMax)
     self.manualMaxValue = newMax
-    if addon.DEBUG then
-        print(string.format("%s meter max set to %s", self.meterName, addon.CombatTracker:FormatNumber(newMax)))
-    end
+    addon:Debug("%s meter max set to %s", self.meterName, addon.CombatTracker:FormatNumber(newMax))
 end
 
 function WorkingPixelMeter:ResetMaxValue()
     self.manualMaxValue = nil
     self.maxValue = self.originalMaxValue
-    if addon.DEBUG then
-        print(string.format("%s meter max reset to %s", self.meterName,
-            addon.CombatTracker:FormatNumber(self.originalMaxValue)))
-    end
+    addon:Debug("%s meter max reset to %s", self.meterName,
+        addon.CombatTracker:FormatNumber(self.originalMaxValue))
 end
 
 function WorkingPixelMeter:GetCurrentMaxValue()
@@ -283,10 +273,8 @@ function WorkingPixelMeter:GetAutoScale()
             autoScale = math.max(autoScale, self.originalMaxValue)
             autoScale = math.min(autoScale, 20000000)
 
-            if addon.DEBUG then
-                print(string.format("%s: Using last combat peak %.0f -> %.0f (%s content)",
-                    self.meterName, lastPeak, autoScale, contentType))
-            end
+            addon:Debug("%s: Using last combat peak %.0f -> %.0f (%s content)",
+                self.meterName, lastPeak, autoScale, contentType)
 
             return autoScale
         else
@@ -297,10 +285,8 @@ function WorkingPixelMeter:GetAutoScale()
     -- Calculate weighted average from session pool
     local autoScale = self:CalculateWeightedScale(sessions, contentType)
 
-    if addon.VERBOSE_DEBUG then
-        print(string.format("%s: Using %d %s sessions -> %.0f",
-            self.meterName, #sessions, contentType, autoScale))
-    end
+    addon:Trace("%s: Using %d %s sessions -> %.0f",
+        self.meterName, #sessions, contentType, autoScale)
 
     return autoScale
 end
@@ -367,16 +353,12 @@ function WorkingPixelMeter:CalculateWeightedScale(sessions, contentType)
 
     if autoScale > currentMax * maxChange then
         autoScale = currentMax * maxChange
-        if addon.DEBUG then
-            print(string.format("%s: Capped scaling change to %.0f (was %.0f)",
-                self.meterName, autoScale, weightedAverage * headroomMultiplier))
-        end
+        addon:Debug("%s: Capped scaling change to %.0f (was %.0f)",
+            self.meterName, autoScale, weightedAverage * headroomMultiplier)
     elseif autoScale < currentMax / maxChange then
         autoScale = currentMax / maxChange
-        if addon.DEBUG then
-            print(string.format("%s: Limited scaling reduction to %.0f (was %.0f)",
-                self.meterName, autoScale, weightedAverage * headroomMultiplier))
-        end
+        addon:Debug("%s: Limited scaling reduction to %.0f (was %.0f)",
+            self.meterName, autoScale, weightedAverage * headroomMultiplier)
     end
 
     -- Round and bound
@@ -384,10 +366,8 @@ function WorkingPixelMeter:CalculateWeightedScale(sessions, contentType)
     autoScale = math.max(autoScale, 500)      -- Don't go below 500 DPS
     autoScale = math.min(autoScale, 50000000) -- 50M cap
 
-    if addon.VERBOSE_DEBUG then
-        print(string.format("%s Auto-scale (%s): %.0f avg * %.1f headroom = %.0f (from %d sessions)",
-            self.meterName, contentType, weightedAverage, headroomMultiplier, autoScale, #values))
-    end
+    addon:Trace("%s Auto-scale (%s): %.0f avg * %.1f headroom = %.0f (from %d sessions)",
+        self.meterName, contentType, weightedAverage, headroomMultiplier, autoScale, #values)
 
     return autoScale
 end
