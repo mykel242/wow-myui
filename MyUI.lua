@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-port-rt-meters-ba4864d"
-addon.BUILD_DATE = "2025-06-17-09:10"
+addon.VERSION = "feature-port-rt-meters-c9214d6"
+addon.BUILD_DATE = "2025-06-17-09:38"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -66,45 +66,50 @@ function addon:TestLogging()
     self.MyLogger:DumpConfig()
 end
 
--- Window focus management system with strata coordination
+-- Window focus management system with strata and frame level coordination
 addon.FocusManager = {
     focusedWindow = nil,
     registeredWindows = {},
-    strataLevels = {
-        "BACKGROUND",
-        "LOW", 
-        "MEDIUM",
-        "HIGH",
-        "DIALOG",
-        "FULLSCREEN",
-        "FULLSCREEN_DIALOG",
-        "TOOLTIP"
+    
+    -- Frame level assignments for precise layering control
+    frameLevels = {
+        -- Base levels for different window types (conservative spacing)
+        sessionBrowser = 1,
+        combatLogViewer = 2,
+        loggerWindow = 3,
+        settingsWindow = 4,
+        mainWindow = 5,
+        
+        -- Special levels
+        focusBoost = 10,   -- Small boost for focused windows
+        dialogBase = 20,   -- Modest base for dialog windows
     },
-    -- Dynamic strata assignment to prevent conflicts
-    assignedStrata = {},
-    strataCounter = {
-        ["LOW"] = 0,
-        ["MEDIUM"] = 0,
-        ["HIGH"] = 0
+    
+    -- Strata assignments (simpler now with frame levels handling conflicts)
+    strataAssignments = {
+        -- Most windows on MEDIUM for consistency
+        default = "MEDIUM",
+        dialog = "DIALOG",
+        tooltip = "TOOLTIP"
     }
 }
 
 function addon.FocusManager:RegisterWindow(frame, pixelMeter, defaultStrata)
     if not frame then return end
     
-    -- Assign unique strata to prevent conflicts
-    local assignedStrata = self:AssignUniqueStrata(frame, defaultStrata)
-    frame:SetFrameStrata(assignedStrata)
+    -- Assign strata and frame level for precise layering
+    local assignedStrata, frameLevel = self:AssignStrataAndLevel(frame, defaultStrata)
     
     -- Store registration
     self.registeredWindows[frame] = {
         pixelMeter = pixelMeter,
         defaultStrata = assignedStrata,
+        defaultFrameLevel = frameLevel,
         requestedStrata = defaultStrata or "MEDIUM" -- Track what was originally requested
     }
     
-    -- Propagate strata to children immediately
-    self:PropagateStrataToChildren(frame, defaultStrata)
+    -- Set up initial element management for the window
+    self:ManageWindowElements(frame, frameLevel, false)
     
     -- Sync pixel meter strata if it exists
     if pixelMeter and pixelMeter.SyncStrataWithParent then
@@ -158,128 +163,121 @@ end
 function addon.FocusManager:SetFocus(frame)
     -- Clear previous focus
     if self.focusedWindow and self.focusedWindow ~= frame then
-        self:RevertWindowStrata(self.focusedWindow)
+        self:RevertWindowLevel(self.focusedWindow)
     end
     
     -- Set new focus
     self.focusedWindow = frame
     
-    -- Get the window's default strata and elevate it appropriately
+    -- Boost the frame level for focused window
     local windowInfo = self.registeredWindows[frame]
-    local targetStrata = "HIGH"
-    
     if windowInfo then
-        -- If it's already a high-priority strata, don't downgrade it
-        if windowInfo.defaultStrata == "DIALOG" or 
-           windowInfo.defaultStrata == "FULLSCREEN" or
-           windowInfo.defaultStrata == "FULLSCREEN_DIALOG" then
-            targetStrata = windowInfo.defaultStrata
+        local boostedLevel = windowInfo.defaultFrameLevel + self.frameLevels.focusBoost
+        frame:SetFrameLevel(boostedLevel)
+        
+        -- Manage specific child elements (like close buttons)
+        self:ManageWindowElements(frame, boostedLevel, true)
+        
+        -- Also ensure previously focused window's elements are properly managed
+        for registeredFrame, _ in pairs(self.registeredWindows) do
+            if registeredFrame ~= frame then
+                local otherWindowInfo = self.registeredWindows[registeredFrame]
+                self:ManageWindowElements(registeredFrame, otherWindowInfo.defaultFrameLevel, false)
+            end
         end
-    end
-    
-    frame:SetFrameStrata(targetStrata)
-    
-    -- Propagate strata to all child frames
-    self:PropagateStrataToChildren(frame, targetStrata)
-    
-    -- Sync pixel meter strata
-    if windowInfo and windowInfo.pixelMeter and windowInfo.pixelMeter.SyncStrataWithParent then
-        windowInfo.pixelMeter:SyncStrataWithParent()
+        
+        -- Sync pixel meter if needed
+        if windowInfo.pixelMeter and windowInfo.pixelMeter.SyncStrataWithParent then
+            windowInfo.pixelMeter:SyncStrataWithParent()
+        end
+        
+        addon:Debug("FocusManager: %s focused, boosted to level %d", 
+            frame:GetName() or "Unknown", boostedLevel)
     end
 end
 
 function addon.FocusManager:ClearFocus()
     if self.focusedWindow then
-        self:RevertWindowStrata(self.focusedWindow)
+        self:RevertWindowLevel(self.focusedWindow)
         self.focusedWindow = nil
     end
 end
 
-function addon.FocusManager:RevertWindowStrata(frame)
+function addon.FocusManager:RevertWindowLevel(frame)
     local windowInfo = self.registeredWindows[frame]
     if windowInfo then
-        frame:SetFrameStrata(windowInfo.defaultStrata)
+        frame:SetFrameLevel(windowInfo.defaultFrameLevel)
         
-        -- Propagate strata to all child frames
-        self:PropagateStrataToChildren(frame, windowInfo.defaultStrata)
+        -- Manage child elements for unfocused state
+        self:ManageWindowElements(frame, windowInfo.defaultFrameLevel, false)
         
-        -- Sync pixel meter strata
+        -- Sync pixel meter if needed
         if windowInfo.pixelMeter and windowInfo.pixelMeter.SyncStrataWithParent then
             windowInfo.pixelMeter:SyncStrataWithParent()
         end
+        
+        addon:Debug("FocusManager: %s focus removed, reverted to level %d", 
+            frame:GetName() or "Unknown", windowInfo.defaultFrameLevel)
     end
 end
 
--- Assign unique strata to prevent window conflicts
-function addon.FocusManager:AssignUniqueStrata(frame, requestedStrata)
-    requestedStrata = requestedStrata or "MEDIUM"
-    
-    -- Special handling for dialog windows - always use their requested strata
-    if requestedStrata == "DIALOG" or requestedStrata == "FULLSCREEN" or 
-       requestedStrata == "FULLSCREEN_DIALOG" or requestedStrata == "TOOLTIP" then
-        return requestedStrata
-    end
-    
-    -- For conflicting strata (LOW, MEDIUM, HIGH), assign dynamically
+-- Assign strata and frame level for precise window layering
+function addon.FocusManager:AssignStrataAndLevel(frame, requestedStrata)
     local frameName = frame:GetName() or "Unknown"
     
-    -- Check if this frame already has an assigned strata
-    if self.assignedStrata[frameName] then
-        return self.assignedStrata[frameName]
-    end
-    
-    -- Assign based on window type for predictable layering
+    -- Determine strata
     local assignedStrata
-    if frameName:find("Logger") then
-        assignedStrata = "MEDIUM"  -- Logger windows on medium
-    elseif frameName:find("Session") or frameName:find("Combat") then
-        assignedStrata = "LOW"     -- Session/combat windows on low
-    elseif frameName:find("Settings") or frameName:find("Config") then
-        assignedStrata = "DIALOG"  -- Settings always on dialog
-    elseif frameName:find("Main") then
-        assignedStrata = "DIALOG"  -- Main window on dialog
+    if requestedStrata == "DIALOG" or requestedStrata == "TOOLTIP" or 
+       frameName:find("Settings") or frameName:find("Main") then
+        assignedStrata = self.strataAssignments.dialog
     else
-        -- For other windows, use a rotation system
-        local availableStrata = {"LOW", "MEDIUM", "HIGH"}
-        local minCount = math.huge
-        local bestStrata = "MEDIUM"
-        
-        for _, strata in ipairs(availableStrata) do
-            if self.strataCounter[strata] < minCount then
-                minCount = self.strataCounter[strata]
-                bestStrata = strata
-            end
-        end
-        
-        assignedStrata = bestStrata
+        assignedStrata = self.strataAssignments.default
     end
     
-    -- Track assignment
-    self.assignedStrata[frameName] = assignedStrata
-    if self.strataCounter[assignedStrata] then
-        self.strataCounter[assignedStrata] = self.strataCounter[assignedStrata] + 1
+    -- Determine frame level based on window type
+    local frameLevel
+    if frameName:find("SessionBrowser") then
+        frameLevel = self.frameLevels.sessionBrowser
+    elseif frameName:find("CombatLogViewer") then
+        frameLevel = self.frameLevels.combatLogViewer
+    elseif frameName:find("Logger") then
+        frameLevel = self.frameLevels.loggerWindow
+    elseif frameName:find("Settings") or frameName:find("Config") then
+        frameLevel = self.frameLevels.dialogBase + self.frameLevels.settingsWindow
+    elseif frameName:find("Main") then
+        frameLevel = self.frameLevels.dialogBase + self.frameLevels.mainWindow
+    else
+        -- Default level for unknown windows
+        frameLevel = 15
     end
     
-    addon:Debug("FocusManager: Assigned %s strata %s (requested %s)", 
-        frameName, assignedStrata, requestedStrata)
+    -- Apply strata and level
+    frame:SetFrameStrata(assignedStrata)
+    frame:SetFrameLevel(frameLevel)
     
-    return assignedStrata
+    addon:Debug("FocusManager: %s assigned strata=%s, level=%d (requested strata=%s)", 
+        frameName, assignedStrata, frameLevel, requestedStrata or "default")
+    
+    return assignedStrata, frameLevel
 end
 
--- Recursively propagate frame strata to all child frames
-function addon.FocusManager:PropagateStrataToChildren(parentFrame, strata)
+-- Selectively manage frame levels for specific child elements
+function addon.FocusManager:ManageWindowElements(parentFrame, frameLevel, isFocused)
     if not parentFrame then return end
     
-    -- Get all child frames
-    local children = { parentFrame:GetChildren() }
-    
-    for _, child in ipairs(children) do
-        if child and child.SetFrameStrata then
-            child:SetFrameStrata(strata)
-            -- Recursively apply to grandchildren
-            self:PropagateStrataToChildren(child, strata)
+    -- Find and manage close button specifically
+    local closeButton = parentFrame.CloseButton
+    if closeButton and closeButton.SetFrameLevel then
+        if isFocused then
+            -- Focused window's close button should be on top
+            closeButton:SetFrameLevel(frameLevel + 1)
+        else
+            -- Unfocused window's close button at normal level
+            closeButton:SetFrameLevel(frameLevel)
         end
     end
+    
+    -- Could add other specific element management here if needed
 end
 
 -- Get information about the focus management system
@@ -312,18 +310,21 @@ function addon.FocusManager:DebugStatus()
     addon:Debug("Focused Window: %s", status.focusedWindow)
     addon:Debug("Registered Windows: %d", status.registeredWindowCount)
     
-    -- Show strata usage
-    addon:Debug("Strata Usage:")
-    for strata, count in pairs(self.strataCounter) do
-        addon:Debug("  %s: %d windows", strata, count)
+    -- Show frame level assignments
+    addon:Debug("Frame Level Assignments:")
+    for name, level in pairs(self.frameLevels) do
+        addon:Debug("  %s: %d", name, level)
     end
     
     addon:Debug("Window Details:")
     for _, window in ipairs(status.windowList) do
-        local windowInfo = self.registeredWindows[window.frame] -- Need frame reference
+        local windowInfo = self.registeredWindows[window.frame]
+        local currentLevel = window.frame:GetFrameLevel()
+        local defaultLevel = windowInfo and windowInfo.defaultFrameLevel or "unknown"
         local requested = windowInfo and windowInfo.requestedStrata or "unknown"
-        addon:Debug("  %s: current=%s (assigned=%s, requested=%s), shown=%s, focus=%s", 
-            window.name, window.currentStrata, window.defaultStrata, requested,
+        
+        addon:Debug("  %s: strata=%s, level=%d (default=%s), shown=%s, focus=%s", 
+            window.name, window.currentStrata, currentLevel, tostring(defaultLevel),
             tostring(window.isShown), tostring(window.hasFocus))
     end
     addon:Debug("=== End Status ===")
