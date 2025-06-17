@@ -39,10 +39,12 @@ local MAX_VISIBLE_LOGS = math.floor((WINDOW_HEIGHT - 100) / LOG_ENTRY_HEIGHT)
 -- Filter types
 local FILTER_TYPES = {
     ALL = "All",
-    ERROR = "Errors",
-    WARN = "Warnings", 
+    PANIC = "Panic",
+    ERROR = "Errors", 
+    WARN = "Warnings",
     INFO = "Info",
-    DEBUG = "Debug"
+    DEBUG = "Debug",
+    TRACE = "Trace"
 }
 
 -- =============================================================================
@@ -134,34 +136,52 @@ function MyLoggerWindow:CreateScrollArea()
     
     logScrollFrame:SetScrollChild(logContentFrame)
     
-    -- Initialize log entries array
+    -- Initialize log entries array and load persistent logs
     logEntries = {}
+    self:LoadPersistentLogs()
 end
 
 function MyLoggerWindow:CreateFilterButtons()
-    local buttonWidth = 80
-    local buttonHeight = 25
-    local startX = 10
-    local startY = -35
+    -- Filter dropdown instead of buttons to save space
+    local filterDropdown = CreateFrame("Frame", nil, logWindow, "UIDropDownMenuTemplate")
+    filterDropdown:SetPoint("TOPLEFT", logWindow, "TOPLEFT", 10, -30)
+    UIDropDownMenu_SetWidth(filterDropdown, 120)
+    UIDropDownMenu_SetText(filterDropdown, FILTER_TYPES[currentFilter])
     
-    for i, filterType in ipairs({"ALL", "ERROR", "WARN", "INFO", "DEBUG"}) do
-        local button = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
-        button:SetSize(buttonWidth, buttonHeight)
-        button:SetPoint("TOPLEFT", logWindow, "TOPLEFT", startX + (i-1) * (buttonWidth + 5), startY)
-        button:SetText(FILTER_TYPES[filterType])
-        button:SetNormalFontObject("GameFontNormalSmall")
+    UIDropDownMenu_Initialize(filterDropdown, function(self, level)
+        local filterOrder = {"ALL", "PANIC", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"}
         
-        button:SetScript("OnClick", function()
-            self:SetFilter(filterType)
-        end)
-        
-        filterButtons[filterType] = button
-    end
+        for _, filterType in ipairs(filterOrder) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = FILTER_TYPES[filterType]
+            info.value = filterType
+            info.func = function()
+                MyLoggerWindow:SetFilter(filterType)
+                UIDropDownMenu_SetSelectedValue(filterDropdown, filterType)
+                UIDropDownMenu_SetText(filterDropdown, FILTER_TYPES[filterType])
+            end
+            info.checked = (currentFilter == filterType)
+            UIDropDownMenu_AddButton(info, level)
+        end
+    end)
+    
+    logWindow.filterDropdown = filterDropdown
+    
+    -- Add Clear All button
+    local clearAllButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
+    clearAllButton:SetSize(80, 25)
+    clearAllButton:SetPoint("TOPRIGHT", logWindow, "TOPRIGHT", -15, -35)
+    clearAllButton:SetText("Clear All")
+    clearAllButton:SetNormalFontObject("GameFontNormalSmall")
+    
+    clearAllButton:SetScript("OnClick", function()
+        StaticPopup_Show("MYLOGGER_CLEAR_CONFIRM")
+    end)
     
     -- Add Select All button
     local selectAllButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
-    selectAllButton:SetSize(80, buttonHeight)
-    selectAllButton:SetPoint("TOPRIGHT", logWindow, "TOPRIGHT", -15, startY)
+    selectAllButton:SetSize(80, 25)
+    selectAllButton:SetPoint("TOPRIGHT", clearAllButton, "TOPLEFT", -5, 0)
     selectAllButton:SetText("Select All")
     selectAllButton:SetNormalFontObject("GameFontNormalSmall")
     
@@ -172,19 +192,43 @@ function MyLoggerWindow:CreateFilterButtons()
         end
     end)
     
-    -- Add Clear button
-    local clearButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
-    clearButton:SetSize(60, buttonHeight)
-    clearButton:SetPoint("RIGHT", selectAllButton, "LEFT", -5, 0)
-    clearButton:SetText("Clear")
-    clearButton:SetNormalFontObject("GameFontNormalSmall")
-    
-    clearButton:SetScript("OnClick", function()
-        StaticPopup_Show("MYLOGGER_CLEAR_CONFIRM")
-    end)
-    
     -- Set initial filter
     self:SetFilter("ALL")
+end
+
+-- Load persistent logs from MyLogger's SavedVariables
+function MyLoggerWindow:LoadPersistentLogs()
+    if not addon.MyLogger then return end
+    
+    local persistentLogs = addon.MyLogger:GetPersistentLogs()
+    for _, savedEntry in ipairs(persistentLogs) do
+        -- Convert saved log format to MyLoggerWindow format
+        local entry = {
+            timestamp = savedEntry.timestamp,
+            level = addon.MyLogger.LOG_LEVELS[savedEntry.level] or 4, -- Default to INFO
+            levelName = savedEntry.level,
+            message = savedEntry.message,
+            session = savedEntry.session
+        }
+        table.insert(logEntries, entry)
+    end
+    
+    -- Also load current memory logs
+    local memoryLogs = addon.MyLogger:GetRecentLogs()
+    for _, logLine in ipairs(memoryLogs) do
+        -- Parse memory log format: "[timestamp] [level] message"
+        local timestamp, levelName, message = logLine:match("%[([^%]]+)%] %[([^%]]+)%] (.+)")
+        if timestamp and levelName and message then
+            local entry = {
+                timestamp = os.time(), -- Use current time since memory logs don't store timestamp
+                level = addon.MyLogger.LOG_LEVELS[levelName] or 4,
+                levelName = levelName,
+                message = message,
+                session = "current"
+            }
+            table.insert(logEntries, entry)
+        end
+    end
 end
 
 function MyLoggerWindow:CreateCopyArea()
@@ -253,10 +297,12 @@ function MyLoggerWindow:RefreshLogs()
     local filteredLogs = {}
     for _, entry in ipairs(logEntries) do
         if currentFilter == "ALL" or 
-           (currentFilter == "ERROR" and entry.level == 1) or
-           (currentFilter == "WARN" and entry.level == 2) or
-           (currentFilter == "INFO" and entry.level == 3) or
-           (currentFilter == "DEBUG" and entry.level == 4) then
+           (currentFilter == "PANIC" and entry.level == 1) or
+           (currentFilter == "ERROR" and entry.level == 2) or
+           (currentFilter == "WARN" and entry.level == 3) or
+           (currentFilter == "INFO" and entry.level == 4) or
+           (currentFilter == "DEBUG" and entry.level == 5) or
+           (currentFilter == "TRACE" and entry.level == 6) then
             table.insert(filteredLogs, entry)
         end
     end

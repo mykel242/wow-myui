@@ -201,14 +201,13 @@ function CombatLogViewer:RefreshContent()
     end
 end
 
--- Generate log content from current combat data
+-- Generate log content focusing on combat state changes
 function CombatLogViewer:GenerateLogContent()
     local lines = {}
-    local lineCount = 0
     
     -- Header
-    table.insert(lines, "=== MyUI2 Combat Log Viewer ===")
-    table.insert(lines, string.format("Generated: %s", date("%Y-%m-%d %H:%M:%S")))
+    table.insert(lines, "=== MyUI2 Combat State Monitor ===")
+    table.insert(lines, string.format("Updated: %s", date("%Y-%m-%d %H:%M:%S")))
     table.insert(lines, "")
     
     -- Current combat status
@@ -216,128 +215,25 @@ function CombatLogViewer:GenerateLogContent()
         local debugInfo = addon.MySimpleCombatDetector:GetDebugInfo()
         table.insert(lines, "=== Current Combat Status ===")
         table.insert(lines, string.format("In Combat: %s", debugInfo.inCombat and "YES" or "NO"))
-        if debugInfo.sessionId then
-            table.insert(lines, string.format("Session ID: %s", debugInfo.sessionId))
-            table.insert(lines, string.format("Duration: %.1fs", debugInfo.duration))
-            table.insert(lines, string.format("Events: %d", debugInfo.eventCount))
-            table.insert(lines, string.format("Time Since Activity: %.1fs", debugInfo.timeSinceActivity))
+        
+        if debugInfo.inCombat then
+            table.insert(lines, string.format("Session ID: %s", debugInfo.sessionId or "Unknown"))
+            table.insert(lines, string.format("Duration: %.1fs", debugInfo.duration or 0))
+            table.insert(lines, string.format("Events Recorded: %d", debugInfo.eventCount or 0))
+            table.insert(lines, string.format("Time Since Activity: %.1fs", debugInfo.timeSinceActivity or 0))
+            table.insert(lines, string.format("Has Timeout Timer: %s", debugInfo.hasTimer and "YES" or "NO"))
+        else
+            table.insert(lines, "Not currently in combat")
+            table.insert(lines, "Waiting for combat to begin...")
         end
         table.insert(lines, "")
-        
-        -- Current combat events (from active session)
-        if debugInfo.inCombat and debugInfo.eventCount > 0 then
-            local currentSession = addon.MySimpleCombatDetector:GetCurrentSession()
-            if currentSession and currentSession.events then
-                table.insert(lines, "=== Current Combat Events (Latest 20) ===")
-                
-                local events = currentSession.events
-                local startIndex = math.max(1, #events - 19)
-                for i = startIndex, #events do
-                    local event = events[i]
-                    -- Use relative time from MyTimestampManager format
-                    local timestamp = string.format("%.3f", tonumber(event.time) or 0)
-                    
-                    -- Resolve names from GUID map
-                    local sourceName = (event.sourceGUID and currentSession.guidMap[event.sourceGUID]) or "Unknown"
-                    local destName = (event.destGUID and currentSession.guidMap[event.destGUID]) or "Unknown"
-                    
-                    local line = string.format("[%s] %s: %s -> %s", 
-                        timestamp,
-                        event.subevent or "UNKNOWN",
-                        sourceName,
-                        destName)
-                    
-                    table.insert(lines, line)
-                    lineCount = lineCount + 1
-                    
-                    if lineCount >= CONFIG.MAX_LINES then
-                        break
-                    end
-                end
-                table.insert(lines, "")
-            end
-        end
     end
-    
-    -- Recent sessions with detailed event data
-    if addon.StorageManager then
-        local sessions = addon.StorageManager:GetRecentSessions(3)
-        if #sessions > 0 then
-            table.insert(lines, "=== Recent Combat Sessions (Detailed) ===")
-            for sessionIndex, session in ipairs(sessions) do
-                -- Session header
-                local sessionHeader = string.format("Session %d: %s", 
-                    sessionIndex,
-                    tostring(session.id or "Unknown"))
-                table.insert(lines, sessionHeader)
-                
-                local sessionInfo = string.format("  Duration: %.1fs, Events: %d", 
-                    tonumber(session.duration) or 0,
-                    tonumber(session.eventCount) or 0)
-                
-                if session.metadata and session.metadata.zone and session.metadata.zone.name then
-                    sessionInfo = sessionInfo .. string.format(", Zone: %s", tostring(session.metadata.zone.name))
-                end
-                table.insert(lines, sessionInfo)
-                
-                -- Get and display session events
-                local fullSession = addon.StorageManager:GetSession(session.id)
-                if fullSession and fullSession.events then
-                    table.insert(lines, "  Events (showing last 10):")
-                    local events = fullSession.events
-                    local startIndex = math.max(1, #events - 9)
-                    
-                    for i = startIndex, #events do
-                        local event = events[i]
-                        if event then
-                            -- Handle both old (realTime) and new (time) formats
-                            local timestamp = tonumber(event.time) or tonumber(event.realTime) or 0
-                            
-                            -- Resolve names - new format uses GUIDs
-                            local sourceName = event.sourceName or 
-                                (event.sourceGUID and fullSession.guidMap and fullSession.guidMap[event.sourceGUID]) or "?"
-                            local destName = event.destName or 
-                                (event.destGUID and fullSession.guidMap and fullSession.guidMap[event.destGUID]) or "?"
-                            
-                            local eventLine = string.format("    [%.3f] %s: %s -> %s",
-                                timestamp,
-                                tostring(event.subevent or "UNKNOWN"),
-                                sourceName,
-                                destName)
-                            
-                            if event.args and #event.args > 0 and #event.args <= 3 then
-                                local argStrings = {}
-                                for j, arg in ipairs(event.args) do
-                                    argStrings[j] = tostring(arg or "nil")
-                                end
-                                eventLine = eventLine .. " (" .. table.concat(argStrings, ", ") .. ")"
-                            end
-                            
-                            table.insert(lines, eventLine)
-                            lineCount = lineCount + 1
-                            
-                            if lineCount >= CONFIG.MAX_LINES then
-                                break
-                            end
-                        end
-                    end
-                else
-                    table.insert(lines, "  No event data available")
-                end
-                
-                table.insert(lines, "")
-                lineCount = lineCount + 5 -- Account for session headers
-                
-                if lineCount >= CONFIG.MAX_LINES then
-                    break
-                end
-            end
-        else
-            table.insert(lines, "=== No Stored Sessions ===")
-            table.insert(lines, "Start combat to generate session data")
-            table.insert(lines, "")
-        end
-    end
+    -- System status
+    table.insert(lines, "=== System Status ===")
+    table.insert(lines, string.format("MySimpleCombatDetector: %s", addon.MySimpleCombatDetector and "Loaded" or "Not Loaded"))
+    table.insert(lines, string.format("MyTimestampManager: %s", addon.MyTimestampManager and "Loaded" or "Not Loaded"))
+    table.insert(lines, string.format("StorageManager: %s", addon.StorageManager and "Loaded" or "Not Loaded"))
+    table.insert(lines, "")
     
     -- Context information
     if addon.MetadataCollector then
@@ -367,7 +263,9 @@ function CombatLogViewer:GenerateLogContent()
     end
     
     -- Footer
-    table.insert(lines, "=== End of Log ===")
+    table.insert(lines, "=== End of State Monitor ===")
+    table.insert(lines, "")
+    table.insert(lines, "Note: For detailed session data and event logs, use Session Browser")
     
     return table.concat(lines, "\n")
 end
