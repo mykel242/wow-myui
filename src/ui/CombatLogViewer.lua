@@ -52,6 +52,11 @@ function CombatLogViewer:CreateViewerWindow()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     frame:Hide()
     
+    -- Register with FocusManager for proper strata coordination
+    if addon.FocusManager then
+        addon.FocusManager:RegisterWindow(frame, nil, "MEDIUM")
+    end
+    
     -- Set title
     frame.TitleText:SetText("Combat Log Viewer")
     

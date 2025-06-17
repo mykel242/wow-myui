@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-port-rt-meters-75fd148"
-addon.BUILD_DATE = "2025-06-17-08:08"
+addon.VERSION = "feature-port-rt-meters-13493f5"
+addon.BUILD_DATE = "2025-06-17-08:23"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -66,10 +66,20 @@ function addon:TestLogging()
     self.MyLogger:DumpConfig()
 end
 
--- Window focus management system
+-- Window focus management system with strata coordination
 addon.FocusManager = {
     focusedWindow = nil,
-    registeredWindows = {}
+    registeredWindows = {},
+    strataLevels = {
+        "BACKGROUND",
+        "LOW", 
+        "MEDIUM",
+        "HIGH",
+        "DIALOG",
+        "FULLSCREEN",
+        "FULLSCREEN_DIALOG",
+        "TOOLTIP"
+    }
 }
 
 function addon.FocusManager:RegisterWindow(frame, pixelMeter, defaultStrata)
@@ -145,13 +155,26 @@ function addon.FocusManager:SetFocus(frame)
     
     -- Set new focus
     self.focusedWindow = frame
-    frame:SetFrameStrata("HIGH")
+    
+    -- Get the window's default strata and elevate it appropriately
+    local windowInfo = self.registeredWindows[frame]
+    local targetStrata = "HIGH"
+    
+    if windowInfo then
+        -- If it's already a high-priority strata, don't downgrade it
+        if windowInfo.defaultStrata == "DIALOG" or 
+           windowInfo.defaultStrata == "FULLSCREEN" or
+           windowInfo.defaultStrata == "FULLSCREEN_DIALOG" then
+            targetStrata = windowInfo.defaultStrata
+        end
+    end
+    
+    frame:SetFrameStrata(targetStrata)
     
     -- Propagate strata to all child frames
-    self:PropagateStrataToChildren(frame, "HIGH")
+    self:PropagateStrataToChildren(frame, targetStrata)
     
     -- Sync pixel meter strata
-    local windowInfo = self.registeredWindows[frame]
     if windowInfo and windowInfo.pixelMeter and windowInfo.pixelMeter.SyncStrataWithParent then
         windowInfo.pixelMeter:SyncStrataWithParent()
     end
@@ -193,6 +216,43 @@ function addon.FocusManager:PropagateStrataToChildren(parentFrame, strata)
             self:PropagateStrataToChildren(child, strata)
         end
     end
+end
+
+-- Get information about the focus management system
+function addon.FocusManager:GetStatus()
+    local status = {
+        focusedWindow = self.focusedWindow and self.focusedWindow:GetName() or "None",
+        registeredWindowCount = 0,
+        windowList = {}
+    }
+    
+    for frame, info in pairs(self.registeredWindows) do
+        status.registeredWindowCount = status.registeredWindowCount + 1
+        table.insert(status.windowList, {
+            name = frame:GetName() or "Unknown",
+            defaultStrata = info.defaultStrata,
+            currentStrata = frame:GetFrameStrata(),
+            isShown = frame:IsShown(),
+            hasFocus = (self.focusedWindow == frame)
+        })
+    end
+    
+    return status
+end
+
+-- Debug function to print focus manager status
+function addon.FocusManager:DebugStatus()
+    local status = self:GetStatus()
+    addon:Debug("=== FocusManager Status ===")
+    addon:Debug("Focused Window: %s", status.focusedWindow)
+    addon:Debug("Registered Windows: %d", status.registeredWindowCount)
+    
+    for _, window in ipairs(status.windowList) do
+        addon:Debug("  %s: strata=%s (default=%s), shown=%s, focus=%s", 
+            window.name, window.currentStrata, window.defaultStrata, 
+            tostring(window.isShown), tostring(window.hasFocus))
+    end
+    addon:Debug("=== End Status ===")
 end
 
 -- Utility function to get table keys
@@ -658,6 +718,11 @@ function addon:CreateMainFrame()
     self.mainFrame = frame
     frame:SetScale(self.db.scale)
     frame:Hide()
+    
+    -- Register with FocusManager for proper strata coordination
+    if self.FocusManager then
+        self.FocusManager:RegisterWindow(frame, nil, "DIALOG")
+    end
 
     -- No complex update timer needed for simplified launcher
     self:Debug("Simplified main window created")

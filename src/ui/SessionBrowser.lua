@@ -56,6 +56,11 @@ function SessionBrowser:CreateBrowserWindow()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     frame:Hide()
     
+    -- Register with FocusManager for proper strata coordination
+    if addon.FocusManager then
+        addon.FocusManager:RegisterWindow(frame, nil, "MEDIUM")
+    end
+    
     -- Set title
     frame.TitleText:SetText("Session Browser")
     
@@ -171,6 +176,11 @@ function SessionBrowser:CreateSessionViewer()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     frame:Hide()
     
+    -- Register viewer frame with FocusManager
+    if addon.FocusManager then
+        addon.FocusManager:RegisterWindow(frame, nil, "MEDIUM")
+    end
+    
     -- Set title
     frame.TitleText:SetText("Session Viewer")
     
@@ -195,10 +205,7 @@ function SessionBrowser:CreateSessionViewer()
         local formats = {
             {id = "raw", name = "Raw Data"},
             {id = "text", name = "Text"},
-            {id = "json", name = "JSON"},
-            {id = "csv", name = "CSV"},
-            {id = "lua", name = "Lua Table"},
-            {id = "custom", name = "Custom"}
+            {id = "json", name = "JSON"}
         }
         
         for _, format in ipairs(formats) do
@@ -642,12 +649,6 @@ function SessionBrowser:GenerateViewerContent(session, format)
         return self:GenerateSessionLog(session)  -- Use existing function
     elseif format == "json" then
         return self:FormatAsJSON(session)
-    elseif format == "csv" then
-        return self:FormatAsCSV(session)
-    elseif format == "lua" then
-        return self:FormatAsLua(session)
-    elseif format == "custom" then
-        return self:FormatAsCustom(session)
     else
         return "Unknown format: " .. tostring(format)
     end
@@ -823,198 +824,6 @@ function SessionBrowser:FormatAsJSON(data)
     return serializeValue(jsonData)
 end
 
--- Format as CSV (basic implementation)
-function SessionBrowser:FormatAsCSV(data)
-    local lines = {"Event Type,Source,Destination,Timestamp,Args"}
-    
-    -- Add GUID mapping section at the top
-    if data.guidMap and next(data.guidMap) then
-        table.insert(lines, "")
-        table.insert(lines, "# GUID Mapping")
-        table.insert(lines, "GUID,Name")
-        for guid, name in pairs(data.guidMap) do
-            table.insert(lines, string.format("%s,%s", guid, name))
-        end
-        table.insert(lines, "")
-        table.insert(lines, "# Event Data")
-        table.insert(lines, "Event Type,Source,Destination,Timestamp,Args")
-    elseif data.nameMapping and next(data.nameMapping) then
-        table.insert(lines, "")
-        table.insert(lines, "# GUID Mapping")
-        table.insert(lines, "GUID,Name")
-        for guid, nameData in pairs(data.nameMapping) do
-            table.insert(lines, string.format("%s,%s", guid, nameData.name))
-        end
-        table.insert(lines, "")
-        table.insert(lines, "# Event Data")
-        table.insert(lines, "Event Type,Source,Destination,Timestamp,Args")
-    end
-    
-    if data.events then
-        for _, event in ipairs(data.events) do
-            -- Safely convert args to string, handling nil values
-            local argsString = ""
-            if event.args and #event.args > 0 then
-                local argStrings = {}
-                for i, arg in ipairs(event.args) do
-                    argStrings[i] = tostring(arg or "")
-                end
-                argsString = table.concat(argStrings, ";")
-            end
-            
-            -- Escape commas in CSV fields
-            local function escapeCSV(field)
-                field = tostring(field or "")
-                if field:find("[,\"\n\r]") then
-                    field = '"' .. field:gsub('"', '""') .. '"'
-                end
-                return field
-            end
-            
-            local line = string.format("%s,%s,%s,%.3f,%s",
-                escapeCSV(event.subevent),
-                escapeCSV(event.sourceName),
-                escapeCSV(event.destName),
-                tonumber(event.realTime) or 0,
-                escapeCSV(argsString))
-            table.insert(lines, line)
-        end
-    end
-    
-    return table.concat(lines, "\n")
-end
-
--- Format as readable text
-function SessionBrowser:FormatAsText(data)
-    local lines = {"=== Session Export ==="}
-    table.insert(lines, "Session ID: " .. (data.sessionId or "Unknown"))
-    table.insert(lines, "Duration: " .. string.format("%.1fs", data.duration or 0))
-    table.insert(lines, "Events: " .. tostring(data.eventCount or 0))
-    table.insert(lines, "Export Time: " .. date("%Y-%m-%d %H:%M:%S"))
-    table.insert(lines, "")
-    
-    if data.events then
-        table.insert(lines, "=== Combat Events ===")
-        for i, event in ipairs(data.events) do
-            local line = string.format("[%.3f] %s: %s -> %s",
-                event.realTime or 0,
-                event.subevent or "UNKNOWN",
-                event.sourceName or "?",
-                event.destName or "?")
-            table.insert(lines, line)
-        end
-    end
-    
-    return table.concat(lines, "\n")
-end
-
--- Format as Lua table
-function SessionBrowser:FormatAsLua(data)
-    local function serializeLua(value, indent)
-        indent = indent or 0
-        local spacing = string.rep("  ", indent)
-        
-        if type(value) == "table" then
-            local result = "{\n"
-            for k, v in pairs(value) do
-                local key = type(k) == "string" and "[\"" .. k .. "\"]" or "[" .. tostring(k) .. "]"
-                result = result .. spacing .. "  " .. key .. " = " .. serializeLua(v, indent + 1) .. ",\n"
-            end
-            result = result .. spacing .. "}"
-            return result
-        elseif type(value) == "string" then
-            return "\"" .. value:gsub("\"", "\\\"") .. "\""
-        else
-            return tostring(value)
-        end
-    end
-    
-    -- Create a copy of data with GUID mapping included
-    local luaData = {}
-    for k, v in pairs(data) do
-        luaData[k] = v
-    end
-    
-    -- Add GUID map if available
-    if data.guidMap and next(data.guidMap) then
-        luaData.guidMap = data.guidMap
-    elseif data.nameMapping and next(data.nameMapping) then
-        luaData.guidMap = {}
-        for guid, nameData in pairs(data.nameMapping) do
-            luaData.guidMap[guid] = nameData.name
-        end
-    end
-    
-    return "local sessionData = " .. serializeLua(luaData) .. "\nreturn sessionData"
-end
-
--- Format as custom format (user-defined)
-function SessionBrowser:FormatAsCustom(data)
-    local lines = {}
-    
-    -- Custom format header
-    table.insert(lines, "=== CUSTOM SESSION EXPORT ===")
-    table.insert(lines, "Session: " .. (data.id or "Unknown"))
-    table.insert(lines, "Exported: " .. date("%Y-%m-%d %H:%M:%S"))
-    table.insert(lines, "Duration: " .. string.format("%.1fs", data.duration or 0))
-    table.insert(lines, "Events: " .. tostring(data.eventCount or 0))
-    table.insert(lines, "")
-    
-    -- GUID Map section
-    if data.guidMap and next(data.guidMap) then
-        table.insert(lines, "=== ENTITY MAPPINGS ===")
-        local guidCount = 0
-        for guid, name in pairs(data.guidMap) do
-            guidCount = guidCount + 1
-            table.insert(lines, string.format("%s -> %s", guid, name))
-        end
-        table.insert(lines, string.format("Total entities: %d", guidCount))
-        table.insert(lines, "")
-    elseif data.nameMapping and next(data.nameMapping) then
-        table.insert(lines, "=== ENTITY MAPPINGS ===")
-        local guidCount = 0
-        for guid, nameData in pairs(data.nameMapping) do
-            guidCount = guidCount + 1
-            table.insert(lines, string.format("%s -> %s", guid, nameData.name))
-        end
-        table.insert(lines, string.format("Total entities: %d", guidCount))
-        table.insert(lines, "")
-    end
-    
-    -- Condensed event timeline
-    if data.events and #data.events > 0 then
-        table.insert(lines, "=== EVENT TIMELINE ===")
-        for i, event in ipairs(data.events) do
-            local timestamp = string.format("%.2f", event.time or event.realTime or 0)
-            local line = string.format("[%s] %s", timestamp, event.subevent or "UNKNOWN")
-            
-            -- Add source/dest if available
-            if event.sourceGUID and event.destGUID then
-                line = line .. string.format(" (%s -> %s)", event.sourceGUID:sub(-8), event.destGUID:sub(-8))
-            end
-            
-            -- Add key arguments
-            if event.args and #event.args > 0 then
-                local keyArgs = {}
-                for j = 1, math.min(3, #event.args) do
-                    if event.args[j] then
-                        table.insert(keyArgs, tostring(event.args[j]))
-                    end
-                end
-                if #keyArgs > 0 then
-                    line = line .. " [" .. table.concat(keyArgs, ", ") .. "]"
-                end
-            end
-            
-            table.insert(lines, line)
-        end
-    end
-    
-    table.insert(lines, "")
-    table.insert(lines, "=== END EXPORT ===")
-    
-    return table.concat(lines, "\n")
-end
 
 -- Public API
 function SessionBrowser:IsShown()

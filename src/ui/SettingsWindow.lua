@@ -128,8 +128,12 @@ function SettingsWindow:CreateWindow()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:SetFrameStrata("DIALOG")
     frame:Hide()
+    
+    -- Register with FocusManager for proper strata coordination
+    if addon.FocusManager then
+        addon.FocusManager:RegisterWindow(frame, nil, "DIALOG")
+    end
     
     -- Remove problematic background setting - template handles this
     

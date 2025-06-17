@@ -75,9 +75,12 @@ function MyLoggerWindow:CreateWindow()
     logWindow:RegisterForDrag("LeftButton")
     logWindow:SetScript("OnDragStart", logWindow.StartMoving)
     logWindow:SetScript("OnDragStop", logWindow.StopMovingOrSizing)
-    logWindow:SetFrameStrata("HIGH")  -- Higher than most UI elements
-    logWindow:SetFrameLevel(100)  -- Ensure it's on top
     logWindow:Hide()
+    
+    -- Register with FocusManager for proper strata coordination
+    if addon.FocusManager then
+        addon.FocusManager:RegisterWindow(logWindow, nil, "MEDIUM")
+    end
     
     -- Title
     logWindow.title = logWindow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
