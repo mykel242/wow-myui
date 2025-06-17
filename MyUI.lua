@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-port-rt-meters-c56b58e"
-addon.BUILD_DATE = "2025-06-17-08:56"
+addon.VERSION = "feature-port-rt-meters-ba4864d"
+addon.BUILD_DATE = "2025-06-17-09:10"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -79,20 +79,28 @@ addon.FocusManager = {
         "FULLSCREEN",
         "FULLSCREEN_DIALOG",
         "TOOLTIP"
+    },
+    -- Dynamic strata assignment to prevent conflicts
+    assignedStrata = {},
+    strataCounter = {
+        ["LOW"] = 0,
+        ["MEDIUM"] = 0,
+        ["HIGH"] = 0
     }
 }
 
 function addon.FocusManager:RegisterWindow(frame, pixelMeter, defaultStrata)
     if not frame then return end
     
-    -- Set default strata (allow override for special windows like main config)
-    defaultStrata = defaultStrata or "MEDIUM"
-    frame:SetFrameStrata(defaultStrata)
+    -- Assign unique strata to prevent conflicts
+    local assignedStrata = self:AssignUniqueStrata(frame, defaultStrata)
+    frame:SetFrameStrata(assignedStrata)
     
     -- Store registration
     self.registeredWindows[frame] = {
         pixelMeter = pixelMeter,
-        defaultStrata = defaultStrata
+        defaultStrata = assignedStrata,
+        requestedStrata = defaultStrata or "MEDIUM" -- Track what was originally requested
     }
     
     -- Propagate strata to children immediately
@@ -202,6 +210,62 @@ function addon.FocusManager:RevertWindowStrata(frame)
     end
 end
 
+-- Assign unique strata to prevent window conflicts
+function addon.FocusManager:AssignUniqueStrata(frame, requestedStrata)
+    requestedStrata = requestedStrata or "MEDIUM"
+    
+    -- Special handling for dialog windows - always use their requested strata
+    if requestedStrata == "DIALOG" or requestedStrata == "FULLSCREEN" or 
+       requestedStrata == "FULLSCREEN_DIALOG" or requestedStrata == "TOOLTIP" then
+        return requestedStrata
+    end
+    
+    -- For conflicting strata (LOW, MEDIUM, HIGH), assign dynamically
+    local frameName = frame:GetName() or "Unknown"
+    
+    -- Check if this frame already has an assigned strata
+    if self.assignedStrata[frameName] then
+        return self.assignedStrata[frameName]
+    end
+    
+    -- Assign based on window type for predictable layering
+    local assignedStrata
+    if frameName:find("Logger") then
+        assignedStrata = "MEDIUM"  -- Logger windows on medium
+    elseif frameName:find("Session") or frameName:find("Combat") then
+        assignedStrata = "LOW"     -- Session/combat windows on low
+    elseif frameName:find("Settings") or frameName:find("Config") then
+        assignedStrata = "DIALOG"  -- Settings always on dialog
+    elseif frameName:find("Main") then
+        assignedStrata = "DIALOG"  -- Main window on dialog
+    else
+        -- For other windows, use a rotation system
+        local availableStrata = {"LOW", "MEDIUM", "HIGH"}
+        local minCount = math.huge
+        local bestStrata = "MEDIUM"
+        
+        for _, strata in ipairs(availableStrata) do
+            if self.strataCounter[strata] < minCount then
+                minCount = self.strataCounter[strata]
+                bestStrata = strata
+            end
+        end
+        
+        assignedStrata = bestStrata
+    end
+    
+    -- Track assignment
+    self.assignedStrata[frameName] = assignedStrata
+    if self.strataCounter[assignedStrata] then
+        self.strataCounter[assignedStrata] = self.strataCounter[assignedStrata] + 1
+    end
+    
+    addon:Debug("FocusManager: Assigned %s strata %s (requested %s)", 
+        frameName, assignedStrata, requestedStrata)
+    
+    return assignedStrata
+end
+
 -- Recursively propagate frame strata to all child frames
 function addon.FocusManager:PropagateStrataToChildren(parentFrame, strata)
     if not parentFrame then return end
@@ -229,6 +293,7 @@ function addon.FocusManager:GetStatus()
     for frame, info in pairs(self.registeredWindows) do
         status.registeredWindowCount = status.registeredWindowCount + 1
         table.insert(status.windowList, {
+            frame = frame, -- Include frame reference for debug
             name = frame:GetName() or "Unknown",
             defaultStrata = info.defaultStrata,
             currentStrata = frame:GetFrameStrata(),
@@ -247,9 +312,18 @@ function addon.FocusManager:DebugStatus()
     addon:Debug("Focused Window: %s", status.focusedWindow)
     addon:Debug("Registered Windows: %d", status.registeredWindowCount)
     
+    -- Show strata usage
+    addon:Debug("Strata Usage:")
+    for strata, count in pairs(self.strataCounter) do
+        addon:Debug("  %s: %d windows", strata, count)
+    end
+    
+    addon:Debug("Window Details:")
     for _, window in ipairs(status.windowList) do
-        addon:Debug("  %s: strata=%s (default=%s), shown=%s, focus=%s", 
-            window.name, window.currentStrata, window.defaultStrata, 
+        local windowInfo = self.registeredWindows[window.frame] -- Need frame reference
+        local requested = windowInfo and windowInfo.requestedStrata or "unknown"
+        addon:Debug("  %s: current=%s (assigned=%s, requested=%s), shown=%s, focus=%s", 
+            window.name, window.currentStrata, window.defaultStrata, requested,
             tostring(window.isShown), tostring(window.hasFocus))
     end
     addon:Debug("=== End Status ===")
