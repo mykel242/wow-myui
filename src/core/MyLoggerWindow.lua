@@ -206,12 +206,18 @@ function MyLoggerWindow:LoadPersistentLogs()
     local persistentLogs = addon.MyLogger:GetPersistentLogs()
     for _, savedEntry in ipairs(persistentLogs) do
         -- Convert saved log format to MyLoggerWindow format
+        local level = addon.MyLogger.LOG_LEVELS[savedEntry.level] or 4
         local entry = {
             timestamp = savedEntry.timestamp,
-            level = addon.MyLogger.LOG_LEVELS[savedEntry.level] or 4, -- Default to INFO
+            level = level,
             levelName = savedEntry.level,
             message = savedEntry.message,
-            session = savedEntry.session
+            session = savedEntry.session,
+            formatted = string.format("[%s] [%s] %s", 
+                date("%H:%M:%S", savedEntry.timestamp),
+                savedEntry.level,
+                savedEntry.message
+            )
         }
         table.insert(logEntries, entry)
     end
@@ -222,12 +228,18 @@ function MyLoggerWindow:LoadPersistentLogs()
         -- Parse memory log format: "[timestamp] [level] message"
         local timestamp, levelName, message = logLine:match("%[([^%]]+)%] %[([^%]]+)%] (.+)")
         if timestamp and levelName and message then
+            local level = addon.MyLogger.LOG_LEVELS[levelName] or 4
             local entry = {
                 timestamp = os.time(), -- Use current time since memory logs don't store timestamp
-                level = addon.MyLogger.LOG_LEVELS[levelName] or 4,
+                level = level,
                 levelName = levelName,
                 message = message,
-                session = "current"
+                session = "current",
+                formatted = string.format("[%s] [%s] %s", 
+                    timestamp,
+                    levelName,
+                    message
+                )
             }
             table.insert(logEntries, entry)
         end
@@ -318,7 +330,20 @@ function MyLoggerWindow:RefreshLogs()
     for i, entry in ipairs(filteredLogs) do
         -- Add color codes based on level
         local color = addon.MyLogger.LEVEL_COLORS[entry.level] or ""
-        table.insert(logTexts, color .. entry.formatted .. "|r")
+        
+        -- Ensure formatted field exists (defensive programming)
+        local formatted = entry.formatted
+        if not formatted and entry.message then
+            formatted = string.format("[%s] [%s] %s", 
+                entry.timestamp and date("%H:%M:%S", entry.timestamp) or "??:??:??",
+                addon.MyLogger.LEVEL_NAMES[entry.level] or "UNKNOWN",
+                entry.message
+            )
+        end
+        
+        if formatted then
+            table.insert(logTexts, color .. formatted .. "|r")
+        end
     end
     
     -- Set the text in the EditBox
