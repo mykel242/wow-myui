@@ -394,9 +394,42 @@ function SessionBrowser:CreateSessionRow(session, rowIndex)
     row.selection = selection
     
     -- Row data
+    local function formatSessionId(sessionId)
+        if not sessionId then return "Unknown" end
+        -- Extract parts from: timestamp-counter-checksum
+        local parts = {}
+        for part in sessionId:gmatch("[^-]+") do
+            table.insert(parts, part)
+        end
+        if #parts >= 2 then
+            -- Convert timestamp to readable format and show with counter
+            local timestamp = tonumber(parts[1])
+            if timestamp then
+                local readableTime = os.date("%H:%M:%S", timestamp / 1000)
+                return readableTime .. "-" .. parts[2]
+            else
+                return parts[1] .. "-" .. parts[2]
+            end
+        end
+        return sessionId
+    end
+    
+    local function formatDuration(session)
+        local duration = session.duration
+        if not duration or duration == 0 then
+            -- Try to calculate from start/end times
+            if session.startTime and session.endTime then
+                duration = session.endTime - session.startTime
+            elseif session.startTime and session.storedAt then
+                duration = session.storedAt - session.startTime
+            end
+        end
+        return string.format("%.1fs", duration or 0)
+    end
+    
     local columns = {
-        {text = session.id or "Unknown", width = 140},
-        {text = string.format("%.1fs", session.duration or 0), width = 60},
+        {text = formatSessionId(session.id), width = 140},
+        {text = formatDuration(session), width = 60},
         {text = tostring(session.eventCount or 0), width = 60},
         {text = (session.metadata and session.metadata.zone and session.metadata.zone.name) or "Unknown", width = 120},
         {text = session.serverTime and date("%m/%d %H:%M", session.serverTime) or "Unknown", width = 120}

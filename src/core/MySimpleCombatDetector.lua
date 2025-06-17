@@ -146,14 +146,12 @@ function MySimpleCombatDetector:StartCombat()
         combatStartTime = GetTime()
     end
     
-    -- Generate timestamp-based session ID with realm/character prefixes
+    -- Generate simplified session ID (realm/character are implicit in WTF storage)
     sessionCounter = sessionCounter + 1
     local timestamp = math.floor(combatStartTime * 1000) -- Convert to milliseconds for precision
-    local realm = GetRealmName():lower():gsub("[^%w]", "") -- Remove spaces and special chars
-    local character = UnitName("player"):lower():gsub("[^%w]", "") -- Remove special chars
     
-    -- Create base session ID with timestamp
-    local baseId = string.format("%s-%s-%d-%03d", realm, character, timestamp, sessionCounter)
+    -- Create shorter, more readable session ID: timestamp-counter
+    local baseId = string.format("%d-%03d", timestamp, sessionCounter)
     
     -- Generate checksum for validation (simple hash of the base ID)
     local checksum = 0
@@ -346,6 +344,7 @@ function MySimpleCombatDetector:EndCombat()
     
     -- Calculate duration and validate session
     local duration = currentSessionData.endTime - currentSessionData.startTime
+    currentSessionData.duration = duration  -- Explicitly store duration
     local eventCount = currentSessionData.eventCount
     local activityRate = eventCount / duration
     
@@ -421,18 +420,18 @@ function MySimpleCombatDetector:ValidateSessionId(sessionId)
         return false, "Invalid session ID format"
     end
     
-    -- Extract parts: realm-character-timestamp-counter-checksum
+    -- Extract parts: timestamp-counter-checksum
     local parts = {}
     for part in sessionId:gmatch("[^-]+") do
         table.insert(parts, part)
     end
     
-    if #parts ~= 5 then
-        return false, "Session ID must have 5 parts separated by dashes"
+    if #parts ~= 3 then
+        return false, "Session ID must have 3 parts separated by dashes"
     end
     
     -- Reconstruct base ID without checksum
-    local baseId = string.format("%s-%s-%s-%s", parts[1], parts[2], parts[3], parts[4])
+    local baseId = string.format("%s-%s", parts[1], parts[2])
     
     -- Calculate expected checksum
     local expectedChecksum = 0
@@ -442,7 +441,7 @@ function MySimpleCombatDetector:ValidateSessionId(sessionId)
     expectedChecksum = expectedChecksum % 1000
     
     -- Compare with provided checksum
-    local providedChecksum = tonumber(parts[5])
+    local providedChecksum = tonumber(parts[3])
     if expectedChecksum == providedChecksum then
         return true, "Session ID is valid"
     else
