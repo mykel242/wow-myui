@@ -405,7 +405,7 @@ function SessionBrowser:CreateSessionRow(session, rowIndex)
             -- Convert timestamp to readable format and show with counter
             local timestamp = tonumber(parts[1])
             if timestamp then
-                local readableTime = os.date("%H:%M:%S", timestamp / 1000)
+                local readableTime = date("%H:%M:%S", timestamp / 1000)
                 return readableTime .. "-" .. parts[2]
             else
                 return parts[1] .. "-" .. parts[2]
