@@ -276,9 +276,8 @@ function SlashCommands:InitializeSimpleCommands()
             end
         elseif command == "testlog" then
             if addon.MyLogger then
-                addon.MyLogger:Error("Test error message for logging")
-                addon.MyLogger:Warn("Test warning message for logging")
-                addon.MyLogger:Info("Test info message for logging")
+                addon.MyLogger:Debug("Logger test - debug level check")
+                addon.MyLogger:Info("Logger test - info level check")
                 print("Test messages logged. Use /myui logs to open log viewer.")
             else
                 print("MyLogger not loaded")

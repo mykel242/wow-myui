@@ -69,10 +69,15 @@ local MEANINGFUL_EVENTS = {
 
 -- Initialize the detector
 function MySimpleCombatDetector:Initialize(injectedLogger)
-    -- Inject logger if provided
+    -- Inject logger and validate it exists with required methods
+    assert(injectedLogger, "MySimpleCombatDetector requires a logger instance")
+    assert(type(injectedLogger.Debug) == "function", "Logger must have Debug method")
+    assert(type(injectedLogger.Info) == "function", "Logger must have Info method")
+    assert(type(injectedLogger.Error) == "function", "Logger must have Error method")
+    
     logger = injectedLogger
     
-    debugPrint("Initialize() called")
+    logger:Debug("MySimpleCombatDetector Initialize() called")
     
     if self.initialized then
         debugPrint("Already initialized, skipping")
@@ -265,9 +270,14 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     local relativeTime = 0
     if addon.MyTimestampManager then
         relativeTime = addon.MyTimestampManager:GetRelativeTime(timestamp)
+        -- Debug: Log the timestamp calculation
+        logger:Debug("ProcessCombatEvent: timestamp=%.3f, relativeTime=%.3f", 
+            tonumber(timestamp) or 0, tonumber(relativeTime) or 0)
     else
         -- Fallback to manual calculation
         relativeTime = timestamp and combatStartTime and (timestamp - combatStartTime) or 0
+        logger:Debug("ProcessCombatEvent: FALLBACK timestamp=%.3f, combatStartTime=%.3f, relativeTime=%.3f", 
+            tonumber(timestamp) or 0, tonumber(combatStartTime) or 0, tonumber(relativeTime) or 0)
     end
     
     -- Store only GUIDs and relative time - much more efficient

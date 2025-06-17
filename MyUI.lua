@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-port-rt-meters-77abe44"
-addon.BUILD_DATE = "2025-06-17-06:45"
+addon.VERSION = "feature-port-rt-meters-d0f39c7"
+addon.BUILD_DATE = "2025-06-17-07:23"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -610,33 +610,16 @@ function addon:CreateMainFrame()
         end
     end)
 
-    -- Raw Data Viewer button
-    local rawDataBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
-    rawDataBtn:SetSize(140, 25)
-    rawDataBtn:SetPoint("TOPRIGHT", toolPanel, "TOPRIGHT", -10, -30)
-    rawDataBtn:SetText("Raw Data Viewer")
-    rawDataBtn:SetScript("OnClick", function()
-        if addon.StorageManager then
-            local sessions = addon.StorageManager:GetAllSessions()
-            print(string.format("=== Raw Data Summary ==="))
-            print(string.format("Total Sessions: %d", #sessions))
-            
-            for i, session in ipairs(sessions) do
-                print(string.format("Session %d: %s", i, session.id))
-                print(string.format("  Duration: %.1fs, Events: %d", 
-                    session.duration or 0, session.eventCount or 0))
-                if session.metadata and session.metadata.zone then
-                    print(string.format("  Zone: %s", session.metadata.zone.name or "Unknown"))
-                end
-                if i >= 5 then
-                    print(string.format("... and %d more sessions", #sessions - 5))
-                    break
-                end
-            end
-            print("Use '/myui sessions' for recent sessions")
-            print("Use Combat Logger for detailed event view")
+    -- MyLogger Window button
+    local myLoggerBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
+    myLoggerBtn:SetSize(140, 25)
+    myLoggerBtn:SetPoint("TOPRIGHT", toolPanel, "TOPRIGHT", -10, -30)
+    myLoggerBtn:SetText("MyLogger Window")
+    myLoggerBtn:SetScript("OnClick", function()
+        if addon.MyLoggerWindow then
+            addon.MyLoggerWindow:Show()
         else
-            print("StorageManager not available")
+            print("MyLogger Window not available")
         end
     end)
 

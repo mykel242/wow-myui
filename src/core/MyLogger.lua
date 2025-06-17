@@ -217,9 +217,9 @@ function MyLogger:Log(level, message, ...)
     -- Store the message
     self:StoreLogMessage(level, message)
     
-    -- Output to console if fallback enabled
+    -- Output to console if fallback enabled (but not for DEBUG/TRACE to avoid spam)
     -- NOTE: PANIC level is handled separately in :Panic() method
-    if config.fallbackToPrint and level ~= self.LOG_LEVELS.PANIC then
+    if config.fallbackToPrint and level ~= self.LOG_LEVELS.PANIC and level <= self.LOG_LEVELS.INFO then
         print(formattedMessage)
     end
 end

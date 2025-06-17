@@ -119,7 +119,7 @@ function StorageManager:CompressEvents(events)
         
         -- Create compressed event record
         local compressedEvent = {
-            t = math.floor((event.realTime or 0) * 1000), -- Timestamp in ms
+            t = math.floor(((event.time or event.realTime) or 0) * 1000), -- Timestamp in ms (handle both formats)
             e = eventTypeMap[eventType], -- Event type ID
             s = event.sourceGUID, -- Source GUID
             d = event.destGUID,   -- Dest GUID
