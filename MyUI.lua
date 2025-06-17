@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "refactor-modularization-e5470da"
-addon.BUILD_DATE = "2025-06-16-18:27"
+addon.VERSION = "feature-port-rt-meters-77abe44"
+addon.BUILD_DATE = "2025-06-17-06:45"
 
 -- Legacy debug flags removed - now using MyLogger system
 

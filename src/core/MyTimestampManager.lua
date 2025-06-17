@@ -38,7 +38,6 @@ local timestampData = {
     combatStartTime = nil,      -- GetTime() when combat started (baseline)
     combatEndTime = nil,        -- GetTime() when combat ended
     isActive = false,           -- Is combat currently active
-    debugMode = false,          -- Enable detailed timestamp debugging
     -- Store the offset between combat log time and GetTime() when combat starts
     logTimeOffset = nil         -- (firstCombatLogTime - combatStartTime) for conversion
 }
@@ -54,10 +53,8 @@ function MyTimestampManager:StartCombat(logTimestamp)
     timestampData.isActive = true
     timestampData.logTimeOffset = nil  -- Will be set when we get the first combat log event
     
-    if timestampData.debugMode then
-        debugPrint("TimestampManager: Combat started - GetTime: %.3f", 
-            timestampData.combatStartTime)
-    end
+    logger:Debug("TimestampManager: Combat started - GetTime: %.3f", 
+        timestampData.combatStartTime)
 end
 
 -- End the current combat session
@@ -65,10 +62,8 @@ function MyTimestampManager:EndCombat()
     timestampData.combatEndTime = GetTime()
     timestampData.isActive = false
     
-    if timestampData.debugMode then
-        local duration = self:GetCombatDuration()
-        addon:Debug("TimestampManager: Combat ended - Duration: %.3fs", duration)
-    end
+    local duration = self:GetCombatDuration()
+    logger:Debug("TimestampManager: Combat ended - Duration: %.3fs", duration)
 end
 
 -- Set the log time offset (called by the first combat log event after combat starts)
@@ -77,16 +72,20 @@ function MyTimestampManager:SetLogTimeOffset(firstLogTimestamp)
         local currentGetTime = GetTime()
         timestampData.logTimeOffset = firstLogTimestamp - timestampData.combatStartTime
         
-        if timestampData.debugMode then
-            addon:Debug("TimestampManager: Set log offset - FirstLog: %.3f, Offset: %.3f", 
-                firstLogTimestamp, timestampData.logTimeOffset)
-        end
+        logger:Trace("TimestampManager: Set log offset - FirstLog: %.3f, Offset: %.3f", 
+            firstLogTimestamp, timestampData.logTimeOffset)
     end
 end
 
 -- Convert any timestamp to relative time since combat start
 function MyTimestampManager:GetRelativeTime(inputTimestamp)
     if not timestampData.combatStartTime then
+        logger:Debug("GetRelativeTime called but no combat start time - returning 0")
+        return 0
+    end
+    
+    if not inputTimestamp then
+        logger:Debug("GetRelativeTime called with nil timestamp - returning 0")
         return 0
     end
     
@@ -101,18 +100,14 @@ function MyTimestampManager:GetRelativeTime(inputTimestamp)
         -- Convert using the established offset
         local relativeTime = inputTimestamp - (timestampData.combatStartTime + timestampData.logTimeOffset)
         
-        if timestampData.debugMode then
-            debugPrint("TimestampManager: LogTime %.3f - Offset %.3f = Relative %.3f", 
-                inputTimestamp, (timestampData.combatStartTime + timestampData.logTimeOffset), relativeTime)
-        end
+        logger:Trace("TimestampManager: LogTime %.3f - Offset %.3f = Relative %.3f", 
+            inputTimestamp, (timestampData.combatStartTime + timestampData.logTimeOffset), relativeTime)
         return relativeTime
     else
         -- This is already a GetTime() timestamp
         local relativeTime = inputTimestamp - timestampData.combatStartTime
-        if timestampData.debugMode then
-            addon:Trace("TimestampManager: GetTime %.3f -> Relative %.3f", 
-                inputTimestamp, relativeTime)
-        end
+        logger:Trace("TimestampManager: GetTime %.3f -> Relative %.3f", 
+            inputTimestamp, relativeTime)
         return relativeTime
     end
 end
@@ -156,12 +151,9 @@ function MyTimestampManager:GetTimestampData()
     }
 end
 
--- Enable/disable debug mode
+-- Debug mode is now handled by logger level - this method is deprecated
 function MyTimestampManager:SetDebugMode(enabled)
-    timestampData.debugMode = enabled
-    if enabled then
-        addon:Debug("TimestampManager: Debug mode enabled")
-    end
+    logger:Debug("SetDebugMode called with %s - now handled by logger level", tostring(enabled))
 end
 
 -- Reset all timestamp data
@@ -171,7 +163,7 @@ function MyTimestampManager:Reset()
     timestampData.isActive = false
     timestampData.logTimeOffset = nil
     
-    addon:Debug("TimestampManager: Reset complete")
+    logger:Debug("TimestampManager: Reset complete")
 end
 
 -- =============================================================================
@@ -189,10 +181,8 @@ function MyTimestampManager:ValidateTimestamp(inputTimestamp, expectedRange)
         isValid = isValid and relativeTime >= expectedRange.min and relativeTime <= expectedRange.max
     end
     
-    if timestampData.debugMode then
-        addon:Trace("TimestampManager: Validation - Input: %.3f, Relative: %.3f, Valid: %s", 
-            inputTimestamp, relativeTime, tostring(isValid))
-    end
+    logger:Trace("TimestampManager: Validation - Input: %.3f, Relative: %.3f, Valid: %s", 
+        inputTimestamp, relativeTime, tostring(isValid))
     
     return isValid, relativeTime
 end
@@ -215,12 +205,16 @@ end
 -- =============================================================================
 
 function MyTimestampManager:Initialize(injectedLogger)
-    -- Inject logger if provided
+    -- Inject logger and validate it exists with required methods
+    assert(injectedLogger, "MyTimestampManager requires a logger instance")
+    assert(type(injectedLogger.Debug) == "function", "Logger must have Debug method")
+    assert(type(injectedLogger.Trace) == "function", "Logger must have Trace method")
+    
     logger = injectedLogger
     
     self:Reset()
     
-    debugPrint("MyTimestampManager: Initialized")
+    logger:Debug("MyTimestampManager: Initialized")
 end
 
 -- Enable/disable internal debug mode

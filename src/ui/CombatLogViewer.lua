@@ -212,69 +212,50 @@ function CombatLogViewer:GenerateLogContent()
     table.insert(lines, "")
     
     -- Current combat status
-    if addon.CombatEventLogger then
-        local status = addon.CombatEventLogger:GetStatus()
+    if addon.MySimpleCombatDetector then
+        local debugInfo = addon.MySimpleCombatDetector:GetDebugInfo()
         table.insert(lines, "=== Current Combat Status ===")
-        table.insert(lines, string.format("Tracking: %s", status.isTracking and "YES" or "NO"))
-        if status.currentCombatId then
-            table.insert(lines, string.format("Combat ID: %s", status.currentCombatId))
-            table.insert(lines, string.format("Duration: %.1fs", status.combatDuration))
-            table.insert(lines, string.format("Events: %d", status.eventCount))
+        table.insert(lines, string.format("In Combat: %s", debugInfo.inCombat and "YES" or "NO"))
+        if debugInfo.sessionId then
+            table.insert(lines, string.format("Session ID: %s", debugInfo.sessionId))
+            table.insert(lines, string.format("Duration: %.1fs", debugInfo.duration))
+            table.insert(lines, string.format("Events: %d", debugInfo.eventCount))
+            table.insert(lines, string.format("Time Since Activity: %.1fs", debugInfo.timeSinceActivity))
         end
         table.insert(lines, "")
         
-        -- Current combat events
-        if status.isTracking and status.eventCount > 0 then
-            local events = addon.CombatEventLogger:GetCurrentEvents()
-            table.insert(lines, "=== Current Combat Events (Latest 20) ===")
-            
-            local startIndex = math.max(1, #events - 19)
-            for i = startIndex, #events do
-                local event = events[i]
-                local timestamp = string.format("%.3f", tonumber(event.realTime) or 0)
-                -- Format based on event type
-                local line
-                if event.subevent and event.subevent:match("DAMAGE") then
-                    local amount = event.args and event.args[12] or "?"
-                    line = string.format("[%s] %s: %s -> %s for %s", 
-                        timestamp,
-                        event.subevent,
-                        event.sourceName or "Unknown",
-                        event.destName or "Unknown",
-                        amount)
-                elseif event.subevent and event.subevent:match("HEAL") then
-                    local amount = event.args and event.args[12] or "?"
-                    line = string.format("[%s] %s: %s -> %s for %s", 
-                        timestamp,
-                        event.subevent,
-                        event.sourceName or "Unknown",
-                        event.destName or "Unknown",
-                        amount)
-                else
-                    line = string.format("[%s] %s: %s -> %s", 
+        -- Current combat events (from active session)
+        if debugInfo.inCombat and debugInfo.eventCount > 0 then
+            local currentSession = addon.MySimpleCombatDetector:GetCurrentSession()
+            if currentSession and currentSession.events then
+                table.insert(lines, "=== Current Combat Events (Latest 20) ===")
+                
+                local events = currentSession.events
+                local startIndex = math.max(1, #events - 19)
+                for i = startIndex, #events do
+                    local event = events[i]
+                    -- Use relative time from MyTimestampManager format
+                    local timestamp = string.format("%.3f", tonumber(event.time) or 0)
+                    
+                    -- Resolve names from GUID map
+                    local sourceName = (event.sourceGUID and currentSession.guidMap[event.sourceGUID]) or "Unknown"
+                    local destName = (event.destGUID and currentSession.guidMap[event.destGUID]) or "Unknown"
+                    
+                    local line = string.format("[%s] %s: %s -> %s", 
                         timestamp,
                         event.subevent or "UNKNOWN",
-                        event.sourceName or "Unknown",
-                        event.destName or "Unknown")
-                end
-                
-                if event.args and #event.args > 0 then
-                    -- Convert all args to strings to prevent nil concatenation
-                    local argStrings = {}
-                    for i, arg in ipairs(event.args) do
-                        argStrings[i] = tostring(arg or "nil")
+                        sourceName,
+                        destName)
+                    
+                    table.insert(lines, line)
+                    lineCount = lineCount + 1
+                    
+                    if lineCount >= CONFIG.MAX_LINES then
+                        break
                     end
-                    line = line .. " (" .. table.concat(argStrings, ", ") .. ")"
                 end
-                
-                table.insert(lines, line)
-                lineCount = lineCount + 1
-                
-                if lineCount >= CONFIG.MAX_LINES then
-                    break
-                end
+                table.insert(lines, "")
             end
-            table.insert(lines, "")
         end
     end
     
@@ -309,11 +290,20 @@ function CombatLogViewer:GenerateLogContent()
                     for i = startIndex, #events do
                         local event = events[i]
                         if event then
+                            -- Handle both old (realTime) and new (time) formats
+                            local timestamp = tonumber(event.time) or tonumber(event.realTime) or 0
+                            
+                            -- Resolve names - new format uses GUIDs
+                            local sourceName = event.sourceName or 
+                                (event.sourceGUID and fullSession.guidMap and fullSession.guidMap[event.sourceGUID]) or "?"
+                            local destName = event.destName or 
+                                (event.destGUID and fullSession.guidMap and fullSession.guidMap[event.destGUID]) or "?"
+                            
                             local eventLine = string.format("    [%.3f] %s: %s -> %s",
-                                tonumber(event.realTime) or 0,
+                                timestamp,
                                 tostring(event.subevent or "UNKNOWN"),
-                                tostring(event.sourceName or "?"),
-                                tostring(event.destName or "?"))
+                                sourceName,
+                                destName)
                             
                             if event.args and #event.args > 0 and #event.args <= 3 then
                                 local argStrings = {}
