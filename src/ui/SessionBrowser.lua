@@ -23,11 +23,6 @@ local CONFIG = {
     VIEWER_HEIGHT = 500,
     ROW_HEIGHT = 16,
     MAX_VISIBLE_ROWS = 20,
-    
-    -- Session Viewer Performance Settings (Virtual Scrolling)
-    EVENTS_PER_CHUNK = 500,       -- Events loaded per chunk
-    SCROLL_BUFFER_CHUNKS = 2,     -- Buffer chunks above/below visible area
-    MIN_EVENTS_FOR_VIRTUAL = 1000, -- Only virtualize if more than this many events
 }
 
 
@@ -210,9 +205,7 @@ function SessionBrowser:CreateSessionViewer()
     
     UIDropDownMenu_Initialize(formatDropdown, function(self, level)
         local formats = {
-            {id = "raw", name = "Raw Data"},
-            {id = "text", name = "Text"},
-            {id = "json", name = "JSON"}
+            {id = "text", name = "Text"}
         }
         
         for _, format in ipairs(formats) do
@@ -241,12 +234,12 @@ function SessionBrowser:CreateSessionViewer()
         end
     end)
     
-    -- Virtual scroll tracking
-    frame.virtualScroll = {
-        loadedChunks = {},
-        totalChunks = 0,
-        currentContent = ""
-    }
+    -- Initialize virtual scrolling mixin
+    frame.virtualScroll = addon.VirtualScrollMixin:new()
+    frame.virtualScroll:Initialize(frame, scroll, editbox, {
+        LINES_PER_CHUNK = 500,
+        MIN_LINES_FOR_VIRTUAL = 1000
+    })
     
     -- Export info text
     local exportInfo = toolbar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -296,35 +289,7 @@ function SessionBrowser:CreateSessionViewer()
         end
     end)
     
-    -- Set up scroll monitoring using timer (more reliable than events)
-    local scrollTimer = nil
-    local lastScrollOffset = 0
-    
-    local function checkScrollPosition()
-        if viewerFrame and viewerFrame:IsShown() and viewerFrame.currentSession then
-            local currentOffset = scroll:GetVerticalScroll()
-            if math.abs(currentOffset - lastScrollOffset) > 10 then -- Only update if significant change
-                lastScrollOffset = currentOffset
-                SessionBrowser:OnScrollChanged(currentOffset)
-            end
-        end
-    end
-    
-    -- Start scroll monitoring when frame is shown
-    frame:HookScript("OnShow", function()
-        if scrollTimer then
-            scrollTimer:Cancel()
-        end
-        scrollTimer = C_Timer.NewTicker(0.1, checkScrollPosition) -- Check every 100ms
-    end)
-    
-    -- Stop monitoring when hidden
-    frame:HookScript("OnHide", function()
-        if scrollTimer then
-            scrollTimer:Cancel()
-            scrollTimer = nil
-        end
-    end)
+    -- Virtual scrolling is now handled by the mixin
     
     scroll:SetScrollChild(editbox)
     
@@ -577,10 +542,10 @@ function SessionBrowser:ViewSelectedSession()
     end
     viewerFrame.sessionMeta:SetText(metaText)
     
-    -- Initialize virtual scrolling for new session
+        -- Initialize session
     viewerFrame.currentSession = fullSession
     
-    -- Reset format dropdown to default (text format for virtual scrolling)
+    -- Reset format dropdown to text (only supported format)
     UIDropDownMenu_SetSelectedValue(viewerFrame.formatDropdown, "text")
     UIDropDownMenu_SetText(viewerFrame.formatDropdown, "Text")
     
@@ -589,7 +554,7 @@ function SessionBrowser:ViewSelectedSession()
         viewerFrame.scrollFrame:SetVerticalScroll(0)
     end
     
-    -- Generate session content using appropriate method
+    -- Generate session content using virtual scrolling
     self:RefreshViewerContent()
     
     -- Show viewer
@@ -732,110 +697,42 @@ function SessionBrowser:GenerateSessionLog(session)
     return table.concat(lines, "\n")
 end
 
--- Handle scroll position changes for virtual scrolling
-function SessionBrowser:OnScrollChanged(offset)
-    if not viewerFrame or not viewerFrame.currentSession then
-        return
+-- Generate header lines for session display
+function SessionBrowser:GenerateHeaderLines(session)
+    local headerLines = {}
+    
+    table.insert(headerLines, "=== Combat Session Log ===")
+    table.insert(headerLines, "Session ID: " .. (session.id or "Unknown"))
+    table.insert(headerLines, "Hash: " .. (session.hash or "----"))
+    table.insert(headerLines, "Duration: " .. string.format("%.1fs", session.duration or 0))
+    table.insert(headerLines, "Total Events: " .. tostring(session.eventCount or 0))
+    
+    -- Add segmentation info
+    if session.isSegmented and session.segments then
+        table.insert(headerLines, "Segments: " .. tostring(#session.segments))
     end
     
-    local session = viewerFrame.currentSession
-    local totalEvents = session.eventCount or (session.events and #session.events or 0)
+    table.insert(headerLines, "")
+    table.insert(headerLines, "=== Event Log ===")
+    table.insert(headerLines, "")
     
-    -- Only use virtual scrolling for large sessions in text format
-    local selectedFormat = UIDropDownMenu_GetSelectedValue(viewerFrame.formatDropdown) or "raw"
-    if totalEvents < CONFIG.MIN_EVENTS_FOR_VIRTUAL or selectedFormat ~= "text" then
-        return
-    end
-    
-    -- Calculate which chunk should be visible based on scroll position
-    local scrollFrame = viewerFrame.scrollFrame
-    if not scrollFrame then
-        addon:Debug("No scroll frame available")
-        return
-    end
-    
-    local scrollHeight = scrollFrame:GetVerticalScrollRange()
-    local scrollPercent = scrollHeight > 0 and (offset / scrollHeight) or 0
-    
-    local vs = viewerFrame.virtualScroll
-    if not vs or vs.totalChunks == 0 then
-        addon:Debug("Virtual scroll not initialized")
-        return
-    end
-    
-    local targetChunk = math.floor(scrollPercent * vs.totalChunks) + 1
-    targetChunk = math.max(1, math.min(targetChunk, vs.totalChunks))
-    
-    addon:Debug("Scroll changed: offset=%.1f, height=%.1f, percent=%.2f, target chunk=%d/%d", 
-        offset, scrollHeight, scrollPercent, targetChunk, vs.totalChunks)
-    
-    self:EnsureChunkLoaded(targetChunk)
+    return headerLines
 end
 
--- Handle scroll range changes
-function SessionBrowser:OnScrollRangeChanged(yrange)
-    -- Could be used for dynamic content sizing in the future
-end
-
--- Ensure a specific chunk and its buffers are loaded
-function SessionBrowser:EnsureChunkLoaded(chunkIndex)
-    if not viewerFrame or not viewerFrame.currentSession then
-        return
-    end
+-- Generate content lines for virtual scrolling
+function SessionBrowser:GenerateContentLines(session)
+    local contentLines = {}
     
-    local vs = viewerFrame.virtualScroll
-    local bufferSize = CONFIG.SCROLL_BUFFER_CHUNKS
-    
-    -- Calculate range of chunks to load
-    local startChunk = math.max(1, chunkIndex - bufferSize)
-    local endChunk = math.min(vs.totalChunks, chunkIndex + bufferSize)
-    
-    local needsUpdate = false
-    
-    -- Load missing chunks in range
-    for i = startChunk, endChunk do
-        if not vs.loadedChunks[i] then
-            self:LoadChunk(i)
-            needsUpdate = true
-        end
-    end
-    
-    -- Unload chunks outside range to save memory
-    for loadedChunk, _ in pairs(vs.loadedChunks) do
-        if loadedChunk < startChunk or loadedChunk > endChunk then
-            vs.loadedChunks[loadedChunk] = nil
-            needsUpdate = true
-        end
-    end
-    
-    if needsUpdate then
-        self:UpdateVirtualContent()
-    end
-end
-
--- Load a specific chunk of events
-function SessionBrowser:LoadChunk(chunkIndex)
-    if not viewerFrame or not viewerFrame.currentSession then
-        return
-    end
-    
-    local session = viewerFrame.currentSession
-    local vs = viewerFrame.virtualScroll
-    
-    local startIdx = (chunkIndex - 1) * CONFIG.EVENTS_PER_CHUNK + 1
-    local endIdx = math.min(startIdx + CONFIG.EVENTS_PER_CHUNK - 1, #session.events)
-    
-    local chunkEventLines = {}
-    
-    -- Generate content for this chunk
-    for i = startIdx, endIdx do
-        local event = session.events[i]
-        if event then
+    if session.events and #session.events > 0 then
+        for i, event in ipairs(session.events) do
+            -- Get relative timestamp
             local relativeTime = event.time or 0
-            if relativeTime == 0 and event.timestamp and session.startTime then
-                relativeTime = event.timestamp - session.startTime
-            elseif relativeTime == 0 and event.realTime then
-                relativeTime = event.realTime
+            if relativeTime == 0 then
+                if event.timestamp and session.startTime then
+                    relativeTime = event.timestamp - session.startTime
+                elseif event.realTime then
+                    relativeTime = event.realTime
+                end
             end
             
             local timestamp = string.format("%.3f", relativeTime)
@@ -848,139 +745,43 @@ function SessionBrowser:LoadChunk(chunkIndex)
                 sourceId,
                 destId)
             
-            table.insert(chunkEventLines, eventLine)
+            table.insert(contentLines, eventLine)
         end
+    else
+        table.insert(contentLines, "No events recorded")
     end
     
-    vs.loadedChunks[chunkIndex] = chunkEventLines
-    
-    -- Update the full structure with loaded chunk
-    if vs.fullStructure then
-        for i = 1, #chunkEventLines do
-            local globalLineIndex = vs.headerLineCount + startIdx + i - 1
-            if globalLineIndex <= #vs.fullStructure then
-                vs.fullStructure[globalLineIndex] = chunkEventLines[i]
-            end
-        end
-    end
+    return contentLines
 end
 
--- Update the virtual content display
-function SessionBrowser:UpdateVirtualContent()
-    if not viewerFrame or not viewerFrame.currentSession then
-        return
-    end
-    
-    local vs = viewerFrame.virtualScroll
-    
-    if not vs.fullStructure then
-        return
-    end
-    
-    -- Update content from full structure (with loaded chunks integrated)
-    local newContent = table.concat(vs.fullStructure, "\n")
-    vs.currentContent = newContent
-    
-    viewerEditBox:SetText(newContent)
-    viewerFrame.lastContent = newContent
-end
-
--- Refresh viewer content based on selected format
+-- Refresh viewer content using virtual scrolling mixin
 function SessionBrowser:RefreshViewerContent()
     if not viewerFrame or not viewerFrame:IsShown() or not viewerFrame.currentSession then
         return
     end
     
     local session = viewerFrame.currentSession
-    local totalEvents = session.eventCount or (session.events and #session.events or 0)
-    local selectedFormat = UIDropDownMenu_GetSelectedValue(viewerFrame.formatDropdown) or "raw"
     
-    -- Use virtual scrolling for large sessions (only in Text format for now)
-    if totalEvents >= CONFIG.MIN_EVENTS_FOR_VIRTUAL and selectedFormat == "text" then
-        self:InitializeVirtualScrolling(session)
-        self:EnsureChunkLoaded(1) -- Load initial chunk
-    else
-        -- Use traditional full content for smaller sessions or non-text formats
-        local content = self:GenerateViewerContent(session, selectedFormat)
-        
-        viewerEditBox:SetText(content)
-        viewerFrame.lastContent = content
-        
-        -- Reset virtual scroll state
-        if viewerFrame.virtualScroll then
-            viewerFrame.virtualScroll.loadedChunks = {}
-            viewerFrame.virtualScroll.totalChunks = 0
-        end
-    end
+    -- Generate content lines for virtual scrolling
+    local contentLines = self:GenerateContentLines(session)
+    local headerLines = self:GenerateHeaderLines(session)
     
-    addon:Debug("Refreshed viewer content: %d events, format=%s, virtual=%s", 
-        totalEvents, selectedFormat, tostring(totalEvents >= CONFIG.MIN_EVENTS_FOR_VIRTUAL and selectedFormat == "text"))
+    -- Use virtual scrolling mixin to handle display
+    viewerFrame.virtualScroll:SetContent(contentLines, headerLines)
+    
+    local totalLines = #contentLines
+    local vsStatus = viewerFrame.virtualScroll:GetStatus()
+    
+    addon:Debug("Refreshed viewer content: %d lines, virtual=%s, chunks loaded=%d", 
+        totalLines, tostring(vsStatus.isActive), vsStatus.loadedChunks)
 end
 
--- Initialize virtual scrolling for a session
-function SessionBrowser:InitializeVirtualScrolling(session)
-    if not viewerFrame then
-        return
-    end
-    
-    local vs = viewerFrame.virtualScroll
-    vs.loadedChunks = {}
-    vs.totalChunks = math.ceil(#session.events / CONFIG.EVENTS_PER_CHUNK)
-    vs.currentContent = ""
-    
-    -- Create initial full-height content with placeholders
-    self:CreateVirtualScrollStructure(session)
-    
-    addon:Debug("Initialized virtual scrolling: %d events, %d chunks", #session.events, vs.totalChunks)
-end
+-- Legacy methods removed - now using VirtualScrollMixin
 
--- Create the initial scroll structure with proper height
-function SessionBrowser:CreateVirtualScrollStructure(session)
-    if not viewerFrame then
-        return
-    end
-    
-    local vs = viewerFrame.virtualScroll
-    local contentLines = {}
-    
-    -- Add session header (always visible)
-    table.insert(contentLines, "=== Combat Session Log ===")
-    table.insert(contentLines, "Session ID: " .. (session.id or "Unknown"))
-    table.insert(contentLines, "Duration: " .. string.format("%.1fs", session.duration or 0))
-    table.insert(contentLines, "Total Events: " .. tostring(session.eventCount or 0))
-    table.insert(contentLines, "")
-    table.insert(contentLines, "=== Event Log (Virtual Scrolling) ===")
-    table.insert(contentLines, "")
-    
-    -- Create placeholder structure for all events to establish scroll range
-    for i = 1, #session.events do
-        table.insert(contentLines, string.format("[Event %d - Loading...]", i))
-    end
-    
-    local fullContent = table.concat(contentLines, "\n")
-    vs.fullStructure = contentLines
-    vs.headerLineCount = 7 -- Number of header lines
-    
-    -- Set initial content
-    viewerEditBox:SetText(fullContent)
-    viewerFrame.lastContent = fullContent
-    
-    -- Set EditBox height to match content
-    local lineHeight = 12
-    viewerEditBox:SetHeight(#contentLines * lineHeight)
-end
-
--- Generate content in different formats for the viewer
+-- Generate content for the viewer (text format only)
 function SessionBrowser:GenerateViewerContent(session, format)
-    if format == "raw" then
-        return self:FormatAsRaw(session)
-    elseif format == "text" then
-        return self:GenerateSessionLog(session)  -- Use existing function
-    elseif format == "json" then
-        return self:FormatAsJSON(session)
-    else
-        return "Unknown format: " .. tostring(format)
-    end
+    -- Only support text format now for performance
+    return self:GenerateSessionLog(session)
 end
 
 -- Format as raw session data

@@ -333,10 +333,8 @@ function MyLoggerWindow:RefreshLogs()
         end
     end
     
-    -- Build text with color codes
-    local logTexts = {}
-    -- Add padding at the top with an empty line
-    table.insert(logTexts, " ")
+    -- Generate content lines for virtual scrolling
+    local contentLines = {}
     
     for i, entry in ipairs(filteredLogs) do
         -- Add color codes based on level
@@ -353,19 +351,17 @@ function MyLoggerWindow:RefreshLogs()
         end
         
         if formatted then
-            table.insert(logTexts, color .. formatted .. "|r")
+            table.insert(contentLines, color .. formatted .. "|r")
         end
     end
     
-    -- Set the text in the EditBox
-    local fullText = table.concat(logTexts, "\n")
-    logContentFrame.logText = fullText  -- Store for preventing edits
-    logContentFrame:SetText(fullText)
+    -- Use virtual scrolling mixin to display content
+    local headerLines = {
+        string.format("=== MyLogger Output (%d entries, filter: %s) ===", #filteredLogs, currentFilter),
+        ""
+    }
     
-    -- Update EditBox height based on content
-    local numLines = #filteredLogs
-    local contentHeight = math.max(numLines * LOG_ENTRY_HEIGHT + 20, logScrollFrame:GetHeight())
-    logContentFrame:SetHeight(contentHeight)
+    logWindow.virtualScroll:SetContent(contentLines, headerLines)
 end
 
 -- Removed UpdateCopyText - copy functionality is now handled by the Copy All button
