@@ -265,6 +265,12 @@ function MyLoggerWindow:CreateScrollArea()
     logLightweightFrame = CreateFrame("Frame", nil, logWindow)
     logLightweightFrame:SetPoint("TOPLEFT", logWindow, "TOPLEFT", 15, -65)
     logLightweightFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 35)
+    
+    -- Add backdrop mixin for newer WoW versions
+    if BackdropTemplateMixin then
+        Mixin(logLightweightFrame, BackdropTemplateMixin)
+    end
+    
     logLightweightFrame:SetBackdrop({
         bgFile = "Interface/Tooltips/UI-Tooltip-Background",
         edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
@@ -288,6 +294,12 @@ function MyLoggerWindow:CreateScrollArea()
     logStatusFrame = CreateFrame("Frame", nil, logWindow)
     logStatusFrame:SetPoint("TOPLEFT", logWindow, "TOPLEFT", 15, -65)
     logStatusFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 35)
+    
+    -- Add backdrop mixin for newer WoW versions
+    if BackdropTemplateMixin then
+        Mixin(logStatusFrame, BackdropTemplateMixin)
+    end
+    
     logStatusFrame:SetBackdrop({
         bgFile = "Interface/Tooltips/UI-Tooltip-Background",
         edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
