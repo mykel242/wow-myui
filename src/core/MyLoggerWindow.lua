@@ -1,5 +1,12 @@
 -- MyLoggerWindow.lua
 -- Dedicated log viewer window for MyLogger
+--
+-- PERFORMANCE OPTIMIZATIONS:
+-- - Detects "busy periods" (5+ log entries per second) and switches to batch processing
+-- - During busy periods, entries are queued and processed in batches every 250ms
+-- - Virtual scrolling optimized for real-time logs (50-line chunks, low virtualization threshold)
+-- - Automatic timer cleanup when window is hidden to prevent background processing
+-- - Queue size limits prevent memory bloat during extended busy periods
 
 local addonName, addon = ...
 
@@ -36,6 +43,14 @@ local WINDOW_HEIGHT = 400
 local LOG_ENTRY_HEIGHT = 16
 local MAX_VISIBLE_LOGS = math.floor((WINDOW_HEIGHT - 100) / LOG_ENTRY_HEIGHT)
 
+-- Performance configuration for busy logging periods
+local PERFORMANCE_CONFIG = {
+    REFRESH_THROTTLE_MS = 250,     -- Only refresh every 250ms max during busy periods
+    BATCH_SIZE = 10,               -- Process up to 10 entries per batch
+    MAX_PENDING_ENTRIES = 100,     -- Maximum entries to queue before dropping
+    BUSY_THRESHOLD = 5,            -- Consider "busy" if 5+ entries in 1 second
+}
+
 -- Filter types
 local FILTER_TYPES = {
     ALL = "All",
@@ -59,6 +74,79 @@ local filterButtons = {}
 local currentFilter = "ALL"
 local copyEditBox = nil
 local isRefreshing = false
+
+-- Performance tracking for busy periods
+local performanceState = {
+    lastRefreshTime = 0,
+    pendingEntries = {},
+    recentEntryTimes = {},
+    refreshTimer = nil,
+    isBusyPeriod = false
+}
+
+-- =============================================================================
+-- PERFORMANCE OPTIMIZATION FUNCTIONS
+-- =============================================================================
+
+-- Check if we're in a busy logging period
+local function IsBusyPeriod()
+    local currentTime = GetTime()
+    local recentCount = 0
+    
+    -- Count entries in the last second
+    for i = #performanceState.recentEntryTimes, 1, -1 do
+        local entryTime = performanceState.recentEntryTimes[i]
+        if currentTime - entryTime <= 1.0 then
+            recentCount = recentCount + 1
+        else
+            -- Remove old entries
+            table.remove(performanceState.recentEntryTimes, i)
+        end
+    end
+    
+    return recentCount >= PERFORMANCE_CONFIG.BUSY_THRESHOLD
+end
+
+-- Process pending entries in batches
+local function ProcessPendingEntries()
+    if #performanceState.pendingEntries == 0 then
+        return
+    end
+    
+    -- Process up to BATCH_SIZE entries
+    local processCount = math.min(PERFORMANCE_CONFIG.BATCH_SIZE, #performanceState.pendingEntries)
+    
+    for i = 1, processCount do
+        local entry = table.remove(performanceState.pendingEntries, 1)
+        if entry then
+            table.insert(logEntries, entry)
+        end
+    end
+    
+    -- Keep only last 500 total entries to prevent memory issues
+    if #logEntries > 500 then
+        local removeCount = #logEntries - 500
+        for i = 1, removeCount do
+            table.remove(logEntries, 1)
+        end
+    end
+end
+
+-- Schedule a throttled refresh
+local function ScheduleThrottledRefresh()
+    if performanceState.refreshTimer then
+        return -- Already scheduled
+    end
+    
+    local delay = PERFORMANCE_CONFIG.REFRESH_THROTTLE_MS / 1000
+    performanceState.refreshTimer = C_Timer.After(delay, function()
+        performanceState.refreshTimer = nil
+        if logWindow and logWindow:IsVisible() then
+            ProcessPendingEntries()
+            MyLoggerWindow:RefreshLogs()
+        end
+    end)
+end
 
 -- =============================================================================
 -- WINDOW CREATION
@@ -319,6 +407,10 @@ end
 -- =============================================================================
 
 function MyLoggerWindow:AddLogEntry(level, message, timestamp)
+    local currentTime = GetTime()
+    
+    -- Track recent entry times for busy period detection
+    table.insert(performanceState.recentEntryTimes, currentTime)
     
     local entry = {
         level = level,
@@ -331,16 +423,34 @@ function MyLoggerWindow:AddLogEntry(level, message, timestamp)
         )
     }
     
-    table.insert(logEntries, entry)
+    -- Check if we're in a busy period
+    local isBusy = IsBusyPeriod()
+    performanceState.isBusyPeriod = isBusy
     
-    -- Keep only last 500 entries to prevent memory issues
-    if #logEntries > 500 then
-        table.remove(logEntries, 1)
-    end
-    
-    -- Refresh display if window exists and is visible
-    if logWindow and logWindow:IsVisible() then
-        self:RefreshLogs()
+    if isBusy and logWindow and logWindow:IsVisible() then
+        -- During busy periods, queue entries for batch processing
+        table.insert(performanceState.pendingEntries, entry)
+        
+        -- Drop oldest pending entries if queue gets too long
+        if #performanceState.pendingEntries > PERFORMANCE_CONFIG.MAX_PENDING_ENTRIES then
+            table.remove(performanceState.pendingEntries, 1)
+        end
+        
+        -- Schedule a throttled refresh
+        ScheduleThrottledRefresh()
+    else
+        -- Normal processing for non-busy periods
+        table.insert(logEntries, entry)
+        
+        -- Keep only last 500 entries to prevent memory issues
+        if #logEntries > 500 then
+            table.remove(logEntries, 1)
+        end
+        
+        -- Immediate refresh if window exists and is visible (but not busy)
+        if logWindow and logWindow:IsVisible() then
+            self:RefreshLogs()
+        end
     end
 end
 
@@ -500,9 +610,10 @@ function MyLoggerWindow:Show()
     if not logWindow.virtualScroll and logWindow.scrollFrame and logWindow.contentFrame then
         logWindow.virtualScroll = addon.VirtualScrollMixin:new()
         logWindow.virtualScroll:Initialize(logWindow, logWindow.scrollFrame, logWindow.contentFrame, {
-            LINES_PER_CHUNK = 100,        -- Smaller chunks for logs
-            MIN_LINES_FOR_VIRTUAL = 200,  -- Lower threshold for logs
-            TIMER_INTERVAL = 0.2          -- Slower updates for logs
+            LINES_PER_CHUNK = 50,         -- Very small chunks for real-time logs
+            MIN_LINES_FOR_VIRTUAL = 100,  -- Low threshold for immediate virtualization
+            TIMER_INTERVAL = 0.5,         -- Slower scroll monitoring for logs
+            BUFFER_CHUNKS = 1             -- Minimal buffer for logs
         })
     end
     
@@ -519,6 +630,15 @@ function MyLoggerWindow:Hide()
     if logWindow then
         logWindow:Hide()
     end
+    
+    -- Clean up performance timers when hiding
+    if performanceState.refreshTimer then
+        performanceState.refreshTimer:Cancel()
+        performanceState.refreshTimer = nil
+    end
+    
+    -- Process any remaining pending entries before hiding
+    ProcessPendingEntries()
 end
 
 function MyLoggerWindow:Toggle()
@@ -533,6 +653,18 @@ function MyLoggerWindow:IsVisible()
     return logWindow and logWindow:IsVisible()
 end
 
+-- Get performance statistics (debug)
+function MyLoggerWindow:GetPerformanceStats()
+    return {
+        isBusyPeriod = performanceState.isBusyPeriod,
+        pendingEntries = #performanceState.pendingEntries,
+        recentEntryCount = #performanceState.recentEntryTimes,
+        refreshTimerActive = performanceState.refreshTimer ~= nil,
+        totalLogEntries = #logEntries,
+        virtualScrollActive = logWindow and logWindow.virtualScroll and logWindow.virtualScroll.state.isActive or false
+    }
+end
+
 -- =============================================================================
 -- CLEAR FUNCTIONS
 -- =============================================================================
@@ -541,6 +673,15 @@ end
 function MyLoggerWindow:ClearView()
     -- Clear only the display entries, not the persistent data
     logEntries = {}
+    
+    -- Clear performance state
+    performanceState.pendingEntries = {}
+    performanceState.recentEntryTimes = {}
+    performanceState.isBusyPeriod = false
+    if performanceState.refreshTimer then
+        performanceState.refreshTimer:Cancel()
+        performanceState.refreshTimer = nil
+    end
     
     -- Clear the scroll frame content
     if logContentFrame then
@@ -565,6 +706,15 @@ end
 function MyLoggerWindow:ClearAllLogs()
     -- Clear in-memory logs
     logEntries = {}
+    
+    -- Clear performance state
+    performanceState.pendingEntries = {}
+    performanceState.recentEntryTimes = {}
+    performanceState.isBusyPeriod = false
+    if performanceState.refreshTimer then
+        performanceState.refreshTimer:Cancel()
+        performanceState.refreshTimer = nil
+    end
     
     -- Clear MyLogger's memory buffer
     if addon.MyLogger and addon.MyLogger.memoryLogs then
