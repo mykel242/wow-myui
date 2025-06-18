@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-performance-optimization-657ca65"
-addon.BUILD_DATE = "2025-06-18-09:54"
+addon.VERSION = "feature-performance-optimization-e401f17"
+addon.BUILD_DATE = "2025-06-18-09:57"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -651,12 +651,7 @@ end
 
 -- Update status display (simplified)
 function addon:UpdateStatusDisplay()
-    if not self.mainFrame or not self.mainFrame.debugText then
-        return
-    end
-
-    local debugStatus = self.DEBUG and "|cff00ff00ON|r" or "|cffff0000OFF|r"
-    self.mainFrame.debugText:SetText("Debug: " .. debugStatus)
+    -- Status display no longer needed - window is simplified
 end
 
 -- Simplified main window (tool launcher)
@@ -665,7 +660,7 @@ function addon:CreateMainFrame()
 
     -- Use default Warcraft UI style as requested
     local frame = CreateFrame("Frame", addonName .. "MainFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(350, 250)
+    frame:SetSize(350, 200)
     frame:SetPoint("CENTER")
 
     -- Set title text
@@ -705,31 +700,21 @@ function addon:CreateMainFrame()
 
     -- === STATUS PANEL ===
     local statusPanel = CreateFrame("Frame", nil, frame)
-    statusPanel:SetSize(310, 60)
+    statusPanel:SetSize(310, 40)
     statusPanel:SetPoint("TOP", frame, "TOP", 0, -30)
 
     local statusTitle = statusPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     statusTitle:SetPoint("TOP", statusPanel, "TOP", 0, -5)
     statusTitle:SetText("Addon Status")
 
-    local debugText = statusPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    debugText:SetPoint("TOPLEFT", statusPanel, "TOPLEFT", 10, -25)
-    debugText:SetText("Debug: OFF")
-    frame.debugText = debugText
-
     local versionText = statusPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    versionText:SetPoint("TOPRIGHT", statusPanel, "TOPRIGHT", -10, -25)
+    versionText:SetPoint("CENTER", statusPanel, "CENTER", 0, -15)
     versionText:SetText("Version: " .. addon.VERSION:sub(-7))
-
-    local statusText = statusPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    statusText:SetPoint("BOTTOM", statusPanel, "BOTTOM", 0, 5)
-    statusText:SetText("Simplified Mode (Modularization in Progress)")
-    statusText:SetTextColor(1, 0.8, 0.2)
-    frame.statusText = statusText
+    versionText:SetTextColor(0.8, 0.8, 0.8)
 
     -- === TOOL LAUNCHER PANEL ===
     local toolPanel = CreateFrame("Frame", nil, frame)
-    toolPanel:SetSize(310, 120)
+    toolPanel:SetSize(310, 100)
     toolPanel:SetPoint("TOP", statusPanel, "BOTTOM", 0, -10)
 
     local toolTitle = toolPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -751,10 +736,10 @@ function addon:CreateMainFrame()
     end)
     --]]
 
-    -- MyLogger Window button
+    -- MyLogger Window button (centered on top row)
     local myLoggerBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
-    myLoggerBtn:SetSize(140, 25)
-    myLoggerBtn:SetPoint("TOPRIGHT", toolPanel, "TOPRIGHT", -10, -30)
+    myLoggerBtn:SetSize(160, 25)
+    myLoggerBtn:SetPoint("TOP", toolPanel, "TOP", 0, -35)
     myLoggerBtn:SetText("MyLogger Window")
     myLoggerBtn:SetScript("OnClick", function()
         if addon.MyLoggerWindow then
@@ -764,10 +749,10 @@ function addon:CreateMainFrame()
         end
     end)
 
-    -- Session Browser button
+    -- Session Browser button (centered on bottom row)
     local sessionBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
-    sessionBtn:SetSize(140, 25)
-    sessionBtn:SetPoint("TOPLEFT", toolPanel, "TOPLEFT", 10, -65)
+    sessionBtn:SetSize(160, 25)
+    sessionBtn:SetPoint("TOP", myLoggerBtn, "BOTTOM", 0, -10)
     sessionBtn:SetText("Session Browser")
     sessionBtn:SetScript("OnClick", function()
         if addon.SessionBrowser then
@@ -813,13 +798,7 @@ end
 
 -- Simplified update for launcher window
 function addon:UpdateMainWindow()
-    if not self.mainFrame or not self.mainFrame:IsShown() then return end
-
-    -- Update debug status
-    if self.mainFrame.debugText then
-        local debugStatus = self.DEBUG and "|cff00ff00ON|r" or "|cffff0000OFF|r"
-        self.mainFrame.debugText:SetText("Debug: " .. debugStatus)
-    end
+    -- Main window is now static - no dynamic updates needed
 end
 
 --[[
