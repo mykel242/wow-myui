@@ -1,13 +1,13 @@
 -- MyLoggerWindow.lua
 -- Dedicated log viewer window for MyLogger
 --
--- PERFORMANCE OPTIMIZATIONS:
--- - Detects "busy periods" (3+ log entries per second) and switches to batch processing
--- - Combat-aware throttling: 1-second refresh delays during combat vs 500ms during busy periods
--- - Combat batch processing: 50 entries per batch during combat vs 20 during busy periods
--- - Virtual scrolling optimized for combat logs (25-line chunks, 50-entry virtualization threshold)
--- - Automatic timer cleanup when window is hidden to prevent background processing
--- - Queue size limits prevent memory bloat during extended busy periods
+-- HYBRID PERFORMANCE SYSTEM:
+-- - COMBAT MODE: Memory-only logging with zero display updates during combat
+-- - MANUAL CONTROLS: Pause/Resume and "Refresh Now" buttons for user control
+-- - LIGHTWEIGHT MODE: FontString display for minimal overhead (if needed)
+-- - FULL MODE: Normal EditBox with virtual scrolling when out of combat
+-- - BUFFERED DISPLAY: Shows "X new messages" counter during paused states
+-- - Automatic mode switching based on combat state with manual override options
 
 local addonName, addon = ...
 
@@ -44,14 +44,14 @@ local WINDOW_HEIGHT = 400
 local LOG_ENTRY_HEIGHT = 16
 local MAX_VISIBLE_LOGS = math.floor((WINDOW_HEIGHT - 100) / LOG_ENTRY_HEIGHT)
 
--- Performance configuration for busy logging periods
+-- Performance configuration for hybrid combat approach
 local PERFORMANCE_CONFIG = {
-    REFRESH_THROTTLE_MS = 500,     -- Only refresh every 500ms max during busy periods (increased)
-    BATCH_SIZE = 20,               -- Process up to 20 entries per batch (increased)
-    MAX_PENDING_ENTRIES = 200,     -- Maximum entries to queue before dropping (increased)
-    BUSY_THRESHOLD = 3,            -- Consider "busy" if 3+ entries in 1 second (lowered threshold)
-    COMBAT_THROTTLE_MS = 1000,     -- During combat, refresh only every 1 second
-    COMBAT_BATCH_SIZE = 50,        -- Process more entries per batch during combat
+    REFRESH_THROTTLE_MS = 250,     -- Normal refresh rate when not in combat
+    BATCH_SIZE = 20,               -- Process up to 20 entries per batch
+    MAX_PENDING_ENTRIES = 500,     -- Increased for combat memory buffering
+    BUSY_THRESHOLD = 5,            -- Consider "busy" if 5+ entries in 1 second
+    COMBAT_MEMORY_ONLY = true,     -- During combat: memory-only, no display updates
+    MAX_COMBAT_BUFFER = 1000,      -- Maximum messages to buffer during combat
 }
 
 -- Filter types
@@ -72,13 +72,15 @@ local FILTER_TYPES = {
 local logWindow = nil
 local logScrollFrame = nil
 local logContentFrame = nil
+local logLightweightFrame = nil  -- FontString for lightweight display
+local logStatusFrame = nil       -- Status display during combat/pause
 local logEntries = {}
 local filterButtons = {}
 local currentFilter = "ALL"
 local copyEditBox = nil
 local isRefreshing = false
 
--- Performance tracking for busy periods
+-- Performance tracking and hybrid display state
 local performanceState = {
     lastRefreshTime = 0,
     pendingEntries = {},
@@ -86,21 +88,33 @@ local performanceState = {
     refreshTimer = nil,
     isBusyPeriod = false,
     inCombat = false,
-    combatStartTime = 0
+    combatStartTime = 0,
+    combatBuffer = {},          -- Messages stored during combat
+    isPaused = false,           -- Manual pause state
+    newMessageCount = 0,        -- Count of unprocessed messages
+    displayMode = "full"        -- "full", "lightweight", "paused"
 }
 
 -- =============================================================================
 -- PERFORMANCE OPTIMIZATION FUNCTIONS
 -- =============================================================================
 
--- Update combat state
+-- Update combat state and display mode
 local function UpdateCombatState()
     local inCombat = UnitAffectingCombat("player")
     if inCombat and not performanceState.inCombat then
         performanceState.inCombat = true
         performanceState.combatStartTime = GetTime()
+        if PERFORMANCE_CONFIG.COMBAT_MEMORY_ONLY and not performanceState.isPaused then
+            performanceState.displayMode = "paused"
+            MyLoggerWindow:UpdateDisplayMode()
+        end
     elseif not inCombat and performanceState.inCombat then
         performanceState.inCombat = false
+        if performanceState.displayMode == "paused" and not performanceState.isPaused then
+            performanceState.displayMode = "full"
+            MyLoggerWindow:UpdateDisplayMode()
+        end
     end
 end
 
@@ -208,7 +222,7 @@ function MyLoggerWindow:CreateWindow()
 end
 
 function MyLoggerWindow:CreateScrollArea()
-    -- Scroll frame for logs
+    -- Main scroll frame for full display mode
     logScrollFrame = CreateFrame("ScrollFrame", nil, logWindow, "UIPanelScrollFrameTemplate")
     logScrollFrame:SetPoint("TOPLEFT", logWindow, "TOPLEFT", 15, -65)
     logScrollFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 35)
@@ -230,7 +244,7 @@ function MyLoggerWindow:CreateScrollArea()
     logScrollFrame:SetBackdropColor(0, 0, 0, 0.8)
     logScrollFrame:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
     
-    -- Create EditBox for selectable text
+    -- Create EditBox for full mode (selectable text)
     logContentFrame = CreateFrame("EditBox", nil, logScrollFrame)
     logContentFrame:SetMultiLine(true)
     logContentFrame:SetAutoFocus(false)
@@ -247,9 +261,66 @@ function MyLoggerWindow:CreateScrollArea()
     
     logScrollFrame:SetScrollChild(logContentFrame)
     
+    -- Create lightweight FontString for combat mode (no scrolling, no selection)
+    logLightweightFrame = CreateFrame("Frame", nil, logWindow)
+    logLightweightFrame:SetPoint("TOPLEFT", logWindow, "TOPLEFT", 15, -65)
+    logLightweightFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 35)
+    logLightweightFrame:SetBackdrop({
+        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+        tile = true,
+        tileSize = 8,
+        edgeSize = 8,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    logLightweightFrame:SetBackdropColor(0, 0, 0, 0.8)
+    logLightweightFrame:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+    logLightweightFrame:Hide() -- Start hidden
+    
+    local lightweightText = logLightweightFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    lightweightText:SetPoint("TOPLEFT", logLightweightFrame, "TOPLEFT", 5, -5)
+    lightweightText:SetPoint("BOTTOMRIGHT", logLightweightFrame, "BOTTOMRIGHT", -5, 5)
+    lightweightText:SetJustifyH("LEFT")
+    lightweightText:SetJustifyV("TOP")
+    logLightweightFrame.text = lightweightText
+    
+    -- Create status frame for paused/combat mode
+    logStatusFrame = CreateFrame("Frame", nil, logWindow)
+    logStatusFrame:SetPoint("TOPLEFT", logWindow, "TOPLEFT", 15, -65)
+    logStatusFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 35)
+    logStatusFrame:SetBackdrop({
+        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+        tile = true,
+        tileSize = 8,
+        edgeSize = 8,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    logStatusFrame:SetBackdropColor(0, 0, 0, 0.9)
+    logStatusFrame:SetBackdropBorderColor(0.8, 0.8, 0, 1) -- Yellow border for attention
+    logStatusFrame:Hide() -- Start hidden
+    
+    local statusText = logStatusFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    statusText:SetPoint("CENTER", logStatusFrame, "CENTER", 0, 20)
+    statusText:SetTextColor(1, 1, 0) -- Yellow text
+    logStatusFrame.statusText = statusText
+    
+    local counterText = logStatusFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    counterText:SetPoint("CENTER", logStatusFrame, "CENTER", 0, -10)
+    counterText:SetTextColor(0.8, 0.8, 0.8)
+    logStatusFrame.counterText = counterText
+    
+    local instructionText = logStatusFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    instructionText:SetPoint("CENTER", logStatusFrame, "CENTER", 0, -40)
+    instructionText:SetTextColor(0.6, 0.6, 0.6)
+    instructionText:SetText("Click 'Resume' or 'Refresh Now' to see messages")
+    logStatusFrame.instructionText = instructionText
+    
     -- Store references on the window for later access
     logWindow.scrollFrame = logScrollFrame
     logWindow.contentFrame = logContentFrame
+    logWindow.lightweightFrame = logLightweightFrame
+    logWindow.statusFrame = logStatusFrame
     
     -- Initialize log entries array and load persistent logs
     logEntries = {}
@@ -303,10 +374,34 @@ function MyLoggerWindow:CreateFilterButtons()
     
     logWindow.followCheckbox = followCheckbox
     
+    -- Add Pause/Resume button (manual control)
+    local pauseResumeButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
+    pauseResumeButton:SetSize(70, 22)
+    pauseResumeButton:SetPoint("TOPRIGHT", logWindow, "TOPRIGHT", -10, -35)
+    pauseResumeButton:SetText("Pause")
+    pauseResumeButton:SetNormalFontObject("GameFontNormalSmall")
+    
+    pauseResumeButton:SetScript("OnClick", function()
+        MyLoggerWindow:TogglePause()
+    end)
+    logWindow.pauseResumeButton = pauseResumeButton
+    
+    -- Add Refresh Now button (process queued messages)
+    local refreshNowButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
+    refreshNowButton:SetSize(80, 22)
+    refreshNowButton:SetPoint("TOPRIGHT", pauseResumeButton, "TOPLEFT", -3, 0)
+    refreshNowButton:SetText("Refresh Now")
+    refreshNowButton:SetNormalFontObject("GameFontNormalSmall")
+    
+    refreshNowButton:SetScript("OnClick", function()
+        MyLoggerWindow:ProcessQueuedMessages()
+    end)
+    logWindow.refreshNowButton = refreshNowButton
+    
     -- Add Clear All button (permanent data deletion)
     local clearAllButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
     clearAllButton:SetSize(70, 22)
-    clearAllButton:SetPoint("TOPRIGHT", logWindow, "TOPRIGHT", -10, -35)
+    clearAllButton:SetPoint("TOPRIGHT", refreshNowButton, "TOPLEFT", -3, 0)
     clearAllButton:SetText("Clear All")
     clearAllButton:SetNormalFontObject("GameFontNormalSmall")
     
@@ -431,9 +526,6 @@ function MyLoggerWindow:AddLogEntry(level, message, timestamp)
     -- Update combat state
     UpdateCombatState()
     
-    -- Track recent entry times for busy period detection
-    table.insert(performanceState.recentEntryTimes, currentTime)
-    
     local entry = {
         level = level,
         message = message,
@@ -445,24 +537,38 @@ function MyLoggerWindow:AddLogEntry(level, message, timestamp)
         )
     }
     
-    -- Check if we're in a busy period or combat
-    local isBusy = IsBusyPeriod()
-    performanceState.isBusyPeriod = isBusy
-    
-    -- Always use throttled processing if window is visible and we're busy OR in combat
-    if (isBusy or performanceState.inCombat) and logWindow and logWindow:IsVisible() then
-        -- During busy periods or combat, queue entries for batch processing
-        table.insert(performanceState.pendingEntries, entry)
+    -- Handle different modes
+    if performanceState.displayMode == "paused" or performanceState.isPaused then
+        -- MODE: Memory-only during combat or manual pause
+        table.insert(performanceState.combatBuffer, entry)
+        performanceState.newMessageCount = performanceState.newMessageCount + 1
         
-        -- Drop oldest pending entries if queue gets too long
-        if #performanceState.pendingEntries > PERFORMANCE_CONFIG.MAX_PENDING_ENTRIES then
-            table.remove(performanceState.pendingEntries, 1)
+        -- Prevent memory bloat during long combat
+        if #performanceState.combatBuffer > PERFORMANCE_CONFIG.MAX_COMBAT_BUFFER then
+            table.remove(performanceState.combatBuffer, 1)
         end
         
-        -- Schedule a throttled refresh
-        ScheduleThrottledRefresh()
+        -- Update status display if window is visible
+        if logWindow and logWindow:IsVisible() then
+            self:UpdateStatusDisplay()
+        end
+        
+    elseif performanceState.displayMode == "lightweight" then
+        -- MODE: Lightweight display (FontString only, no virtual scrolling)
+        table.insert(logEntries, entry)
+        
+        -- Keep only last 100 entries for lightweight mode
+        if #logEntries > 100 then
+            table.remove(logEntries, 1)
+        end
+        
+        -- Update lightweight display if window is visible
+        if logWindow and logWindow:IsVisible() then
+            self:UpdateLightweightDisplay()
+        end
+        
     else
-        -- Normal processing for non-busy, non-combat periods
+        -- MODE: Full display with virtual scrolling
         table.insert(logEntries, entry)
         
         -- Keep only last 500 entries to prevent memory issues
@@ -470,9 +576,16 @@ function MyLoggerWindow:AddLogEntry(level, message, timestamp)
             table.remove(logEntries, 1)
         end
         
-        -- Immediate refresh if window exists and is visible (but not busy or in combat)
+        -- Normal refresh if window exists and is visible
         if logWindow and logWindow:IsVisible() then
-            self:RefreshLogs()
+            -- Use throttled refresh for busy periods only
+            local isBusy = IsBusyPeriod()
+            if isBusy then
+                table.insert(performanceState.pendingEntries, entry)
+                ScheduleThrottledRefresh()
+            else
+                self:RefreshLogs()
+            end
         end
     end
 end
@@ -633,10 +746,10 @@ function MyLoggerWindow:Show()
     if not logWindow.virtualScroll and logWindow.scrollFrame and logWindow.contentFrame then
         logWindow.virtualScroll = addon.VirtualScrollMixin:new()
         logWindow.virtualScroll:Initialize(logWindow, logWindow.scrollFrame, logWindow.contentFrame, {
-            LINES_PER_CHUNK = 25,         -- Even smaller chunks for combat logs
-            MIN_LINES_FOR_VIRTUAL = 50,   -- Very low threshold for immediate virtualization
-            TIMER_INTERVAL = 1.0,         -- Much slower scroll monitoring during combat
-            BUFFER_CHUNKS = 0             -- No buffer chunks for maximum performance
+            LINES_PER_CHUNK = 100,        -- Reasonable chunk size for normal operation
+            MIN_LINES_FOR_VIRTUAL = 200,  -- Standard threshold
+            TIMER_INTERVAL = 0.5,         -- Normal scroll monitoring
+            BUFFER_CHUNKS = 1             -- Standard buffer
         })
     end
     
@@ -645,8 +758,16 @@ function MyLoggerWindow:Show()
         self:LoadExistingLogs()
     end
     
+    -- Initialize display mode based on current state
+    UpdateCombatState()
+    if performanceState.inCombat and PERFORMANCE_CONFIG.COMBAT_MEMORY_ONLY and not performanceState.isPaused then
+        performanceState.displayMode = "paused"
+    else
+        performanceState.displayMode = "full"
+    end
+    
     logWindow:Show()
-    self:RefreshLogs()
+    self:UpdateDisplayMode()
 end
 
 function MyLoggerWindow:Hide()
@@ -676,14 +797,153 @@ function MyLoggerWindow:IsVisible()
     return logWindow and logWindow:IsVisible()
 end
 
+-- Update display mode and show/hide appropriate frames
+function MyLoggerWindow:UpdateDisplayMode()
+    if not logWindow then return end
+    
+    -- Hide all display frames first
+    logWindow.scrollFrame:Hide()
+    logWindow.lightweightFrame:Hide()
+    logWindow.statusFrame:Hide()
+    
+    -- Show appropriate frame based on display mode
+    if performanceState.displayMode == "paused" then
+        logWindow.statusFrame:Show()
+        self:UpdateStatusDisplay()
+    elseif performanceState.displayMode == "lightweight" then
+        logWindow.lightweightFrame:Show()
+        self:UpdateLightweightDisplay()
+    else -- "full"
+        logWindow.scrollFrame:Show()
+        self:RefreshLogs()
+    end
+    
+    -- Update button states
+    if logWindow.pauseResumeButton then
+        if performanceState.isPaused or performanceState.displayMode == "paused" then
+            logWindow.pauseResumeButton:SetText("Resume")
+        else
+            logWindow.pauseResumeButton:SetText("Pause")
+        end
+    end
+end
+
+-- Update status display during paused/combat mode
+function MyLoggerWindow:UpdateStatusDisplay()
+    if not logWindow or not logWindow.statusFrame then return end
+    
+    local statusText = performanceState.inCombat and "COMBAT MODE - Logging Paused" or "LOGGING PAUSED"
+    logWindow.statusFrame.statusText:SetText(statusText)
+    
+    local countText = string.format("%d new messages buffered", performanceState.newMessageCount)
+    logWindow.statusFrame.counterText:SetText(countText)
+end
+
+-- Update lightweight display (FontString only)
+function MyLoggerWindow:UpdateLightweightDisplay()
+    if not logWindow or not logWindow.lightweightFrame then return end
+    
+    -- Show only last 20 lines in lightweight mode
+    local recentEntries = {}
+    local startIndex = math.max(1, #logEntries - 19)
+    
+    for i = startIndex, #logEntries do
+        local entry = logEntries[i]
+        if entry and self:PassesFilter(entry) then
+            local color = addon.MyLogger.LEVEL_COLORS[entry.level] or ""
+            table.insert(recentEntries, color .. entry.formatted .. "|r")
+        end
+    end
+    
+    local content = table.concat(recentEntries, "\n")
+    if #recentEntries == 0 then
+        content = "|cffccccccNo recent messages|r"
+    end
+    
+    logWindow.lightweightFrame.text:SetText(content)
+end
+
+-- Manual pause/resume toggle
+function MyLoggerWindow:TogglePause()
+    performanceState.isPaused = not performanceState.isPaused
+    
+    if performanceState.isPaused then
+        performanceState.displayMode = "paused"
+    else
+        -- Resume to appropriate mode based on combat state
+        if performanceState.inCombat and PERFORMANCE_CONFIG.COMBAT_MEMORY_ONLY then
+            performanceState.displayMode = "paused"
+        else
+            performanceState.displayMode = "full"
+        end
+    end
+    
+    self:UpdateDisplayMode()
+end
+
+-- Process queued messages manually
+function MyLoggerWindow:ProcessQueuedMessages()
+    -- Process combat buffer
+    if #performanceState.combatBuffer > 0 then
+        for _, entry in ipairs(performanceState.combatBuffer) do
+            table.insert(logEntries, entry)
+        end
+        
+        -- Clear combat buffer
+        performanceState.combatBuffer = {}
+        performanceState.newMessageCount = 0
+        
+        -- Trim log entries to prevent memory bloat
+        if #logEntries > 500 then
+            local removeCount = #logEntries - 500
+            for i = 1, removeCount do
+                table.remove(logEntries, 1)
+            end
+        end
+    end
+    
+    -- Process pending entries
+    ProcessPendingEntries()
+    
+    -- Switch to full display mode and refresh
+    if not performanceState.isPaused then
+        performanceState.displayMode = "full"
+        self:UpdateDisplayMode()
+    end
+end
+
+-- Check if entry passes current filter
+function MyLoggerWindow:PassesFilter(entry)
+    if currentFilter == "ALL" then
+        return true
+    elseif currentFilter == "PANIC" and entry.level == 1 then
+        return true
+    elseif currentFilter == "ERROR" and entry.level == 2 then
+        return true
+    elseif currentFilter == "WARN" and entry.level == 3 then
+        return true
+    elseif currentFilter == "INFO" and entry.level == 4 then
+        return true
+    elseif currentFilter == "DEBUG" and entry.level == 5 then
+        return true
+    elseif currentFilter == "TRACE" and entry.level == 6 then
+        return true
+    end
+    return false
+end
+
 -- Get performance statistics (debug)
 function MyLoggerWindow:GetPerformanceStats()
     UpdateCombatState()
     return {
         isBusyPeriod = performanceState.isBusyPeriod,
         inCombat = performanceState.inCombat,
+        isPaused = performanceState.isPaused,
+        displayMode = performanceState.displayMode,
         combatDuration = performanceState.inCombat and (GetTime() - performanceState.combatStartTime) or 0,
         pendingEntries = #performanceState.pendingEntries,
+        combatBufferSize = #performanceState.combatBuffer,
+        newMessageCount = performanceState.newMessageCount,
         recentEntryCount = #performanceState.recentEntryTimes,
         refreshTimerActive = performanceState.refreshTimer ~= nil,
         totalLogEntries = #logEntries,
@@ -703,9 +963,13 @@ function MyLoggerWindow:ClearView()
     -- Clear performance state
     performanceState.pendingEntries = {}
     performanceState.recentEntryTimes = {}
+    performanceState.combatBuffer = {}
+    performanceState.newMessageCount = 0
     performanceState.isBusyPeriod = false
     performanceState.inCombat = false
     performanceState.combatStartTime = 0
+    performanceState.isPaused = false
+    performanceState.displayMode = "full"
     if performanceState.refreshTimer then
         performanceState.refreshTimer:Cancel()
         performanceState.refreshTimer = nil
@@ -738,9 +1002,13 @@ function MyLoggerWindow:ClearAllLogs()
     -- Clear performance state
     performanceState.pendingEntries = {}
     performanceState.recentEntryTimes = {}
+    performanceState.combatBuffer = {}
+    performanceState.newMessageCount = 0
     performanceState.isBusyPeriod = false
     performanceState.inCombat = false
     performanceState.combatStartTime = 0
+    performanceState.isPaused = false
+    performanceState.displayMode = "full"
     if performanceState.refreshTimer then
         performanceState.refreshTimer:Cancel()
         performanceState.refreshTimer = nil
