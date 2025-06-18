@@ -205,8 +205,8 @@ function SessionBrowser:CreateSessionViewer()
     local formatDropdown = CreateFrame("Frame", nil, toolbar, "UIDropDownMenuTemplate")
     formatDropdown:SetPoint("LEFT", toolbar, "LEFT", 0, 0)
     UIDropDownMenu_SetWidth(formatDropdown, 120)
-    UIDropDownMenu_SetText(formatDropdown, "Raw")
-    UIDropDownMenu_SetSelectedValue(formatDropdown, "raw")
+    UIDropDownMenu_SetText(formatDropdown, "Text")
+    UIDropDownMenu_SetSelectedValue(formatDropdown, "text")
     
     UIDropDownMenu_Initialize(formatDropdown, function(self, level)
         local formats = {
@@ -222,6 +222,7 @@ function SessionBrowser:CreateSessionViewer()
             info.func = function()
                 UIDropDownMenu_SetSelectedValue(formatDropdown, format.id)
                 UIDropDownMenu_SetText(formatDropdown, format.name)
+                addon:Debug("Format changed to: %s", format.id)
                 SessionBrowser:RefreshViewerContent()
             end
             UIDropDownMenu_AddButton(info, level)
@@ -295,13 +296,34 @@ function SessionBrowser:CreateSessionViewer()
         end
     end)
     
-    -- Set up scroll event monitoring for virtual scrolling
-    scroll:SetScript("OnVerticalScroll", function(self, offset)
-        SessionBrowser:OnScrollChanged(offset)
+    -- Set up scroll monitoring using timer (more reliable than events)
+    local scrollTimer = nil
+    local lastScrollOffset = 0
+    
+    local function checkScrollPosition()
+        if viewerFrame and viewerFrame:IsShown() and viewerFrame.currentSession then
+            local currentOffset = scroll:GetVerticalScroll()
+            if math.abs(currentOffset - lastScrollOffset) > 10 then -- Only update if significant change
+                lastScrollOffset = currentOffset
+                SessionBrowser:OnScrollChanged(currentOffset)
+            end
+        end
+    end
+    
+    -- Start scroll monitoring when frame is shown
+    frame:HookScript("OnShow", function()
+        if scrollTimer then
+            scrollTimer:Cancel()
+        end
+        scrollTimer = C_Timer.NewTicker(0.1, checkScrollPosition) -- Check every 100ms
     end)
     
-    scroll:SetScript("OnScrollRangeChanged", function(self, xrange, yrange)
-        SessionBrowser:OnScrollRangeChanged(yrange)
+    -- Stop monitoring when hidden
+    frame:HookScript("OnHide", function()
+        if scrollTimer then
+            scrollTimer:Cancel()
+            scrollTimer = nil
+        end
     end)
     
     scroll:SetScrollChild(editbox)
@@ -558,6 +580,15 @@ function SessionBrowser:ViewSelectedSession()
     -- Initialize virtual scrolling for new session
     viewerFrame.currentSession = fullSession
     
+    -- Reset format dropdown to default (text format for virtual scrolling)
+    UIDropDownMenu_SetSelectedValue(viewerFrame.formatDropdown, "text")
+    UIDropDownMenu_SetText(viewerFrame.formatDropdown, "Text")
+    
+    -- Reset scroll position to top
+    if viewerFrame.scrollFrame then
+        viewerFrame.scrollFrame:SetVerticalScroll(0)
+    end
+    
     -- Generate session content using appropriate method
     self:RefreshViewerContent()
     
@@ -710,22 +741,33 @@ function SessionBrowser:OnScrollChanged(offset)
     local session = viewerFrame.currentSession
     local totalEvents = session.eventCount or (session.events and #session.events or 0)
     
-    -- Only use virtual scrolling for large sessions
-    if totalEvents < CONFIG.MIN_EVENTS_FOR_VIRTUAL then
+    -- Only use virtual scrolling for large sessions in text format
+    local selectedFormat = UIDropDownMenu_GetSelectedValue(viewerFrame.formatDropdown) or "raw"
+    if totalEvents < CONFIG.MIN_EVENTS_FOR_VIRTUAL or selectedFormat ~= "text" then
         return
     end
     
     -- Calculate which chunk should be visible based on scroll position
     local scrollFrame = viewerFrame.scrollFrame
     if not scrollFrame then
+        addon:Debug("No scroll frame available")
         return
     end
     
     local scrollHeight = scrollFrame:GetVerticalScrollRange()
     local scrollPercent = scrollHeight > 0 and (offset / scrollHeight) or 0
     
-    local targetChunk = math.floor(scrollPercent * viewerFrame.virtualScroll.totalChunks) + 1
-    targetChunk = math.max(1, math.min(targetChunk, viewerFrame.virtualScroll.totalChunks))
+    local vs = viewerFrame.virtualScroll
+    if not vs or vs.totalChunks == 0 then
+        addon:Debug("Virtual scroll not initialized")
+        return
+    end
+    
+    local targetChunk = math.floor(scrollPercent * vs.totalChunks) + 1
+    targetChunk = math.max(1, math.min(targetChunk, vs.totalChunks))
+    
+    addon:Debug("Scroll changed: offset=%.1f, height=%.1f, percent=%.2f, target chunk=%d/%d", 
+        offset, scrollHeight, scrollPercent, targetChunk, vs.totalChunks)
     
     self:EnsureChunkLoaded(targetChunk)
 end
@@ -851,21 +893,28 @@ function SessionBrowser:RefreshViewerContent()
     
     local session = viewerFrame.currentSession
     local totalEvents = session.eventCount or (session.events and #session.events or 0)
+    local selectedFormat = UIDropDownMenu_GetSelectedValue(viewerFrame.formatDropdown) or "raw"
     
-    -- Use virtual scrolling for large sessions
-    if totalEvents >= CONFIG.MIN_EVENTS_FOR_VIRTUAL then
+    -- Use virtual scrolling for large sessions (only in Text format for now)
+    if totalEvents >= CONFIG.MIN_EVENTS_FOR_VIRTUAL and selectedFormat == "text" then
         self:InitializeVirtualScrolling(session)
         self:EnsureChunkLoaded(1) -- Load initial chunk
     else
-        -- Use traditional full content for smaller sessions
-        local selectedFormat = UIDropDownMenu_GetSelectedValue(viewerFrame.formatDropdown) or "raw"
+        -- Use traditional full content for smaller sessions or non-text formats
         local content = self:GenerateViewerContent(session, selectedFormat)
         
         viewerEditBox:SetText(content)
         viewerFrame.lastContent = content
+        
+        -- Reset virtual scroll state
+        if viewerFrame.virtualScroll then
+            viewerFrame.virtualScroll.loadedChunks = {}
+            viewerFrame.virtualScroll.totalChunks = 0
+        end
     end
     
-    addon:Debug("Refreshed viewer content: %d events, virtual=%s", totalEvents, tostring(totalEvents >= CONFIG.MIN_EVENTS_FOR_VIRTUAL))
+    addon:Debug("Refreshed viewer content: %d events, format=%s, virtual=%s", 
+        totalEvents, selectedFormat, tostring(totalEvents >= CONFIG.MIN_EVENTS_FOR_VIRTUAL and selectedFormat == "text"))
 end
 
 -- Initialize virtual scrolling for a session

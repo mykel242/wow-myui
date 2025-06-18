@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-performance-optimization-1c71b4e"
-addon.BUILD_DATE = "2025-06-18-11:48"
+addon.VERSION = "feature-performance-optimization-1a5b1e9"
+addon.BUILD_DATE = "2025-06-18-11:59"
 
 -- Legacy debug flags removed - now using MyLogger system
 
