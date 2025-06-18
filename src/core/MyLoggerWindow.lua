@@ -225,7 +225,7 @@ function MyLoggerWindow:CreateScrollArea()
     -- Main scroll frame for full display mode
     logScrollFrame = CreateFrame("ScrollFrame", nil, logWindow, "UIPanelScrollFrameTemplate")
     logScrollFrame:SetPoint("TOPLEFT", logWindow, "TOPLEFT", 15, -65)
-    logScrollFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 35)
+    logScrollFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 45) -- More space for footer
     
     -- Add backdrop mixin for newer WoW versions
     if BackdropTemplateMixin then
@@ -264,7 +264,7 @@ function MyLoggerWindow:CreateScrollArea()
     -- Create lightweight FontString for combat mode (no scrolling, no selection)
     logLightweightFrame = CreateFrame("Frame", nil, logWindow)
     logLightweightFrame:SetPoint("TOPLEFT", logWindow, "TOPLEFT", 15, -65)
-    logLightweightFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 35)
+    logLightweightFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 45) -- More space for footer
     
     -- Add backdrop mixin for newer WoW versions
     if BackdropTemplateMixin then
@@ -293,7 +293,7 @@ function MyLoggerWindow:CreateScrollArea()
     -- Create status frame for paused/combat mode
     logStatusFrame = CreateFrame("Frame", nil, logWindow)
     logStatusFrame:SetPoint("TOPLEFT", logWindow, "TOPLEFT", 15, -65)
-    logStatusFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 35)
+    logStatusFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -35, 45) -- More space for footer
     
     -- Add backdrop mixin for newer WoW versions
     if BackdropTemplateMixin then
@@ -325,7 +325,7 @@ function MyLoggerWindow:CreateScrollArea()
     local instructionText = logStatusFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     instructionText:SetPoint("CENTER", logStatusFrame, "CENTER", 0, -40)
     instructionText:SetTextColor(0.6, 0.6, 0.6)
-    instructionText:SetText("Click 'Resume' or 'Refresh Now' to see messages")
+    instructionText:SetText("Use 'Resume' or 'Refresh Now' buttons below to see messages")
     logStatusFrame.instructionText = instructionText
     
     -- Store references on the window for later access
@@ -365,55 +365,10 @@ function MyLoggerWindow:CreateFilterButtons()
     
     logWindow.filterDropdown = filterDropdown
     
-    -- Add Follow Messages checkbox (positioned better to avoid overlap)
-    local followCheckbox = CreateFrame("CheckButton", nil, logWindow, "UICheckButtonTemplate")
-    followCheckbox:SetSize(18, 18)
-    followCheckbox:SetPoint("LEFT", filterDropdown, "RIGHT", 20, 0)
-    followCheckbox:SetChecked(true)  -- Default to following
-    followCheckbox.text = followCheckbox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    followCheckbox.text:SetPoint("LEFT", followCheckbox, "RIGHT", 3, 0)
-    followCheckbox.text:SetText("Follow")
-    followCheckbox.text:SetTextColor(1, 1, 1)
-    
-    followCheckbox:SetScript("OnClick", function(self)
-        local isChecked = self:GetChecked()
-        if isChecked and logContentFrame then
-            -- Auto-scroll to bottom when enabled
-            logContentFrame:SetCursorPosition(string.len(logContentFrame:GetText() or ""))
-        end
-        addon:Debug("Follow messages: %s", isChecked and "enabled" or "disabled")
-    end)
-    
-    logWindow.followCheckbox = followCheckbox
-    
-    -- Add Pause/Resume button (manual control)
-    local pauseResumeButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
-    pauseResumeButton:SetSize(70, 22)
-    pauseResumeButton:SetPoint("TOPRIGHT", logWindow, "TOPRIGHT", -10, -35)
-    pauseResumeButton:SetText("Pause")
-    pauseResumeButton:SetNormalFontObject("GameFontNormalSmall")
-    
-    pauseResumeButton:SetScript("OnClick", function()
-        MyLoggerWindow:TogglePause()
-    end)
-    logWindow.pauseResumeButton = pauseResumeButton
-    
-    -- Add Refresh Now button (process queued messages)
-    local refreshNowButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
-    refreshNowButton:SetSize(80, 22)
-    refreshNowButton:SetPoint("TOPRIGHT", pauseResumeButton, "TOPLEFT", -3, 0)
-    refreshNowButton:SetText("Refresh Now")
-    refreshNowButton:SetNormalFontObject("GameFontNormalSmall")
-    
-    refreshNowButton:SetScript("OnClick", function()
-        MyLoggerWindow:ProcessQueuedMessages()
-    end)
-    logWindow.refreshNowButton = refreshNowButton
-    
-    -- Add Clear All button (permanent data deletion)
+    -- Add Clear All button (permanent data deletion) - moved to top right
     local clearAllButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
     clearAllButton:SetSize(70, 22)
-    clearAllButton:SetPoint("TOPRIGHT", refreshNowButton, "TOPLEFT", -3, 0)
+    clearAllButton:SetPoint("TOPRIGHT", logWindow, "TOPRIGHT", -10, -35)
     clearAllButton:SetText("Clear All")
     clearAllButton:SetNormalFontObject("GameFontNormalSmall")
     
@@ -498,9 +453,60 @@ function MyLoggerWindow:LoadPersistentLogs()
 end
 
 function MyLoggerWindow:CreateCopyArea()
-    -- Copy instructions at bottom
-    local instructions = logWindow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    instructions:SetPoint("BOTTOM", logWindow, "BOTTOM", 0, 15)
+    -- Create footer frame for controls
+    local footerFrame = CreateFrame("Frame", nil, logWindow)
+    footerFrame:SetPoint("BOTTOMLEFT", logWindow, "BOTTOMLEFT", 10, 5)
+    footerFrame:SetPoint("BOTTOMRIGHT", logWindow, "BOTTOMRIGHT", -10, 5)
+    footerFrame:SetHeight(30)
+    
+    -- Add Follow Messages checkbox (footer left side)
+    local followCheckbox = CreateFrame("CheckButton", nil, footerFrame, "UICheckButtonTemplate")
+    followCheckbox:SetSize(18, 18)
+    followCheckbox:SetPoint("LEFT", footerFrame, "LEFT", 0, 0)
+    followCheckbox:SetChecked(true)  -- Default to following
+    followCheckbox.text = followCheckbox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    followCheckbox.text:SetPoint("LEFT", followCheckbox, "RIGHT", 3, 0)
+    followCheckbox.text:SetText("Follow")
+    followCheckbox.text:SetTextColor(1, 1, 1)
+    
+    followCheckbox:SetScript("OnClick", function(self)
+        local isChecked = self:GetChecked()
+        if isChecked and logContentFrame then
+            -- Auto-scroll to bottom when enabled
+            logContentFrame:SetCursorPosition(string.len(logContentFrame:GetText() or ""))
+        end
+        addon:Debug("Follow messages: %s", isChecked and "enabled" or "disabled")
+    end)
+    
+    logWindow.followCheckbox = followCheckbox
+    
+    -- Add Pause/Resume button (footer center-left)
+    local pauseResumeButton = CreateFrame("Button", nil, footerFrame, "GameMenuButtonTemplate")
+    pauseResumeButton:SetSize(70, 22)
+    pauseResumeButton:SetPoint("LEFT", followCheckbox.text, "RIGHT", 20, 0)
+    pauseResumeButton:SetText("Pause")
+    pauseResumeButton:SetNormalFontObject("GameFontNormalSmall")
+    
+    pauseResumeButton:SetScript("OnClick", function()
+        MyLoggerWindow:TogglePause()
+    end)
+    logWindow.pauseResumeButton = pauseResumeButton
+    
+    -- Add Refresh Now button (footer center-right)
+    local refreshNowButton = CreateFrame("Button", nil, footerFrame, "GameMenuButtonTemplate")
+    refreshNowButton:SetSize(80, 22)
+    refreshNowButton:SetPoint("LEFT", pauseResumeButton, "RIGHT", 5, 0)
+    refreshNowButton:SetText("Refresh Now")
+    refreshNowButton:SetNormalFontObject("GameFontNormalSmall")
+    
+    refreshNowButton:SetScript("OnClick", function()
+        MyLoggerWindow:ProcessQueuedMessages()
+    end)
+    logWindow.refreshNowButton = refreshNowButton
+    
+    -- Copy instructions at bottom right
+    local instructions = footerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    instructions:SetPoint("RIGHT", footerFrame, "RIGHT", 0, 0)
     instructions:SetText("Select text and press Ctrl+C to copy")
     instructions:SetTextColor(0.7, 0.7, 0.7)
 end

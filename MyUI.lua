@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-generalized-virtual-scrolling-68f03a5"
-addon.BUILD_DATE = "2025-06-18-17:47"
+addon.VERSION = "feature-generalized-virtual-scrolling-99df214"
+addon.BUILD_DATE = "2025-06-18-17:51"
 
 -- Legacy debug flags removed - now using MyLogger system
 
