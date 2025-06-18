@@ -289,9 +289,14 @@ function SessionBrowser:CreateSessionViewer()
         end
     end)
     
-    -- Virtual scrolling is now handled by the mixin
-    
     scroll:SetScrollChild(editbox)
+    
+    -- Initialize virtual scrolling mixin AFTER creating scroll and editbox
+    frame.virtualScroll = addon.VirtualScrollMixin:new()
+    frame.virtualScroll:Initialize(frame, scroll, editbox, {
+        LINES_PER_CHUNK = 500,
+        MIN_LINES_FOR_VIRTUAL = 1000
+    })
     
     viewerFrame = frame
     viewerEditBox = editbox

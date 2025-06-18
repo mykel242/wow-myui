@@ -38,7 +38,9 @@ end
 -- config: Optional config overrides
 function VirtualScrollMixin:Initialize(frame, scrollFrame, editBox, config)
     if not frame or not scrollFrame or not editBox then
-        error("VirtualScrollMixin requires frame, scrollFrame, and editBox")
+        local errorMsg = string.format("VirtualScrollMixin requires frame, scrollFrame, and editBox. Got: frame=%s, scrollFrame=%s, editBox=%s",
+            tostring(frame), tostring(scrollFrame), tostring(editBox))
+        error(errorMsg)
     end
     
     -- Store references

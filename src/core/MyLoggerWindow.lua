@@ -139,6 +139,14 @@ function MyLoggerWindow:CreateScrollArea()
     
     logScrollFrame:SetScrollChild(logContentFrame)
     
+    -- Initialize virtual scrolling mixin
+    logWindow.virtualScroll = addon.VirtualScrollMixin:new()
+    logWindow.virtualScroll:Initialize(logWindow, logScrollFrame, logContentFrame, {
+        LINES_PER_CHUNK = 100,        -- Smaller chunks for logs
+        MIN_LINES_FOR_VIRTUAL = 200,  -- Lower threshold for logs
+        TIMER_INTERVAL = 0.2          -- Slower updates for logs
+    })
+    
     -- Initialize log entries array and load persistent logs
     logEntries = {}
     self:LoadPersistentLogs()
