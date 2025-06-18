@@ -2,9 +2,10 @@
 -- Dedicated log viewer window for MyLogger
 --
 -- PERFORMANCE OPTIMIZATIONS:
--- - Detects "busy periods" (5+ log entries per second) and switches to batch processing
--- - During busy periods, entries are queued and processed in batches every 250ms
--- - Virtual scrolling optimized for real-time logs (50-line chunks, low virtualization threshold)
+-- - Detects "busy periods" (3+ log entries per second) and switches to batch processing
+-- - Combat-aware throttling: 1-second refresh delays during combat vs 500ms during busy periods
+-- - Combat batch processing: 50 entries per batch during combat vs 20 during busy periods
+-- - Virtual scrolling optimized for combat logs (25-line chunks, 50-entry virtualization threshold)
 -- - Automatic timer cleanup when window is hidden to prevent background processing
 -- - Queue size limits prevent memory bloat during extended busy periods
 
@@ -45,10 +46,12 @@ local MAX_VISIBLE_LOGS = math.floor((WINDOW_HEIGHT - 100) / LOG_ENTRY_HEIGHT)
 
 -- Performance configuration for busy logging periods
 local PERFORMANCE_CONFIG = {
-    REFRESH_THROTTLE_MS = 250,     -- Only refresh every 250ms max during busy periods
-    BATCH_SIZE = 10,               -- Process up to 10 entries per batch
-    MAX_PENDING_ENTRIES = 100,     -- Maximum entries to queue before dropping
-    BUSY_THRESHOLD = 5,            -- Consider "busy" if 5+ entries in 1 second
+    REFRESH_THROTTLE_MS = 500,     -- Only refresh every 500ms max during busy periods (increased)
+    BATCH_SIZE = 20,               -- Process up to 20 entries per batch (increased)
+    MAX_PENDING_ENTRIES = 200,     -- Maximum entries to queue before dropping (increased)
+    BUSY_THRESHOLD = 3,            -- Consider "busy" if 3+ entries in 1 second (lowered threshold)
+    COMBAT_THROTTLE_MS = 1000,     -- During combat, refresh only every 1 second
+    COMBAT_BATCH_SIZE = 50,        -- Process more entries per batch during combat
 }
 
 -- Filter types
@@ -81,12 +84,25 @@ local performanceState = {
     pendingEntries = {},
     recentEntryTimes = {},
     refreshTimer = nil,
-    isBusyPeriod = false
+    isBusyPeriod = false,
+    inCombat = false,
+    combatStartTime = 0
 }
 
 -- =============================================================================
 -- PERFORMANCE OPTIMIZATION FUNCTIONS
 -- =============================================================================
+
+-- Update combat state
+local function UpdateCombatState()
+    local inCombat = UnitAffectingCombat("player")
+    if inCombat and not performanceState.inCombat then
+        performanceState.inCombat = true
+        performanceState.combatStartTime = GetTime()
+    elseif not inCombat and performanceState.inCombat then
+        performanceState.inCombat = false
+    end
+end
 
 -- Check if we're in a busy logging period
 local function IsBusyPeriod()
@@ -113,8 +129,9 @@ local function ProcessPendingEntries()
         return
     end
     
-    -- Process up to BATCH_SIZE entries
-    local processCount = math.min(PERFORMANCE_CONFIG.BATCH_SIZE, #performanceState.pendingEntries)
+    -- Use larger batch size during combat for better performance
+    local batchSize = performanceState.inCombat and PERFORMANCE_CONFIG.COMBAT_BATCH_SIZE or PERFORMANCE_CONFIG.BATCH_SIZE
+    local processCount = math.min(batchSize, #performanceState.pendingEntries)
     
     for i = 1, processCount do
         local entry = table.remove(performanceState.pendingEntries, 1)
@@ -138,7 +155,9 @@ local function ScheduleThrottledRefresh()
         return -- Already scheduled
     end
     
-    local delay = PERFORMANCE_CONFIG.REFRESH_THROTTLE_MS / 1000
+    -- Use longer delay during combat for better performance
+    local delay = performanceState.inCombat and (PERFORMANCE_CONFIG.COMBAT_THROTTLE_MS / 1000) or (PERFORMANCE_CONFIG.REFRESH_THROTTLE_MS / 1000)
+    
     performanceState.refreshTimer = C_Timer.After(delay, function()
         performanceState.refreshTimer = nil
         if logWindow and logWindow:IsVisible() then
@@ -409,6 +428,9 @@ end
 function MyLoggerWindow:AddLogEntry(level, message, timestamp)
     local currentTime = GetTime()
     
+    -- Update combat state
+    UpdateCombatState()
+    
     -- Track recent entry times for busy period detection
     table.insert(performanceState.recentEntryTimes, currentTime)
     
@@ -423,12 +445,13 @@ function MyLoggerWindow:AddLogEntry(level, message, timestamp)
         )
     }
     
-    -- Check if we're in a busy period
+    -- Check if we're in a busy period or combat
     local isBusy = IsBusyPeriod()
     performanceState.isBusyPeriod = isBusy
     
-    if isBusy and logWindow and logWindow:IsVisible() then
-        -- During busy periods, queue entries for batch processing
+    -- Always use throttled processing if window is visible and we're busy OR in combat
+    if (isBusy or performanceState.inCombat) and logWindow and logWindow:IsVisible() then
+        -- During busy periods or combat, queue entries for batch processing
         table.insert(performanceState.pendingEntries, entry)
         
         -- Drop oldest pending entries if queue gets too long
@@ -439,7 +462,7 @@ function MyLoggerWindow:AddLogEntry(level, message, timestamp)
         -- Schedule a throttled refresh
         ScheduleThrottledRefresh()
     else
-        -- Normal processing for non-busy periods
+        -- Normal processing for non-busy, non-combat periods
         table.insert(logEntries, entry)
         
         -- Keep only last 500 entries to prevent memory issues
@@ -447,7 +470,7 @@ function MyLoggerWindow:AddLogEntry(level, message, timestamp)
             table.remove(logEntries, 1)
         end
         
-        -- Immediate refresh if window exists and is visible (but not busy)
+        -- Immediate refresh if window exists and is visible (but not busy or in combat)
         if logWindow and logWindow:IsVisible() then
             self:RefreshLogs()
         end
@@ -610,10 +633,10 @@ function MyLoggerWindow:Show()
     if not logWindow.virtualScroll and logWindow.scrollFrame and logWindow.contentFrame then
         logWindow.virtualScroll = addon.VirtualScrollMixin:new()
         logWindow.virtualScroll:Initialize(logWindow, logWindow.scrollFrame, logWindow.contentFrame, {
-            LINES_PER_CHUNK = 50,         -- Very small chunks for real-time logs
-            MIN_LINES_FOR_VIRTUAL = 100,  -- Low threshold for immediate virtualization
-            TIMER_INTERVAL = 0.5,         -- Slower scroll monitoring for logs
-            BUFFER_CHUNKS = 1             -- Minimal buffer for logs
+            LINES_PER_CHUNK = 25,         -- Even smaller chunks for combat logs
+            MIN_LINES_FOR_VIRTUAL = 50,   -- Very low threshold for immediate virtualization
+            TIMER_INTERVAL = 1.0,         -- Much slower scroll monitoring during combat
+            BUFFER_CHUNKS = 0             -- No buffer chunks for maximum performance
         })
     end
     
@@ -655,8 +678,11 @@ end
 
 -- Get performance statistics (debug)
 function MyLoggerWindow:GetPerformanceStats()
+    UpdateCombatState()
     return {
         isBusyPeriod = performanceState.isBusyPeriod,
+        inCombat = performanceState.inCombat,
+        combatDuration = performanceState.inCombat and (GetTime() - performanceState.combatStartTime) or 0,
         pendingEntries = #performanceState.pendingEntries,
         recentEntryCount = #performanceState.recentEntryTimes,
         refreshTimerActive = performanceState.refreshTimer ~= nil,
@@ -678,6 +704,8 @@ function MyLoggerWindow:ClearView()
     performanceState.pendingEntries = {}
     performanceState.recentEntryTimes = {}
     performanceState.isBusyPeriod = false
+    performanceState.inCombat = false
+    performanceState.combatStartTime = 0
     if performanceState.refreshTimer then
         performanceState.refreshTimer:Cancel()
         performanceState.refreshTimer = nil
@@ -711,6 +739,8 @@ function MyLoggerWindow:ClearAllLogs()
     performanceState.pendingEntries = {}
     performanceState.recentEntryTimes = {}
     performanceState.isBusyPeriod = false
+    performanceState.inCombat = false
+    performanceState.combatStartTime = 0
     if performanceState.refreshTimer then
         performanceState.refreshTimer:Cancel()
         performanceState.refreshTimer = nil
