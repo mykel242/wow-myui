@@ -3,7 +3,9 @@
     "allow": [
       "Bash(grep:*)",
       "Bash(git checkout:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(lua:*)",
+      "Bash(python3:*)"
     ],
     "deny": []
   }

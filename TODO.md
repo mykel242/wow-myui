@@ -1,235 +1,187 @@
-# MyUI2 Development Roadmap
+# MyUI2 Modularization TODO
 
-## Project Status: ✅ Phase 1-3 Complete
+## Overview
+Disable existing session management, DPS/HPS meters, and complex UI features to create a clean foundation for the new combat logging system. Simplify the main window to act as a launcher for new tools.
 
-**Current Achievement:** Unified Timestamp System successfully implemented across all modules for consistent combat event timing and positioning.
+## Phase 1: Disable Existing Features
 
----
+### 1. Disable Session Management & History
+**Files to modify:**
+- `MyUI.lua` - Remove session history panel, charts, and related UI
+- `src/data/SessionManager.lua` - Disable initialization and data collection
+- `src/data/EnhancedCombatLogger.lua` - Disable initialization
 
-## 🎯 **COMPLETED PHASES**
+**Actions:**
+- Comment out session-related initialization code
+- Remove session history display from main window
+- Remove performance charts
+- Keep data structures intact for future re-enable
 
-### ✅ Phase 1-3: Unified Timestamp System (COMPLETE)
-**Goal:** Single source of truth for all combat timing across modules
+### 2. Disable DPS/HPS Meters
+**Files to modify:**
+- `MyUI.lua` - Remove DPS/HPS window toggles and initialization
+- `src/ui/DPSWindow.lua` - Disable initialization
+- `src/ui/HPSWindow.lua` - Disable initialization
+- `src/ui/BaseMeterWindow.lua` - Keep for future use
+- move the code for slash commands into a separate file
 
-**Completed Tasks:**
-- [x] Update TimelineTracker to use TimestampManager exclusively
-- [x] Update EnhancedCombatLogger to use TimestampManager for all events  
-- [x] Update CombatData to delegate time queries to TimestampManager
-- [x] Clean up data structures to use only relative timestamps
-- [x] Test and validate unified timestamp system
+**Actions:**
+- Comment out meter window initialization
+- Remove meter buttons from main UI
+- Remove meter update timers
+- Preserve meter classes for future re-enable
 
-**Benefits Achieved:**
-- 🎯 Consistent positioning of death markers, cooldowns, and timeline events
-- 💾 Reduced memory usage by eliminating duplicate timestamp storage
-- 🔧 Simplified logic with single timestamp calculation method
-- ⚡ Better performance with no redundant time conversions
-- 🐛 Easier debugging with TimestampManager as single authority
+### 3. Remove Calculation Method Dropdown
+**Files to modify:**
+- `MyUI.lua` - Remove calculation dropdown from control panel
 
----
+**Actions:**
+- Remove dropdown UI components
+- Keep calculation logic intact in backend
+- Remove dropdown update functions
 
-## 🚀 **UPCOMING PHASES**
+### 4. Simplify Slash Commands
+**Current commands to disable:**
+- `/myui dps`, `/myui hps` - meter toggles
+- `/myui dpsmax`, `/myui hpsmax`, `/myui dpsreset`, `/myui hpsreset` - meter scaling
+- `/myui resetmeters`, `/myui meterinfo` - meter management
+- `/myui sessions`, `/myui list`, `/myui mark`, `/myui ids` - session management
+- `/myui scaling`, `/myui enhancedlog`, `/myui enhancedconfig` - advanced features
+- `/myui clear`, `/myui resetcombat`, `/myui memory` - data management
+- `/myui calc` - calculation methods
 
-### Phase 4: Enhanced Data Integration & Memory Optimization
-**Priority:** Medium | **Estimated Effort:** 2-3 sessions
+**Keep only:**
+- `/myui` - toggle main window
+- `/myui debug` - debug mode toggle
+- `/myui show/hide/toggle` - basic window management
 
-**Objectives:**
-- [ ] Improve timeline-enhanced data correlation
-  - Better alignment of cooldowns/deaths with timeline points
-  - Smarter event clustering for visual clarity
-  - Enhanced tooltip data integration
-- [ ] Advanced memory management
-  - Implement progressive data cleanup for old sessions
-  - Smart retention policies based on session quality
-  - Memory usage monitoring and alerts
-- [ ] Data compression optimization
-  - Compress enhanced data for long-term storage
-  - Efficient serialization for session history
-  - Reduce memory footprint of stored sessions
+### 5. Simplify Main Window
+**New simplified layout:**
+- **Header**: Title and close button
+- **Status Panel**: Simple addon status (debug on/off, version info)
+- **Tool Launcher Panel**: Buttons for new tools as they're developed
+- **Footer**: Minimal info (version, build date)
+- Use a default warcraft ui style for this window including normal size and position, close button etc. use a default strata so that the elements inherit the window's strata.
 
-**Success Criteria:**
-- Enhanced events perfectly aligned with timeline
-- Memory usage stable over extended gameplay
-- Session data loads quickly regardless of history size
+**Remove:**
+- Current combat display panel
+- Session history table and scrolling
+- Performance charts
+- Complex control panel with multiple buttons
+- Calculation method dropdown
 
----
+## Phase 2: Create New Tool Foundation
 
-### Phase 5: Performance & Scaling Optimization  
-**Priority:** High | **Estimated Effort:** 3-4 sessions
+### 1. Combat Log Viewer Button
+**Add to simplified main window:**
+- "Combat Logger" button - launches new combat logging tool
+- Initially shows placeholder/coming soon message
 
-**Objectives:**
-- [ ] Timer consolidation across modules
-  - Merge redundant update timers
-  - Implement master timer with event dispatching
-  - Reduce overall timer overhead
-- [ ] Adaptive update frequency tuning
-  - Dynamic scaling based on combat intensity
-  - Smarter out-of-combat resource management
-  - Context-aware performance modes
-- [ ] Combat log event batching
-  - Group related events for batch processing
-  - Reduce per-event processing overhead
-  - Implement event queuing for high-activity periods
-- [ ] CPU usage profiling & optimization
-  - Identify performance bottlenecks
-  - Optimize hot code paths
-  - Implement performance monitoring
+### 2. Future Tool Placeholder Buttons
+**Prepare launcher spots for:**
+- "Raw Data Viewer" button
+- "Export Tools" button
+- "Session Browser" button (when re-enabled with new data layer)
 
-**Success Criteria:**
-- <2% CPU usage during typical combat
-- No frame rate drops during intense encounters
-- Responsive UI even with complex timeline data
+### 3. New Slash Commands
+**Add minimal new commands:**
+- `/myui logger` - open combat log viewer
+- `/myui rawdata` - open raw data viewer (when implemented)
 
----
+## Phase 3: Preserve for Re-enable
 
-### Phase 6: UI/UX Enhancements
-**Priority:** Medium | **Estimated Effort:** 4-5 sessions
+### What to Keep Intact
+**Core Systems (preserve but disable initialization):**
+- `TimestampManager` - keep fully functional
+- `UnifiedCalculator` - keep calculation logic
+- `CombatData` - keep data structures
+- `CombatTracker` - keep API facade
 
-**Objectives:**
-- [ ] Advanced chart performance
-  - Virtualized rendering for large datasets
-  - Smooth scrolling and zooming
-  - Progressive detail loading
-- [ ] Real-time combat displays
-  - Live timeline updates during combat
-  - Smooth performance meter animations
-  - Responsive visual feedback
-- [ ] Interactive timeline features
-  - Timeline scrubbing functionality
-  - Zoom in/out capabilities
-  - Event filtering and highlighting
-  - Bookmark important moments
-- [ ] Enhanced visual polish
-  - Improved marker designs and colors
-  - Rich tooltips with contextual information
-  - Better visual hierarchy and readability
-  - Smooth transitions and animations
+**UI Systems (preserve classes but disable):**
+- `BaseMeterWindow` - keep for future meters
+- `DPSWindow`, `HPSWindow` - disable but preserve
+- `SessionDetailWindow`, `EnhancedSessionDetailWindow` - disable but preserve
 
-**Success Criteria:**
-- Intuitive and responsive chart interactions
-- Professional-quality visual presentation
-- Enhanced user engagement with combat data
+**Data Systems (preserve but disable):**
+- `SessionManager` - keep structures, disable collection
+- `EnhancedCombatLogger` - keep for future integration
+- `ContentDetection` - keep logic intact
 
----
+## Implementation Strategy
 
-### Phase 7: Data Quality & Reliability
-**Priority:** High | **Estimated Effort:** 2-3 sessions
+### Step 1: Comment Out Initialization
+- Wrap existing module initializations in `if false then` blocks
+- Preserve all existing code for easy re-enable
+- Add clear comments marking disabled sections
 
-**Objectives:**
-- [ ] Session validation framework
-  - Detect and flag corrupt session data
-  - Validate timestamp consistency
-  - Check data completeness and integrity
-- [ ] Error recovery systems
-  - Handle addon reloads during combat gracefully
-  - Recover from corrupted timeline data
-  - Implement fallback mechanisms
-- [ ] Data migration support
-  - Upgrade old session formats automatically
-  - Preserve historical data across updates
-  - Version compatibility management
-- [ ] Backup & export functionality
-  - Export sessions to external formats
-  - Import session data from backups
-  - Cloud sync preparation
+### Step 2: Remove UI Components
+- Remove complex panels from main window creation
+- Replace with simple launcher interface
+- Keep UI creation functions intact but not called
 
-**Success Criteria:**
-- Zero data loss during normal operation
-- Graceful handling of edge cases
-- Reliable session data across addon updates
+### Step 3: Disable Slash Commands
+- Comment out complex command handlers
+- Keep command parsing structure for easy re-add
+- Add placeholder responses for disabled commands
 
----
+### Step 4: Add New Foundation
+- Create simple launcher buttons
+- Add new slash commands for future tools
+- Prepare UI hooks for new combat logging system
 
-### Phase 8: Advanced Analytics
-**Priority:** Low | **Estimated Effort:** 5-6 sessions
+## Benefits
 
-**Objectives:**
-- [ ] Performance trend analysis
-  - Track DPS/HPS improvements over time
-  - Identify performance patterns
-  - Content-specific analysis
-- [ ] Comparative session analysis
-  - Side-by-side session comparisons
-  - Statistical significance testing
-  - Performance regression detection
-- [ ] Advanced statistical insights
-  - Predictive performance modeling
-  - Outlier detection and analysis
-  - Confidence intervals and trends
-- [ ] AI-powered recommendations
-  - Smart suggestions based on combat patterns
-  - Personalized improvement recommendations
-  - Learning from successful sessions
+### Clean Development Environment
+- No interference from existing complex systems
+- Clear separation between old and new functionality
+- Easier debugging during development
 
-**Success Criteria:**
-- Actionable insights for performance improvement
-- Meaningful long-term progression tracking
-- Intelligent recommendations for optimization
+### Easier Re-integration
+- All existing code preserved and commented
+- Clear path to re-enable features with new data layer
+- Maintains all existing configuration and saved data structures
+
+### User Experience
+- Simpler, focused interface during development
+- Clear indication of what's being rebuilt
+- Gradual feature rollout as new system develops
+
+## Result
+A streamlined addon that:
+- Shows simple launcher window with tool buttons
+- Keeps essential debug and window management commands
+- Preserves all existing code for future re-enable
+- Provides clean foundation for new combat logging system
+- Maintains user's saved settings and data
 
 ---
 
-## 🔄 **CURRENT FOCUS**
+## Core Abilities to Implement
 
-### Immediate Next Steps:
-1. **Test unified timestamp system** - Validate death markers and event positioning
-2. **Gather feedback** - Identify any issues or improvement opportunities
-3. **Prioritize next phase** based on testing results:
-   - If performance issues → **Phase 5**
-   - If data alignment issues → **Phase 4** 
-   - If UI/UX desired → **Phase 6**
+### 1. Combat Detection and Raw Logging System
+**Goal**: Create a single source of truth for combat activity analysis
 
-### Key Decisions Pending:
-- [ ] Performance optimization priority level
-- [ ] UI enhancement scope and timeline
-- [ ] Advanced analytics implementation approach
+**Features**:
+- Detect combat and create raw log of events
+- Store metadata (player, zone, participants, encounter, quality score)
+- Maintain sequence and relative timing of events
+- Non-destructive logging preserving original event data
+- Forever storage with intelligent memory management
+- Quality-based retention and cleanup
 
----
+### 2. Combat Log Viewer UI
+**Goal**: Historical session browser and raw data viewer
 
-## 📊 **Success Metrics**
+**Features**:
+- Scrollable text area showing real-time logging activity
+- Session list with metadata (date, duration, location, quality)
+- Load and view raw data for any historical session
+- Export data to external tools (JSON, CSV, etc.)
+- Delete individual sessions
+- Search and filter functionality
 
-### Technical Excellence:
-- ✅ Zero timestamp inconsistencies
-- 🎯 <2% CPU usage during combat
-- 💾 Stable memory usage over time
-- ⚡ <100ms response time for UI interactions
-
-### User Experience:
-- 🎯 Intuitive combat data visualization
-- 📈 Actionable performance insights
-- 🔍 Easy session analysis and comparison
-- 💡 Helpful recommendations for improvement
-
-### Code Quality:
-- 🧹 Clean, maintainable architecture
-- 📝 Comprehensive documentation
-- 🧪 Robust error handling
-- 🔧 Modular, extensible design
-
----
-
-## 📋 **Phase Selection Guidelines**
-
-**Choose Phase 4 if:**
-- Timeline events need better correlation
-- Memory usage concerns during long sessions
-- Enhanced data features are priority
-
-**Choose Phase 5 if:**
-- Performance/CPU usage is noticeable
-- Frame rate drops occur during combat
-- Scaling for complex encounters needed
-
-**Choose Phase 6 if:**
-- UI improvements are desired
-- Better user interaction wanted
-- Visual polish is priority
-
-**Choose Phase 7 if:**
-- Data reliability concerns exist
-- Addon stability issues encountered
-- Backup/export features needed
-
----
-
-*Last Updated: 2025-06-13*  
-*Current Branch: feature/enhanced-combat-chart*  
-*Next Review: After unified timestamp testing*
+**UI Components**:
+- Main window with session browser
+- Live logging panel with real-time event stream
+- Raw data viewer for detailed event inspection
+- Export dialog, we want to be able to look at the data in external tools

@@ -3,23 +3,33 @@
 ## Notes: A custom World of Warcraft UI addon with DPS/HPS tracking and enhanced combat analysis
 ## Author: YourName
 ## Version: 1.0.0
-## SavedVariables: MyUIDB, EntityBlacklistDB
+## SavedVariables: MyUIDB
 ## DefaultState: enabled
 
+src/core/MyLogger.lua
+src/utils/VirtualScrollMixin.lua
+src/core/MyLoggerWindow.lua
+src/core/MyTimestampManager.lua
+src/core/MySimpleCombatDetector.lua
 MyUI.lua
-TimestampManager.lua
-UnifiedCalculator.lua
-BaseMeterWindow.lua
-CombatData.lua
-CombatTracker.lua
-ContentDetection.lua
-EntityBlacklist.lua
-DPSWindow.lua
-EnhancedCombatLogger.lua
-EnhancedSessionDetailWindow.lua
-HPSWindow.lua
-SessionDetailWindow.lua
-SessionManager.lua
-TimelineTracker.lua
-WorkingPixelMeter.lua
-CalculationConfig.lua
+src/data/MetadataCollector.lua
+src/data/GUIDResolver.lua
+src/data/StorageManager.lua
+## src/core/UnifiedCalculator.lua
+## src/ui/BaseMeterWindow.lua
+## src/ui/SettingsWindow.lua
+## src/ui/CombatLogViewer.lua
+src/ui/SessionBrowser.lua
+src/ui/ExportDialog.lua
+## src/data/ContentDetection.lua
+## config/EntityBlacklist.lua
+## src/ui/DPSWindow.lua
+## src/data/EnhancedCombatLogger.lua
+## src/ui/EnhancedSessionDetailWindow.lua
+## src/ui/HPSWindow.lua
+## src/ui/SessionDetailWindow.lua
+## src/data/SessionManager.lua
+## src/data/TimelineTracker.lua
+## src/ui/WorkingPixelMeter.lua
+## config/CalculationConfig.lua
+src/commands/SlashCommands.lua
