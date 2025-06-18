@@ -135,12 +135,14 @@ function SlashCommands:InitializeSimpleCommands()
             addon.DEBUG = not addon.DEBUG
             addon.db.debugMode = addon.DEBUG
             print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
+        --[[ DISABLED
         elseif command == "settings" then
             if addon.SettingsWindow then
                 addon.SettingsWindow:Show()
             else
                 print("Settings window not available")
             end
+        --]]
         elseif command == "timestamps" then
             if addon.MyTimestampManager then
                 print(addon.MyTimestampManager:GetDebugSummary())
@@ -237,12 +239,14 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("GUIDResolver not loaded")
             end
+        --[[ DISABLED
         elseif command == "viewer" then
             if addon.CombatLogViewer then
                 addon.CombatLogViewer:Toggle()
             else
                 print("CombatLogViewer not loaded")
             end
+        --]]
         elseif command == "export" then
             if addon.SessionBrowser then
                 addon.SessionBrowser:Show()
@@ -333,7 +337,6 @@ function SlashCommands:InitializeSimpleCommands()
             print("MyUI Commands (Simplified):")
             print("  /myui [ show | hide | toggle ] - Main window")
             print("  /myui debug - Toggle debug mode")
-            print("  /myui settings - Open settings panel")
             print("  /myui timestamps - Show MyTimestampManager debug info")
             print("")
             print("New Tools (Active):")
@@ -349,7 +352,6 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui guid <guid> - Resolve specific GUID")
             print("  /myui combatdetection - Debug enhanced combat detection")
             print("  /myui browser - Toggle session browser (table view)")
-            print("  /myui viewer - Toggle combat log viewer window")
             print("  /myui export - Open session browser for export")
             print("  /myui logchannel - Join logger chat channel")
             print("  /myui leavechannel - Leave logger chat channel")

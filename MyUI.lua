@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "feature-port-rt-meters-c9214d6"
-addon.BUILD_DATE = "2025-06-17-09:38"
+addon.VERSION = "feature-performance-optimization-e848128"
+addon.BUILD_DATE = "2025-06-18-09:31"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -465,10 +465,12 @@ function addon:OnInitialize()
         self.StorageManager:Initialize()
     end
     
-    -- 4. Initialize CombatLogViewer (basic UI)
+    -- 4. Initialize CombatLogViewer (basic UI) - DISABLED
+    --[[
     if self.CombatLogViewer then
         self.CombatLogViewer:Initialize()
     end
+    --]]
     
     -- 5. Initialize ExportDialog (export functionality)
     if self.ExportDialog then
@@ -480,10 +482,12 @@ function addon:OnInitialize()
         self.SessionBrowser:Initialize()
     end
     
-    -- 7. Initialize SettingsWindow
+    -- 7. Initialize SettingsWindow - DISABLED
+    --[[
     if self.SettingsWindow then
         self.SettingsWindow:Initialize()
     end
+    --]]
     
     --[[
     OLD COMBAT TRACKING MODULES - DISABLED IN FAVOR OF MySimpleCombatDetector
@@ -732,7 +736,8 @@ function addon:CreateMainFrame()
     toolTitle:SetPoint("TOP", toolPanel, "TOP", 0, -5)
     toolTitle:SetText("Combat Analysis Tools")
 
-    -- Combat Logger button
+    -- Combat Logger button (DISABLED)
+    --[[
     local loggerBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
     loggerBtn:SetSize(140, 25)
     loggerBtn:SetPoint("TOPLEFT", toolPanel, "TOPLEFT", 10, -30)
@@ -744,6 +749,7 @@ function addon:CreateMainFrame()
             print("Combat Log Viewer not available")
         end
     end)
+    --]]
 
     -- MyLogger Window button
     local myLoggerBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
@@ -771,7 +777,8 @@ function addon:CreateMainFrame()
         end
     end)
 
-    -- Settings button
+    -- Settings button (DISABLED)
+    --[[
     local settingsBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
     settingsBtn:SetSize(140, 25)
     settingsBtn:SetPoint("TOPRIGHT", toolPanel, "TOPRIGHT", -10, -65)
@@ -783,6 +790,7 @@ function addon:CreateMainFrame()
             print("Settings window not available")
         end
     end)
+    --]]
 
     -- === FOOTER ===
     local footer = toolPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

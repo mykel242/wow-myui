@@ -86,18 +86,18 @@ end
 
 -- Apply current settings to active systems
 function SettingsWindow:ApplySettings()
-    -- Apply calculation method
-    if addon.CombatData and addon.CombatData.SetCalculationMethod then
-        addon.CombatData:SetCalculationMethod(currentSettings.calculationMethod)
-    end
+    -- Apply calculation method (disabled - old combat system removed)
+    -- if addon.CombatData and addon.CombatData.SetCalculationMethod then
+    --     addon.CombatData:SetCalculationMethod(currentSettings.calculationMethod)
+    -- end
     
     -- Apply debug settings
     addon.DEBUG = currentSettings.debugMode
     addon.VERBOSE_DEBUG = currentSettings.verboseLogging
     
-    -- Apply MyTimestampManager debug if available
-    if addon.MyTimestampManager and addon.MyTimestampManager.SetDebugMode then
-        addon.MyTimestampManager:SetDebugMode(currentSettings.enhancedDetectionDebug)
+    -- Apply enhanced detection debug to logger level if available
+    if currentSettings.enhancedDetectionDebug and addon.MyLogger then
+        addon.MyLogger:SetLevel("DEBUG")
     end
     
     -- Note: Combat timeout settings will be applied via GetCurrentSettings() calls

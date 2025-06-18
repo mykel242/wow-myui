@@ -54,17 +54,118 @@ local currentSessionData = nil
 local sessionCounter = 0
 local timeoutTimer = nil
 
--- Event filtering - only meaningful combat events
+-- Performance caches
+local playerGUID = nil
+local playerName = nil
+local groupMemberGUIDs = {} -- Cache of group member GUIDs for fast lookup
+local currentInstanceType = nil -- Cache current instance type for filtering
+
+-- Quick exit pattern - events we NEVER care about (immediate return)
+-- Based on Recount's QuickExitEvents approach for maximum performance
+local QUICK_EXIT_EVENTS = {
+    -- Environmental and positioning events
+    ["ENVIRONMENTAL_DAMAGE"] = true,
+    ["SPELL_BUILDING_DAMAGE"] = true,
+    ["SPELL_BUILDING_HEAL"] = true,
+    
+    -- Enchant and enhancement events
+    ["ENCHANT_APPLIED"] = true,
+    ["ENCHANT_REMOVED"] = true,
+    ["SPELL_ENCHANT_APPLIED"] = true,
+    ["SPELL_ENCHANT_REMOVED"] = true,
+    
+    -- Summon events we don't track
+    ["SPELL_SUMMON"] = true,
+    ["SPELL_CREATE"] = true,
+    
+    -- Durability and item events
+    ["SPELL_DURABILITY_DAMAGE"] = true,
+    ["SPELL_DURABILITY_DAMAGE_ALL"] = true,
+    
+    -- Cast events we don't need for session tracking
+    ["SPELL_CAST_START"] = true,
+    ["SPELL_CAST_SUCCESS"] = true,
+    ["SPELL_CAST_FAILED"] = true,
+    
+    -- Aura events that create noise
+    ["SPELL_AURA_APPLIED_DOSE"] = true,
+    ["SPELL_AURA_REMOVED_DOSE"] = true,
+    ["SPELL_AURA_REFRESH"] = true,
+    ["SPELL_AURA_BROKEN"] = true,
+    ["SPELL_AURA_BROKEN_SPELL"] = true,
+    
+    -- Extra attacks and procs
+    ["SPELL_EXTRA_ATTACKS"] = true,
+    
+    -- Energize events (for session tracking, we focus on damage/healing)
+    ["SPELL_ENERGIZE"] = true,
+    ["SPELL_PERIODIC_ENERGIZE"] = true,
+    
+    -- Leech and drain events
+    ["SPELL_LEECH"] = true,
+    ["SPELL_PERIODIC_LEECH"] = true,
+    ["SPELL_DRAIN"] = true,
+    ["SPELL_PERIODIC_DRAIN"] = true,
+    
+    -- Misc events that add noise
+    ["SPELL_INSTAKILL"] = true,
+    ["DAMAGE_SHIELD"] = true,
+    ["DAMAGE_SHIELD_MISSED"] = true,
+}
+
+-- Event filtering - meaningful combat events for session tracking
 local MEANINGFUL_EVENTS = {
     ["SPELL_DAMAGE"] = true,
     ["SPELL_PERIODIC_DAMAGE"] = true,
     ["SPELL_HEAL"] = true,
     ["SPELL_PERIODIC_HEAL"] = true,
     ["SWING_DAMAGE"] = true,
+    ["SWING_MISSED"] = true,
     ["RANGE_DAMAGE"] = true,
+    ["RANGE_MISSED"] = true,
+    ["SPELL_MISSED"] = true,
     ["SPELL_ABSORBED"] = true,
+    ["SPELL_REFLECT"] = true,
     ["UNIT_DIED"] = true,
-    ["PARTY_KILL"] = true
+    ["PARTY_KILL"] = true,
+    ["SPELL_INTERRUPT"] = true,
+    ["SPELL_DISPEL"] = true,
+    ["SPELL_STEAL"] = true,
+    ["SPELL_AURA_APPLIED"] = true,  -- Only applied, not other aura noise
+    ["SPELL_AURA_REMOVED"] = true,  -- Only removed, not other aura noise
+}
+
+-- Combat log object flags for entity filtering (from Recount's approach)
+local COMBATLOG_OBJECT_TYPE_PLAYER = 0x00000400
+local COMBATLOG_OBJECT_TYPE_NPC = 0x00000800  
+local COMBATLOG_OBJECT_TYPE_PET = 0x00001000
+local COMBATLOG_OBJECT_TYPE_GUARDIAN = 0x00002000
+local COMBATLOG_OBJECT_TYPE_OBJECT = 0x00004000
+
+local COMBATLOG_OBJECT_CONTROL_PLAYER = 0x00000100
+local COMBATLOG_OBJECT_CONTROL_NPC = 0x00000200
+
+local COMBATLOG_OBJECT_AFFILIATION_MINE = 0x00000001
+local COMBATLOG_OBJECT_AFFILIATION_PARTY = 0x00000002  
+local COMBATLOG_OBJECT_AFFILIATION_RAID = 0x00000004
+local COMBATLOG_OBJECT_AFFILIATION_OUTSIDER = 0x00000008
+
+-- Irrelevant entity patterns (names that indicate unimportant entities)
+local IRRELEVANT_ENTITY_PATTERNS = {
+    "Totem$",           -- Totems
+    "Spirit$",          -- Spirit wolves, etc.
+    "Clone$",           -- Mirror images, etc.
+    "Image$",           -- Mirror images
+    "Reflection$",      -- Various reflections
+    "Statue$",          -- Healing statues
+    "Trap$",            -- Hunter traps
+    "Ward$",            -- Various wards
+    "Banner$",          -- Warrior banners
+    "Crystal$",         -- Various crystals
+    "Orb$",             -- Various orbs
+    "Beacon$",          -- Light beacons
+    "Portal$",          -- Portals
+    "Gateway$",         -- Demonic gateways
 }
 
 -- Initialize the detector
@@ -102,7 +203,115 @@ function MySimpleCombatDetector:Initialize(injectedLogger)
     
     self.initialized = true
     
+    -- Cache player information for performance
+    self:RefreshPlayerCache()
+    
     debugPrint("Initialization complete")
+end
+
+-- Cache player and group information for performance
+function MySimpleCombatDetector:RefreshPlayerCache()
+    playerGUID = UnitGUID("player")
+    playerName = UnitName("player")
+    
+    -- Cache instance information for filtering
+    local name, instanceType, difficultyID, difficultyName, maxPlayers, 
+          dynamicDifficulty, isDynamic, instanceID, instanceGroupSize, LfgDungeonID = GetInstanceInfo()
+    currentInstanceType = instanceType
+    
+    -- Clear and rebuild group member cache
+    wipe(groupMemberGUIDs)
+    
+    if IsInGroup() then
+        for i = 1, GetNumGroupMembers() do
+            local unit = IsInRaid() and "raid"..i or "party"..i
+            if UnitExists(unit) then
+                local memberGUID = UnitGUID(unit)
+                if memberGUID then
+                    groupMemberGUIDs[memberGUID] = true
+                end
+            end
+        end
+    end
+    
+    debugPrint("Player cache refreshed: playerGUID=%s, %d group members, instance=%s", 
+        playerGUID or "nil", self:TableSize(groupMemberGUIDs), currentInstanceType or "none")
+end
+
+-- Determine if an entity is relevant for combat tracking
+function MySimpleCombatDetector:IsRelevantEntity(guid, name, flags)
+    if not guid then
+        return false
+    end
+    
+    -- Always track players
+    if flags and bit.band(flags, COMBATLOG_OBJECT_TYPE_PLAYER) ~= 0 then
+        return true
+    end
+    
+    -- Track player-controlled pets/guardians
+    if flags and bit.band(flags, COMBATLOG_OBJECT_CONTROL_PLAYER) ~= 0 then
+        return true
+    end
+    
+    -- Track friendly/party/raid affiliated entities
+    if flags then
+        local affiliation = bit.band(flags, 0x0000000F) -- Affiliation mask
+        if affiliation == COMBATLOG_OBJECT_AFFILIATION_MINE or
+           affiliation == COMBATLOG_OBJECT_AFFILIATION_PARTY or
+           affiliation == COMBATLOG_OBJECT_AFFILIATION_RAID then
+            return true
+        end
+    end
+    
+    -- Filter out irrelevant entities by name pattern
+    if name then
+        for _, pattern in ipairs(IRRELEVANT_ENTITY_PATTERNS) do
+            if string.match(name, pattern) then
+                return false
+            end
+        end
+    end
+    
+    -- Track NPCs in combat encounters (but not irrelevant objects)
+    if flags and bit.band(flags, COMBATLOG_OBJECT_TYPE_NPC) ~= 0 then
+        return true
+    end
+    
+    -- Default: don't track objects, totems, etc.
+    return false
+end
+
+-- Utility function to get table size
+function MySimpleCombatDetector:TableSize(t)
+    local count = 0
+    for _ in pairs(t) do
+        count = count + 1
+    end
+    return count
+end
+
+-- Check if current instance type is worth tracking
+function MySimpleCombatDetector:IsInstanceWorthTracking()
+    -- Always track in these instances
+    if currentInstanceType == "raid" or 
+       currentInstanceType == "party" or 
+       currentInstanceType == "scenario" then
+        return true
+    end
+    
+    -- Track world content only if in a group (world bosses, etc.)
+    if currentInstanceType == "none" and IsInGroup() then
+        return true
+    end
+    
+    -- Don't track in cities, battlegrounds without configuration
+    if currentInstanceType == "pvp" then
+        return false -- Could be configurable later
+    end
+    
+    -- Default: track solo world content (leveling, questing)
+    return true
 end
 
 -- Main event handler
@@ -133,6 +342,15 @@ function MySimpleCombatDetector:StartCombat()
     -- If already in combat, don't restart
     if inCombat then
         debugPrint("Already in combat, ignoring start")
+        return
+    end
+    
+    -- Refresh cache first to get current instance type
+    self:RefreshPlayerCache()
+    
+    -- Check if current instance is worth tracking
+    if not self:IsInstanceWorthTracking() then
+        debugPrint("Instance type '%s' not worth tracking, ignoring combat", currentInstanceType or "unknown")
         return
     end
     
@@ -176,14 +394,14 @@ function MySimpleCombatDetector:StartCombat()
         guidMap = {},  -- GUID -> name mapping for efficient storage
         zone = GetZoneText() or "Unknown",
         instance = GetInstanceInfo() or GetZoneText() or "Unknown",
-        player = UnitName("player") or "Unknown",
+        player = playerName or "Unknown",
         playerClass = UnitClass("player") or "Unknown",
         playerLevel = UnitLevel("player") or 80,
         groupType = IsInRaid() and "raid" or IsInGroup() and "party" or "solo",
         groupSize = GetNumGroupMembers() or 1
     }
     
-    debugPrint("Combat started: %s", sessionId)
+    debugPrint("Combat started: %s (cached %d group members)", sessionId, self:TableSize(groupMemberGUIDs))
 end
 
 -- Begin combat timeout when player leaves WoW combat
@@ -203,37 +421,34 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
           destGUID, destName, destFlags, destRaidFlags = ...
     
-    -- Only process if we're tracking combat
+    -- PHASE 1: Quick exit for events we never care about (maximum performance)
+    if QUICK_EXIT_EVENTS[eventType] then
+        return
+    end
+    
+    -- PHASE 2: Only process if we're tracking combat
     if not inCombat or not currentSessionData then
         return
     end
     
-    -- Only track meaningful combat events
+    -- PHASE 3: Filter for meaningful combat events only
     if not MEANINGFUL_EVENTS[eventType] then
         return
     end
     
-    -- Check if this event involves the player
-    local playerGUID = UnitGUID("player")
-    local playerName = UnitName("player")
-    local isPlayerEvent = (sourceGUID == playerGUID) or (destGUID == playerGUID) or
-                         (sourceName == playerName) or (destName == playerName)
+    -- PHASE 4: Entity filtering - reject irrelevant entity types
+    -- Skip events involving totems, guardians we don't care about, etc.
+    if not self:IsRelevantEntity(sourceGUID, sourceName, sourceFlags) and 
+       not self:IsRelevantEntity(destGUID, destName, destFlags) then
+        return
+    end
     
-    -- For group play, also track group member events
-    if not isPlayerEvent and IsInGroup() then
-        -- Check if source or dest is a group member
-        for i = 1, GetNumGroupMembers() do
-            local unit = IsInRaid() and "raid"..i or "party"..i
-            if UnitExists(unit) then
-                local memberGUID = UnitGUID(unit)
-                local memberName = UnitName(unit)
-                if sourceGUID == memberGUID or destGUID == memberGUID or
-                   sourceName == memberName or destName == memberName then
-                    isPlayerEvent = true
-                    break
-                end
-            end
-        end
+    -- PHASE 5: Fast player/group member check using cached GUIDs
+    local isPlayerEvent = (sourceGUID == playerGUID) or (destGUID == playerGUID)
+    
+    -- For group play, check cached group member GUIDs (much faster than UnitExists loop)
+    if not isPlayerEvent and next(groupMemberGUIDs) then
+        isPlayerEvent = groupMemberGUIDs[sourceGUID] or groupMemberGUIDs[destGUID]
     end
     
     if not isPlayerEvent then
@@ -257,10 +472,10 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     debugPrint("RECORD: %s (%s -> %s)", 
         eventType, sourceName or "nil", destName or "nil")
     
-    -- Update activity time for relevant events
-    if sourceGUID == playerGUID or sourceName == playerName then
+    -- Update activity time for relevant events (optimized with cached GUIDs)
+    if sourceGUID == playerGUID then
         lastActivityTime = GetTime()
-    elseif (destGUID == playerGUID or destName == playerName) and (eventType:find("DAMAGE") or eventType:find("HEAL")) then
+    elseif destGUID == playerGUID and (eventType:find("DAMAGE") or eventType:find("HEAL")) then
         lastActivityTime = GetTime()
     end
     

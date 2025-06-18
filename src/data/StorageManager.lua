@@ -12,14 +12,13 @@ local isInitialized = false
 local sessionStorage = {}
 local memoryStats = {}
 
--- Get current storage configuration from settings
+-- Get current storage configuration (hardcoded defaults since SettingsWindow is disabled)
 local function GetStorageConfig()
-    local settings = addon.SettingsWindow and addon.SettingsWindow:GetCurrentSettings() or {}
     return {
-        MAX_SESSIONS = settings.maxSessions or 50,
-        MAX_SESSION_AGE_DAYS = settings.sessionAgeDays or 7,
-        MAX_MEMORY_MB = settings.maxMemoryMB or 10,
-        COMPRESSION_ENABLED = settings.compressionEnabled ~= false, -- Default true
+        MAX_SESSIONS = 50,
+        MAX_SESSION_AGE_DAYS = 7,
+        MAX_MEMORY_MB = 10,
+        COMPRESSION_ENABLED = true,
         WARNING_THRESHOLD = 0.8 -- Warn at 80% of limits
     }
 end
