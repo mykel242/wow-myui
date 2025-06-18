@@ -58,6 +58,7 @@ local logEntries = {}
 local filterButtons = {}
 local currentFilter = "ALL"
 local copyEditBox = nil
+local isRefreshing = false
 
 -- =============================================================================
 -- WINDOW CREATION
@@ -139,13 +140,9 @@ function MyLoggerWindow:CreateScrollArea()
     
     logScrollFrame:SetScrollChild(logContentFrame)
     
-    -- Initialize virtual scrolling mixin
-    logWindow.virtualScroll = addon.VirtualScrollMixin:new()
-    logWindow.virtualScroll:Initialize(logWindow, logScrollFrame, logContentFrame, {
-        LINES_PER_CHUNK = 100,        -- Smaller chunks for logs
-        MIN_LINES_FOR_VIRTUAL = 200,  -- Lower threshold for logs
-        TIMER_INTERVAL = 0.2          -- Slower updates for logs
-    })
+    -- Store references on the window for later access
+    logWindow.scrollFrame = logScrollFrame
+    logWindow.contentFrame = logContentFrame
     
     -- Initialize log entries array and load persistent logs
     logEntries = {}
@@ -178,10 +175,31 @@ function MyLoggerWindow:CreateFilterButtons()
     
     logWindow.filterDropdown = filterDropdown
     
+    -- Add Follow Messages checkbox (positioned better to avoid overlap)
+    local followCheckbox = CreateFrame("CheckButton", nil, logWindow, "UICheckButtonTemplate")
+    followCheckbox:SetSize(18, 18)
+    followCheckbox:SetPoint("LEFT", filterDropdown, "RIGHT", 20, 0)
+    followCheckbox:SetChecked(true)  -- Default to following
+    followCheckbox.text = followCheckbox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    followCheckbox.text:SetPoint("LEFT", followCheckbox, "RIGHT", 3, 0)
+    followCheckbox.text:SetText("Follow")
+    followCheckbox.text:SetTextColor(1, 1, 1)
+    
+    followCheckbox:SetScript("OnClick", function(self)
+        local isChecked = self:GetChecked()
+        if isChecked and logContentFrame then
+            -- Auto-scroll to bottom when enabled
+            logContentFrame:SetCursorPosition(string.len(logContentFrame:GetText() or ""))
+        end
+        addon:Debug("Follow messages: %s", isChecked and "enabled" or "disabled")
+    end)
+    
+    logWindow.followCheckbox = followCheckbox
+    
     -- Add Clear All button (permanent data deletion)
     local clearAllButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
-    clearAllButton:SetSize(80, 25)
-    clearAllButton:SetPoint("TOPRIGHT", logWindow, "TOPRIGHT", -15, -35)
+    clearAllButton:SetSize(70, 22)
+    clearAllButton:SetPoint("TOPRIGHT", logWindow, "TOPRIGHT", -10, -35)
     clearAllButton:SetText("Clear All")
     clearAllButton:SetNormalFontObject("GameFontNormalSmall")
     
@@ -191,8 +209,8 @@ function MyLoggerWindow:CreateFilterButtons()
     
     -- Add Clear View button (display only)
     local clearViewButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
-    clearViewButton:SetSize(80, 25)
-    clearViewButton:SetPoint("TOPRIGHT", clearAllButton, "TOPLEFT", -5, 0)
+    clearViewButton:SetSize(70, 22)
+    clearViewButton:SetPoint("TOPRIGHT", clearAllButton, "TOPLEFT", -3, 0)
     clearViewButton:SetText("Clear View")
     clearViewButton:SetNormalFontObject("GameFontNormalSmall")
     
@@ -289,6 +307,9 @@ function MyLoggerWindow:SetFilter(filterType)
         end
     end
     
+    -- Force refresh by clearing the isRefreshing flag if stuck
+    isRefreshing = false
+    
     -- Refresh log display
     self:RefreshLogs()
 end
@@ -298,7 +319,6 @@ end
 -- =============================================================================
 
 function MyLoggerWindow:AddLogEntry(level, message, timestamp)
-    if not logWindow then return end
     
     local entry = {
         level = level,
@@ -318,25 +338,39 @@ function MyLoggerWindow:AddLogEntry(level, message, timestamp)
         table.remove(logEntries, 1)
     end
     
-    -- Refresh display if window is visible and filter matches
-    if logWindow:IsVisible() then
+    -- Refresh display if window exists and is visible
+    if logWindow and logWindow:IsVisible() then
         self:RefreshLogs()
     end
 end
 
 function MyLoggerWindow:RefreshLogs()
-    if not logWindow or not logWindow:IsVisible() then return end
+    if not logWindow or not logWindow:IsVisible() or isRefreshing then return end
     
-    -- Filter logs based on current filter
+    isRefreshing = true
+    
+    -- Filter logs based on current filter (exact level match, not inclusive)
     local filteredLogs = {}
     for _, entry in ipairs(logEntries) do
-        if currentFilter == "ALL" or 
-           (currentFilter == "PANIC" and entry.level == 1) or
-           (currentFilter == "ERROR" and entry.level == 2) or
-           (currentFilter == "WARN" and entry.level == 3) or
-           (currentFilter == "INFO" and entry.level == 4) or
-           (currentFilter == "DEBUG" and entry.level == 5) or
-           (currentFilter == "TRACE" and entry.level == 6) then
+        local shouldInclude = false
+        
+        if currentFilter == "ALL" then
+            shouldInclude = true
+        elseif currentFilter == "PANIC" and entry.level == 1 then
+            shouldInclude = true
+        elseif currentFilter == "ERROR" and entry.level == 2 then
+            shouldInclude = true
+        elseif currentFilter == "WARN" and entry.level == 3 then
+            shouldInclude = true
+        elseif currentFilter == "INFO" and entry.level == 4 then
+            shouldInclude = true
+        elseif currentFilter == "DEBUG" and entry.level == 5 then
+            shouldInclude = true
+        elseif currentFilter == "TRACE" and entry.level == 6 then
+            shouldInclude = true
+        end
+        
+        if shouldInclude then
             table.insert(filteredLogs, entry)
         end
     end
@@ -344,32 +378,77 @@ function MyLoggerWindow:RefreshLogs()
     -- Generate content lines for virtual scrolling
     local contentLines = {}
     
-    for i, entry in ipairs(filteredLogs) do
-        -- Add color codes based on level
-        local color = addon.MyLogger.LEVEL_COLORS[entry.level] or ""
-        
-        -- Ensure formatted field exists (defensive programming)
-        local formatted = entry.formatted
-        if not formatted and entry.message then
-            formatted = string.format("[%s] [%s] %s", 
-                entry.timestamp and date("%H:%M:%S", entry.timestamp) or "??:??:??",
-                addon.MyLogger.LEVEL_NAMES[entry.level] or "UNKNOWN",
-                entry.message
-            )
-        end
-        
-        if formatted then
-            table.insert(contentLines, color .. formatted .. "|r")
+    if #filteredLogs == 0 then
+        -- Show "no matches" message for empty filter results
+        local filterDisplayName = FILTER_TYPES[currentFilter] or currentFilter
+        table.insert(contentLines, "|cffffff00No " .. filterDisplayName .. " messages found.|r")
+        table.insert(contentLines, "")
+        table.insert(contentLines, "|cffccccccTry selecting a different filter or check if any messages")
+        table.insert(contentLines, "have been logged at this level.|r")
+    else
+        for i, entry in ipairs(filteredLogs) do
+            -- Add color codes based on level
+            local color = addon.MyLogger.LEVEL_COLORS[entry.level] or ""
+            
+            -- Ensure formatted field exists (defensive programming)
+            local formatted = entry.formatted
+            if not formatted and entry.message then
+                formatted = string.format("[%s] [%s] %s", 
+                    entry.timestamp and date("%H:%M:%S", entry.timestamp) or "??:??:??",
+                    addon.MyLogger.LEVEL_NAMES[entry.level] or "UNKNOWN",
+                    entry.message
+                )
+            end
+            
+            if formatted then
+                table.insert(contentLines, color .. formatted .. "|r")
+            end
         end
     end
     
-    -- Use virtual scrolling mixin to display content
+    -- Use virtual scrolling mixin to display content (if initialized)
+    local filterDisplayName = FILTER_TYPES[currentFilter] or currentFilter
     local headerLines = {
-        string.format("=== MyLogger Output (%d entries, filter: %s) ===", #filteredLogs, currentFilter),
+        string.format("=== MyLogger Output (%d entries, filter: %s) ===", #filteredLogs, filterDisplayName),
         ""
     }
     
-    logWindow.virtualScroll:SetContent(contentLines, headerLines)
+    if logWindow.virtualScroll then
+        -- Pass filtered content to virtual scrolling (cache invalidation handled automatically)
+        logWindow.virtualScroll:SetContent(contentLines, headerLines)
+        
+        -- Auto-scroll to bottom if follow is enabled
+        if logWindow.followCheckbox and logWindow.followCheckbox:GetChecked() then
+            -- Scroll to bottom after content is set
+            C_Timer.After(0.1, function()
+                if logWindow.virtualScroll.scrollFrame then
+                    logWindow.virtualScroll.scrollFrame:SetVerticalScroll(
+                        logWindow.virtualScroll.scrollFrame:GetVerticalScrollRange()
+                    )
+                end
+            end)
+        end
+    else
+        -- Fallback to traditional display if virtual scrolling not ready
+        local allLines = {}
+        for _, line in ipairs(headerLines) do
+            table.insert(allLines, line)
+        end
+        for _, line in ipairs(contentLines) do
+            table.insert(allLines, line)
+        end
+        
+        local fullContent = table.concat(allLines, "\n")
+        logContentFrame:SetText(fullContent)
+        logContentFrame.logText = fullContent
+        
+        -- Auto-scroll to bottom if follow is enabled
+        if logWindow.followCheckbox and logWindow.followCheckbox:GetChecked() then
+            logContentFrame:SetCursorPosition(string.len(fullContent))
+        end
+    end
+    
+    isRefreshing = false
 end
 
 -- Removed UpdateCopyText - copy functionality is now handled by the Copy All button
@@ -415,6 +494,16 @@ end
 function MyLoggerWindow:Show()
     if not logWindow then
         self:CreateWindow()
+    end
+    
+    -- Initialize virtual scrolling mixin on first show (lazy initialization)
+    if not logWindow.virtualScroll and logWindow.scrollFrame and logWindow.contentFrame then
+        logWindow.virtualScroll = addon.VirtualScrollMixin:new()
+        logWindow.virtualScroll:Initialize(logWindow, logWindow.scrollFrame, logWindow.contentFrame, {
+            LINES_PER_CHUNK = 100,        -- Smaller chunks for logs
+            MIN_LINES_FOR_VIRTUAL = 200,  -- Lower threshold for logs
+            TIMER_INTERVAL = 0.2          -- Slower updates for logs
+        })
     end
     
     -- Load existing logs when first shown

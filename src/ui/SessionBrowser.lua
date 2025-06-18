@@ -33,7 +33,7 @@ function SessionBrowser:Initialize()
     end
     
     self:CreateBrowserWindow()
-    self:CreateSessionViewer()
+    -- Don't create session viewer during initialization - create it lazily when needed
     isInitialized = true
     
     addon:Debug("SessionBrowser initialized - ready to browse stored sessions")
@@ -205,7 +205,8 @@ function SessionBrowser:CreateSessionViewer()
     
     UIDropDownMenu_Initialize(formatDropdown, function(self, level)
         local formats = {
-            {id = "text", name = "Text"}
+            {id = "text", name = "Text"},
+            {id = "raw", name = "Raw Data"}
         }
         
         for _, format in ipairs(formats) do
@@ -234,12 +235,7 @@ function SessionBrowser:CreateSessionViewer()
         end
     end)
     
-    -- Initialize virtual scrolling mixin
-    frame.virtualScroll = addon.VirtualScrollMixin:new()
-    frame.virtualScroll:Initialize(frame, scroll, editbox, {
-        LINES_PER_CHUNK = 500,
-        MIN_LINES_FOR_VIRTUAL = 1000
-    })
+    -- Virtual scrolling mixin will be initialized later after scroll elements are created
     
     -- Export info text
     local exportInfo = toolbar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -514,9 +510,14 @@ end
 
 -- View the selected session in detail viewer
 function SessionBrowser:ViewSelectedSession()
-    if not selectedSession or not viewerFrame then
+    if not selectedSession then
         addon:Warn("No session selected")
         return
+    end
+    
+    -- Create viewer window if it doesn't exist (lazy initialization)
+    if not viewerFrame then
+        self:CreateSessionViewer()
     end
     
     -- Get full session data with decompressed events
@@ -559,11 +560,11 @@ function SessionBrowser:ViewSelectedSession()
         viewerFrame.scrollFrame:SetVerticalScroll(0)
     end
     
-    -- Generate session content using virtual scrolling
-    self:RefreshViewerContent()
-    
-    -- Show viewer
+    -- Show viewer first
     viewerFrame:Show()
+    
+    -- Generate session content using virtual scrolling (after window is visible)
+    self:RefreshViewerContent()
     
     addon:Debug("Viewing session: %s (%d events)", fullSession.id, #(fullSession.events or {}))
 end
@@ -631,12 +632,64 @@ function SessionBrowser:GenerateSessionLog(session)
             session.groupSize or 1))
     end
     
-    -- GUID Map (if available)
-    if session.guidMap and next(session.guidMap) then
+    -- GUID Map (if available, or regenerate from events if missing)
+    local guidMap = session.guidMap
+    local hadOriginalGuidMap = guidMap and next(guidMap)
+    
+    if not hadOriginalGuidMap then
+        -- Try to regenerate GUID map from event data for older sessions
+        guidMap = {}
+        if session.events then
+            for _, event in ipairs(session.events) do
+                if type(event) == "table" then
+                    -- Collect unique GUIDs (names not stored in events, only GUIDs)
+                    if event.sourceGUID and not guidMap[event.sourceGUID] then
+                        guidMap[event.sourceGUID] = "Unknown Entity"
+                    end
+                    if event.destGUID and not guidMap[event.destGUID] then
+                        guidMap[event.destGUID] = "Unknown Entity"
+                    end
+                end
+            end
+        end
+        
+        -- Also check segments if events are in segments
+        if session.segments then
+            for _, segment in ipairs(session.segments) do
+                if segment.events then
+                    for _, event in ipairs(segment.events) do
+                        if type(event) == "table" then
+                            if event.sourceGUID and not guidMap[event.sourceGUID] then
+                                guidMap[event.sourceGUID] = "Unknown Entity"
+                            end
+                            if event.destGUID and not guidMap[event.destGUID] then
+                                guidMap[event.destGUID] = "Unknown Entity"
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Try to resolve some common patterns
+        for guid, _ in pairs(guidMap) do
+            if guid:find("Player%-") then
+                guidMap[guid] = "Player"
+            elseif guid:find("Creature%-") then
+                guidMap[guid] = "NPC/Creature"
+            elseif guid:find("Vehicle%-") then
+                guidMap[guid] = "Vehicle"
+            elseif guid:find("Pet%-") then
+                guidMap[guid] = "Pet"
+            end
+        end
+    end
+    
+    if guidMap and next(guidMap) then
         table.insert(lines, "")
         table.insert(lines, "=== Entity GUID Map ===")
         local guidCount = 0
-        for guid, name in pairs(session.guidMap) do
+        for guid, name in pairs(guidMap) do
             guidCount = guidCount + 1
             table.insert(lines, string.format("%s = %s", guid, name))
         end
@@ -717,6 +770,19 @@ function SessionBrowser:GenerateHeaderLines(session)
         table.insert(headerLines, "Segments: " .. tostring(#session.segments))
     end
     
+    -- Add GUID Map (if available)
+    local guidMap = session.guidMap
+    if guidMap and next(guidMap) then
+        table.insert(headerLines, "")
+        table.insert(headerLines, "=== Entity GUID Map ===")
+        local guidCount = 0
+        for guid, name in pairs(guidMap) do
+            guidCount = guidCount + 1
+            table.insert(headerLines, string.format("%s = %s", guid, name))
+        end
+        table.insert(headerLines, string.format("Total entities: %d", guidCount))
+    end
+    
     table.insert(headerLines, "")
     table.insert(headerLines, "=== Event Log ===")
     table.insert(headerLines, "")
@@ -759,6 +825,66 @@ function SessionBrowser:GenerateContentLines(session)
     return contentLines
 end
 
+-- Generate raw data view to debug storage format
+function SessionBrowser:GenerateRawDataLines(session)
+    local lines = {}
+    
+    -- Add raw session fields
+    for key, value in pairs(session) do
+        if type(value) == "table" then
+            if key == "events" then
+                table.insert(lines, string.format("%s: %d events", key, #value))
+            elseif key == "guidMap" then
+                table.insert(lines, string.format("%s: %d entries", key, value and self:CountTableEntries(value) or 0))
+            else
+                table.insert(lines, string.format("%s: table with %d entries", key, self:CountTableEntries(value)))
+            end
+        else
+            table.insert(lines, string.format("%s: %s", key, tostring(value)))
+        end
+    end
+    
+    table.insert(lines, "")
+    table.insert(lines, "=== GUID Map Debug ===")
+    if session.guidMap and next(session.guidMap) then
+        for guid, name in pairs(session.guidMap) do
+            table.insert(lines, string.format("  %s = %s", guid, name))
+        end
+    else
+        table.insert(lines, "  No GUID map found")
+    end
+    
+    table.insert(lines, "")
+    table.insert(lines, "=== All Events (Raw) ===")
+    if session.events then
+        for i, event in ipairs(session.events) do
+            if type(event) == "table" then
+                local eventStr = ""
+                for k, v in pairs(event) do
+                    eventStr = eventStr .. string.format("%s=%s ", k, tostring(v))
+                end
+                table.insert(lines, string.format("Event %d: %s", i, eventStr))
+            else
+                table.insert(lines, string.format("Event %d: %s", i, tostring(event)))
+            end
+        end
+    else
+        table.insert(lines, "  No events found")
+    end
+    
+    return lines
+end
+
+-- Helper function to count table entries
+function SessionBrowser:CountTableEntries(t)
+    if not t then return 0 end
+    local count = 0
+    for _ in pairs(t) do
+        count = count + 1
+    end
+    return count
+end
+
 -- Refresh viewer content using virtual scrolling mixin
 function SessionBrowser:RefreshViewerContent()
     if not viewerFrame or not viewerFrame:IsShown() or not viewerFrame.currentSession then
@@ -766,10 +892,19 @@ function SessionBrowser:RefreshViewerContent()
     end
     
     local session = viewerFrame.currentSession
+    local currentFormat = UIDropDownMenu_GetSelectedValue(viewerFrame.formatDropdown) or "text"
     
-    -- Generate content lines for virtual scrolling
-    local contentLines = self:GenerateContentLines(session)
-    local headerLines = self:GenerateHeaderLines(session)
+    local contentLines, headerLines
+    
+    if currentFormat == "raw" then
+        -- Generate raw data view
+        contentLines = self:GenerateRawDataLines(session)
+        headerLines = {"=== Raw Session Data ===", ""}
+    else
+        -- Generate standard text format
+        contentLines = self:GenerateContentLines(session)
+        headerLines = self:GenerateHeaderLines(session)
+    end
     
     -- Use virtual scrolling mixin to handle display
     viewerFrame.virtualScroll:SetContent(contentLines, headerLines)
@@ -777,8 +912,8 @@ function SessionBrowser:RefreshViewerContent()
     local totalLines = #contentLines
     local vsStatus = viewerFrame.virtualScroll:GetStatus()
     
-    addon:Debug("Refreshed viewer content: %d lines, virtual=%s, chunks loaded=%d", 
-        totalLines, tostring(vsStatus.isActive), vsStatus.loadedChunks)
+    addon:Debug("Refreshed viewer content: %d lines, format=%s, virtual=%s, chunks loaded=%d", 
+        totalLines, currentFormat, tostring(vsStatus.isActive), vsStatus.loadedChunks)
 end
 
 -- Legacy methods removed - now using VirtualScrollMixin

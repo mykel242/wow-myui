@@ -221,6 +221,15 @@ function StorageManager:StoreCombatSession(sessionData)
     sessionData.storedAt = GetTime()
     sessionData.serverTime = GetServerTime()
     
+    -- Preserve GUID map by copying it (prevent table pool cleanup)
+    if sessionData.guidMap then
+        local guidMapCopy = {}
+        for guid, name in pairs(sessionData.guidMap) do
+            guidMapCopy[guid] = name
+        end
+        sessionData.guidMap = guidMapCopy
+    end
+    
     -- Get context metadata if available
     if addon.MetadataCollector then
         sessionData.metadata = addon.MetadataCollector:GetMetadataForCombat(sessionData.id)

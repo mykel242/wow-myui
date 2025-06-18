@@ -7,6 +7,7 @@
 ## DefaultState: enabled
 
 src/core/MyLogger.lua
+src/utils/VirtualScrollMixin.lua
 src/core/MyLoggerWindow.lua
 src/core/MyTimestampManager.lua
 src/core/MySimpleCombatDetector.lua
@@ -14,7 +15,6 @@ MyUI.lua
 src/data/MetadataCollector.lua
 src/data/GUIDResolver.lua
 src/data/StorageManager.lua
-src/utils/VirtualScrollMixin.lua
 ## src/core/UnifiedCalculator.lua
 ## src/ui/BaseMeterWindow.lua
 ## src/ui/SettingsWindow.lua

@@ -613,9 +613,12 @@ end
 
 -- Initialize timeline tracker
 function TimelineTracker:Initialize()
-    -- Sample timer (for rolling averages and timeline)
+    -- Sample timer (for rolling averages and timeline) - only when in combat
     self.sampleTimer = C_Timer.NewTicker(SAMPLE_INTERVAL, function()
-        SampleCombatData()
+        local inCombat = addon.CombatTracker and addon.CombatTracker:IsInCombat()
+        if inCombat then
+            SampleCombatData()
+        end
     end)
 
     addon:Debug("TimelineTracker module initialized with enhanced data integration")
