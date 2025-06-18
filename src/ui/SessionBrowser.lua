@@ -17,7 +17,7 @@ local viewerEditBox = nil
 
 -- Configuration
 local CONFIG = {
-    BROWSER_WIDTH = 600,
+    BROWSER_WIDTH = 650,  -- Increased for Hash and Segments columns
     BROWSER_HEIGHT = 400,
     VIEWER_WIDTH = 700,
     VIEWER_HEIGHT = 500,
@@ -122,11 +122,13 @@ function SessionBrowser:CreateBrowserWindow()
     headerFrame:SetPoint("TOP", tableFrame, "TOP", 0, 0)
     
     local headers = {
-        {text = "Session ID", width = 140},
+        {text = "Hash", width = 50},
+        {text = "Session ID", width = 120},
         {text = "Duration", width = 60},
         {text = "Events", width = 60},
-        {text = "Zone", width = 120},
-        {text = "Time", width = 120}
+        {text = "Segments", width = 60},
+        {text = "Zone", width = 100},
+        {text = "Time", width = 110}
     }
     
     local xOffset = 0
@@ -427,12 +429,24 @@ function SessionBrowser:CreateSessionRow(session, rowIndex)
         return string.format("%.1fs", duration or 0)
     end
     
+    local function getSegmentCount(session)
+        if session.isSegmented and session.segments then
+            return tostring(#session.segments)
+        elseif session.segmentCount and session.segmentCount > 0 then
+            return tostring(session.segmentCount)
+        else
+            return "1"  -- Traditional single-segment session
+        end
+    end
+    
     local columns = {
-        {text = formatSessionId(session.id), width = 140},
+        {text = session.hash or "----", width = 50},
+        {text = formatSessionId(session.id), width = 120},
         {text = formatDuration(session), width = 60},
         {text = tostring(session.eventCount or 0), width = 60},
-        {text = (session.metadata and session.metadata.zone and session.metadata.zone.name) or "Unknown", width = 120},
-        {text = session.serverTime and date("%m/%d %H:%M", session.serverTime) or "Unknown", width = 120}
+        {text = getSegmentCount(session), width = 60},
+        {text = (session.metadata and session.metadata.zone and session.metadata.zone.name) or "Unknown", width = 100},
+        {text = session.serverTime and date("%m/%d %H:%M", session.serverTime) or "Unknown", width = 110}
     }
     
     local xOffset = 0

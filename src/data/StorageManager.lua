@@ -151,6 +151,26 @@ local function CleanupSessionPooledTables(sessionData)
         StorageManager:ReleaseTable(sessionData.events)
     end
     
+    -- Clean up segment tables (new segmentation support)
+    if sessionData.segments then
+        for _, segment in ipairs(sessionData.segments) do
+            if segment and type(segment) == "table" then
+                -- Clean up segment events
+                if segment.events then
+                    for _, eventData in ipairs(segment.events) do
+                        if eventData and type(eventData) == "table" then
+                            StorageManager:ReleaseTable(eventData)
+                        end
+                    end
+                    StorageManager:ReleaseTable(segment.events)
+                end
+                -- Clean up the segment table itself
+                StorageManager:ReleaseTable(segment)
+            end
+        end
+        StorageManager:ReleaseTable(sessionData.segments)
+    end
+    
     -- Clean up GUID map
     if sessionData.guidMap then
         StorageManager:ReleaseTable(sessionData.guidMap)
@@ -308,7 +328,13 @@ function StorageManager:EstimateSessionSizeKB(sessionData)
     local eventSize = sessionData.eventCount * 0.1 -- ~100 bytes per event
     local metadataSize = sessionData.metadata and 2 or 0 -- ~2KB for metadata
     
-    return baseSize + eventSize + metadataSize
+    -- Add segment overhead for segmented sessions
+    local segmentOverhead = 0
+    if sessionData.isSegmented and sessionData.segments then
+        segmentOverhead = #sessionData.segments * 0.5 -- ~0.5KB per segment metadata
+    end
+    
+    return baseSize + eventSize + metadataSize + segmentOverhead
 end
 
 -- Update memory statistics
@@ -533,16 +559,36 @@ end
 
 function StorageManager:GetSession(sessionId)
     for _, session in ipairs(sessionStorage) do
-        if session.id == sessionId then
+        if session.id == sessionId or (session.hash and string.upper(session.hash) == string.upper(sessionId)) then
             -- Return copy with decompressed events if needed
             local sessionCopy = {}
             for k, v in pairs(session) do
                 sessionCopy[k] = v
             end
             
+            -- Handle legacy compressed events
             if session.compressed and session.events then
                 sessionCopy.events = self:DecompressEvents(session.events)
                 sessionCopy.compressed = false
+            end
+            
+            -- Handle segmented sessions - decompress segment events
+            if session.segments and session.isSegmented then
+                sessionCopy.segments = {}
+                for i, segment in ipairs(session.segments) do
+                    local segmentCopy = {}
+                    for k, v in pairs(segment) do
+                        segmentCopy[k] = v
+                    end
+                    
+                    -- Decompress segment events if needed
+                    if segment.compressed and segment.events then
+                        segmentCopy.events = self:DecompressEvents(segment.events)
+                        segmentCopy.compressed = false
+                    end
+                    
+                    sessionCopy.segments[i] = segmentCopy
+                end
             end
             
             return sessionCopy
@@ -565,7 +611,7 @@ end
 
 function StorageManager:DeleteSession(sessionId)
     for i, session in ipairs(sessionStorage) do
-        if session.id == sessionId then
+        if session.id == sessionId or (session.hash and string.upper(session.hash) == string.upper(sessionId)) then
             local removedSession = table.remove(sessionStorage, i)
             CleanupSessionPooledTables(removedSession)
             self:UpdateMemoryStats()
@@ -587,6 +633,106 @@ function StorageManager:ClearAllSessions()
     self:SaveToSavedVariables() -- Auto-save after clearing
     
     addon:Debug("All combat sessions cleared")
+end
+
+-- ============================================================================
+-- SESSION SEGMENTATION SUPPORT
+-- ============================================================================
+
+-- Get a specific segment from a session (supports hash or full ID)
+function StorageManager:GetSessionSegment(sessionId, segmentIndex)
+    local session = self:GetSession(sessionId)
+    if not session or not session.segments or not session.segments[segmentIndex] then
+        return nil
+    end
+    
+    return session.segments[segmentIndex]
+end
+
+-- Get all segments for a session (with optional lazy loading)
+function StorageManager:GetSessionSegments(sessionId, loadEvents)
+    local session = self:GetSession(sessionId)
+    if not session or not session.segments then
+        return {}
+    end
+    
+    -- If loadEvents is false, return segments without event data for performance
+    if loadEvents == false then
+        local lightSegments = {}
+        for i, segment in ipairs(session.segments) do
+            local lightSegment = {
+                id = segment.id,
+                segmentIndex = segment.segmentIndex,
+                startTime = segment.startTime,
+                endTime = segment.endTime,
+                duration = segment.duration,
+                eventCount = segment.eventCount,
+                isActive = segment.isActive
+            }
+            lightSegments[i] = lightSegment
+        end
+        return lightSegments
+    end
+    
+    return session.segments
+end
+
+-- Get segment summary for UI display
+function StorageManager:GetSegmentSummary(sessionId)
+    local session = self:GetSession(sessionId)
+    if not session then
+        return nil
+    end
+    
+    local summary = {
+        sessionId = sessionId,
+        isSegmented = session.isSegmented or false,
+        segmentCount = session.segmentCount or 0,
+        totalEvents = session.eventCount or 0,
+        totalDuration = session.duration or 0
+    }
+    
+    if session.segments then
+        summary.segments = {}
+        for i, segment in ipairs(session.segments) do
+            summary.segments[i] = {
+                index = i,
+                id = segment.id,
+                duration = segment.duration or 0,
+                eventCount = segment.eventCount or 0,
+                startTime = segment.startTime,
+                endTime = segment.endTime
+            }
+        end
+    end
+    
+    return summary
+end
+
+-- Merge segments back into a single event stream (for export/analysis)
+function StorageManager:MergeSessionSegments(sessionId)
+    local session = self:GetSession(sessionId)
+    if not session or not session.segments then
+        -- Return existing events if not segmented
+        return session and session.events or {}
+    end
+    
+    local mergedEvents = {}
+    
+    for _, segment in ipairs(session.segments) do
+        if segment.events then
+            for _, event in ipairs(segment.events) do
+                table.insert(mergedEvents, event)
+            end
+        end
+    end
+    
+    -- Sort by timestamp to maintain chronological order
+    table.sort(mergedEvents, function(a, b)
+        return (a.time or 0) < (b.time or 0)
+    end)
+    
+    return mergedEvents
 end
 
 function StorageManager:GetMemoryStats()
@@ -620,10 +766,22 @@ function StorageManager:GetDebugSummary()
     local stats = self:GetMemoryStats()
     local poolStats = self:GetPoolStats()
     
+    -- Count segmented sessions
+    local segmentedSessions = 0
+    local totalSegments = 0
+    for _, session in ipairs(sessionStorage) do
+        if session.isSegmented and session.segments then
+            segmentedSessions = segmentedSessions + 1
+            totalSegments = totalSegments + #session.segments
+        end
+    end
+    
     return string.format(
         "StorageManager Status:\n" ..
         "  Initialized: %s\n" ..
         "  Sessions Stored: %d / %d (%.0f%%)\n" ..
+        "  Segmented Sessions: %d (%.0f%% of total)\n" ..
+        "  Total Segments: %d\n" ..
         "  Memory Usage: %.2f / %.1f MB (%.0f%%)\n" ..
         "  Session Age Limit: %d days\n" ..
         "  Compression: %s (%.1f%% ratio)\n" ..
@@ -636,6 +794,9 @@ function StorageManager:GetDebugSummary()
         stats.sessionsStored,
         stats.maxSessions,
         (stats.sessionsStored / stats.maxSessions) * 100,
+        segmentedSessions,
+        stats.sessionsStored > 0 and (segmentedSessions / stats.sessionsStored) * 100 or 0,
+        totalSegments,
         stats.totalMemoryMB,
         stats.maxMemoryMB,
         (stats.totalMemoryMB / stats.maxMemoryMB) * 100,

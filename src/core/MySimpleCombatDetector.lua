@@ -44,6 +44,12 @@ local CONFIG = {
     MIN_DURATION = 10.0,         -- Minimum session duration
     MIN_EVENTS = 5,              -- Minimum meaningful events
     MIN_ACTIVITY_RATE = 0.3,     -- Minimum events per second
+    
+    -- Session Segmentation Configuration (AGGRESSIVE TESTING SETTINGS)
+    SEGMENT_MAX_EVENTS = 50,     -- Max events per segment (TESTING: was 10000)
+    SEGMENT_MAX_TIME = 15,       -- Max 15 seconds per segment (TESTING: was 300)
+    SEGMENT_ACTIVITY_GAP = 5,    -- New segment after 5s gap in activity (TESTING: was 30)
+    SEGMENT_MIN_EVENTS = 5,      -- Minimum events to create a new segment (TESTING: was 100)
 }
 
 -- Combat state
@@ -53,6 +59,11 @@ local lastActivityTime = nil
 local currentSessionData = nil
 local sessionCounter = 0
 local timeoutTimer = nil
+
+-- Session Segmentation State
+local currentSegment = nil
+local segmentCounter = 0
+local lastSegmentTime = nil
 
 -- Performance caches
 local playerGUID = nil
@@ -314,6 +325,110 @@ function MySimpleCombatDetector:IsInstanceWorthTracking()
     return true
 end
 
+-- ============================================================================
+-- SESSION SEGMENTATION SYSTEM
+-- ============================================================================
+
+-- Create a new segment for the current session
+function MySimpleCombatDetector:CreateNewSegment()
+    if not currentSessionData then
+        return nil
+    end
+    
+    segmentCounter = segmentCounter + 1
+    local currentTime = GetTime()
+    
+    -- Create segment using table pool
+    local segment = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    segment.id = string.format("%s-seg%d", currentSessionData.id, segmentCounter)
+    segment.segmentIndex = segmentCounter
+    segment.startTime = lastSegmentTime or combatStartTime
+    segment.endTime = nil  -- Will be set when segment is finalized
+    segment.events = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    segment.eventCount = 0
+    segment.isActive = true
+    
+    debugPrint("Created new segment: %s", segment.id)
+    return segment
+end
+
+-- Finalize the current segment and prepare for next one
+function MySimpleCombatDetector:FinalizeCurrentSegment()
+    if not currentSegment or not currentSessionData then
+        return
+    end
+    
+    local currentTime = GetTime()
+    currentSegment.endTime = currentTime
+    currentSegment.duration = currentSegment.endTime - currentSegment.startTime
+    currentSegment.isActive = false
+    
+    -- Only store segments that meet minimum criteria
+    if currentSegment.eventCount >= CONFIG.SEGMENT_MIN_EVENTS then
+        -- Add segment to session's segment list
+        if not currentSessionData.segments then
+            currentSessionData.segments = addon.StorageManager and addon.StorageManager:GetTable() or {}
+        end
+        
+        table.insert(currentSessionData.segments, currentSegment)
+        currentSessionData.segmentCount = (currentSessionData.segmentCount or 0) + 1
+        
+        debugPrint("Finalized segment %s: %.1fs, %d events", 
+            currentSegment.id, currentSegment.duration, currentSegment.eventCount)
+    else
+        -- Return inadequate segment tables to pool
+        if addon.StorageManager then
+            addon.StorageManager:ReleaseTable(currentSegment.events)
+            addon.StorageManager:ReleaseTable(currentSegment)
+        end
+        debugPrint("Discarded segment %s: insufficient events (%d < %d)", 
+            currentSegment.id, currentSegment.eventCount, CONFIG.SEGMENT_MIN_EVENTS)
+    end
+    
+    lastSegmentTime = currentTime
+    currentSegment = nil
+end
+
+-- Check if we need to create a new segment based on time/events/activity
+function MySimpleCombatDetector:ShouldCreateNewSegment()
+    if not currentSegment then
+        return true  -- No current segment, definitely need one
+    end
+    
+    local currentTime = GetTime()
+    
+    -- Check event count limit
+    if currentSegment.eventCount >= CONFIG.SEGMENT_MAX_EVENTS then
+        debugPrint("Segment event limit reached: %d >= %d", 
+            currentSegment.eventCount, CONFIG.SEGMENT_MAX_EVENTS)
+        return true
+    end
+    
+    -- Check time limit
+    local segmentDuration = currentTime - currentSegment.startTime
+    if segmentDuration >= CONFIG.SEGMENT_MAX_TIME then
+        debugPrint("Segment time limit reached: %.1fs >= %.1fs", 
+            segmentDuration, CONFIG.SEGMENT_MAX_TIME)
+        return true
+    end
+    
+    -- Check activity gap (if there was a long pause in combat)
+    if lastActivityTime and currentSegment.eventCount > 0 then
+        local timeSinceLastActivity = currentTime - lastActivityTime
+        if timeSinceLastActivity >= CONFIG.SEGMENT_ACTIVITY_GAP then
+            debugPrint("Activity gap detected: %.1fs >= %.1fs", 
+                timeSinceLastActivity, CONFIG.SEGMENT_ACTIVITY_GAP)
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- ============================================================================
+-- END SESSION SEGMENTATION SYSTEM
+-- ============================================================================
+
 -- Main event handler
 function MySimpleCombatDetector:OnEvent(event, ...)
     if event == "PLAYER_REGEN_DISABLED" then
@@ -380,13 +495,22 @@ function MySimpleCombatDetector:StartCombat()
     
     local sessionId = string.format("%s-%03d", baseId, checksum)
     
+    -- Generate 4-character alphanumeric hash for easy typing
+    local sessionHash = self:GenerateSessionHash(sessionId)
+    
     -- Initialize combat state
     inCombat = true
     lastActivityTime = combatStartTime
     
+    -- Initialize segmentation state
+    segmentCounter = 0
+    lastSegmentTime = combatStartTime
+    currentSegment = nil
+    
     -- Create session data structure with GUID mapping using table pool
     currentSessionData = addon.StorageManager and addon.StorageManager:GetTable() or {}
     currentSessionData.id = sessionId
+    currentSessionData.hash = sessionHash  -- Short 4-char hash for easy reference
     currentSessionData.startTime = combatStartTime
     currentSessionData.endTime = nil
     currentSessionData.eventCount = 0
@@ -400,7 +524,15 @@ function MySimpleCombatDetector:StartCombat()
     currentSessionData.groupType = IsInRaid() and "raid" or IsInGroup() and "party" or "solo"
     currentSessionData.groupSize = GetNumGroupMembers() or 1
     
-    debugPrint("Combat started: %s (cached %d group members)", sessionId, self:TableSize(groupMemberGUIDs))
+    -- Initialize segmentation metadata
+    currentSessionData.segments = nil  -- Will be created when first segment is finalized
+    currentSessionData.segmentCount = 0
+    currentSessionData.isSegmented = true
+    
+    -- Create initial segment
+    currentSegment = self:CreateNewSegment()
+    
+    debugPrint("Combat started: %s [%s] (cached %d group members, segmentation enabled)", sessionId, sessionHash, self:TableSize(groupMemberGUIDs))
 end
 
 -- Begin combat timeout when player leaves WoW combat
@@ -492,7 +624,14 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
             tonumber(timestamp) or 0, tonumber(combatStartTime) or 0, tonumber(relativeTime) or 0)
     end
     
-    -- Store only GUIDs and relative time - use table pool for efficiency
+    -- Check if we need to create a new segment
+    if self:ShouldCreateNewSegment() then
+        self:FinalizeCurrentSegment()
+        currentSegment = self:CreateNewSegment()
+        debugPrint("Created new segment: %s", currentSegment and currentSegment.id or "failed")
+    end
+    
+    -- Store event data using table pool for efficiency
     local eventData = addon.StorageManager and addon.StorageManager:GetTable() or {}
     eventData.time = relativeTime           -- Relative time from combat start
     eventData.subevent = eventType
@@ -500,13 +639,20 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     eventData.destGUID = destGUID
     -- Names are resolved from guidMap during export
     
+    -- Add event to current segment (primary storage)
+    if currentSegment then
+        table.insert(currentSegment.events, eventData)
+        currentSegment.eventCount = currentSegment.eventCount + 1
+        
+        -- Only show segment count every 10 events to reduce spam
+        if currentSegment.eventCount % 10 == 0 then
+            debugPrint("Segment %s: %d events", currentSegment.id, currentSegment.eventCount)
+        end
+    end
+    
+    -- Also add to main session events for backward compatibility during transition
     table.insert(currentSessionData.events, eventData)
     currentSessionData.eventCount = currentSessionData.eventCount + 1
-    
-    -- Only show count every 5 events to reduce spam
-    if currentSessionData.eventCount % 5 == 0 then
-        debugPrint("Events recorded: %d", currentSessionData.eventCount)
-    end
 end
 
 -- Start the activity timeout timer
@@ -547,6 +693,11 @@ function MySimpleCombatDetector:EndCombat()
     -- Cancel timeout timer
     self:CancelTimeout()
     
+    -- Finalize current segment before ending combat
+    if currentSegment then
+        self:FinalizeCurrentSegment()
+    end
+    
     -- End TimestampManager combat tracking
     if addon.MyTimestampManager then
         addon.MyTimestampManager:EndCombat()
@@ -561,8 +712,8 @@ function MySimpleCombatDetector:EndCombat()
     local eventCount = currentSessionData.eventCount
     local activityRate = eventCount / duration
     
-    debugPrint("Combat ended: %s (%.1fs, %d events, %.2f events/sec)", 
-        currentSessionData.id, duration, eventCount, activityRate)
+    debugPrint("Combat ended: %s (%.1fs, %d events, %.2f events/sec, %d segments)", 
+        currentSessionData.id, duration, eventCount, activityRate, currentSessionData.segmentCount or 0)
     
     -- Check if session meets minimum criteria
     if duration >= CONFIG.MIN_DURATION and 
@@ -579,11 +730,14 @@ function MySimpleCombatDetector:EndCombat()
         self:CleanupSessionTables(currentSessionData)
     end
     
-    -- Reset combat state
+    -- Reset combat state including segmentation
     inCombat = false
     combatStartTime = nil
     lastActivityTime = nil
     currentSessionData = nil
+    currentSegment = nil
+    segmentCounter = 0
+    lastSegmentTime = nil
 end
 
 -- Store the completed session
@@ -656,6 +810,27 @@ function MySimpleCombatDetector:GetDebugInfo()
         timeSinceActivity = lastActivityTime and (GetTime() - lastActivityTime) or 0,
         hasTimer = timeoutTimer ~= nil
     }
+end
+
+-- Generate 4-character alphanumeric hash from session ID
+function MySimpleCombatDetector:GenerateSessionHash(sessionId)
+    local hash = 0
+    local chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"  -- 36 characters (base36)
+    
+    -- Create a simple hash from the session ID
+    for i = 1, #sessionId do
+        hash = hash + string.byte(sessionId, i) * (i * 31)
+    end
+    
+    -- Convert to 4-character base36 string
+    local result = ""
+    for i = 1, 4 do
+        local remainder = hash % 36
+        result = string.sub(chars, remainder + 1, remainder + 1) .. result
+        hash = math.floor(hash / 36)
+    end
+    
+    return result
 end
 
 -- Session ID validation helper

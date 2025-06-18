@@ -170,7 +170,7 @@ function MyLoggerWindow:CreateFilterButtons()
     
     logWindow.filterDropdown = filterDropdown
     
-    -- Add Clear All button
+    -- Add Clear All button (permanent data deletion)
     local clearAllButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
     clearAllButton:SetSize(80, 25)
     clearAllButton:SetPoint("TOPRIGHT", logWindow, "TOPRIGHT", -15, -35)
@@ -181,10 +181,21 @@ function MyLoggerWindow:CreateFilterButtons()
         StaticPopup_Show("MYLOGGER_CLEAR_CONFIRM")
     end)
     
+    -- Add Clear View button (display only)
+    local clearViewButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
+    clearViewButton:SetSize(80, 25)
+    clearViewButton:SetPoint("TOPRIGHT", clearAllButton, "TOPLEFT", -5, 0)
+    clearViewButton:SetText("Clear View")
+    clearViewButton:SetNormalFontObject("GameFontNormalSmall")
+    
+    clearViewButton:SetScript("OnClick", function()
+        MyLoggerWindow:ClearView()
+    end)
+    
     -- Add Select All button
     local selectAllButton = CreateFrame("Button", nil, logWindow, "GameMenuButtonTemplate")
     selectAllButton:SetSize(80, 25)
-    selectAllButton:SetPoint("TOPRIGHT", clearAllButton, "TOPLEFT", -5, 0)
+    selectAllButton:SetPoint("TOPRIGHT", clearViewButton, "TOPLEFT", -5, 0)
     selectAllButton:SetText("Select All")
     selectAllButton:SetNormalFontObject("GameFontNormalSmall")
     
@@ -432,6 +443,31 @@ end
 -- =============================================================================
 -- CLEAR FUNCTIONS
 -- =============================================================================
+
+-- Clear the view only (does not affect persistent data)
+function MyLoggerWindow:ClearView()
+    -- Clear only the display entries, not the persistent data
+    logEntries = {}
+    
+    -- Clear the scroll frame content
+    if logContentFrame then
+        logContentFrame:SetText("")
+    end
+    
+    -- Clear individual log entry frames
+    for _, frame in pairs(self.logFrames or {}) do
+        if frame then
+            frame:Hide()
+        end
+    end
+    
+    -- Reset scroll position
+    if logScrollFrame then
+        logScrollFrame:SetVerticalScroll(0)
+    end
+    
+    addon:Debug("Log view cleared (persistent data preserved)")
+end
 
 function MyLoggerWindow:ClearAllLogs()
     -- Clear in-memory logs

@@ -223,10 +223,13 @@ function SlashCommands:InitializeSimpleCommands()
                 local sessions = addon.StorageManager:GetRecentSessions(5)
                 print(string.format("Recent combat sessions (%d shown):", #sessions))
                 for i, session in ipairs(sessions) do
-                    print(string.format("  %s: %.1fs, %d events (%s)", 
+                    local segments = session.isSegmented and session.segments and #session.segments or 1
+                    print(string.format("  [%s] %s: %.1fs, %d events, %d segments (%s)", 
+                        session.hash or "----",
                         session.id, 
                         session.duration or 0, 
                         session.eventCount or 0,
+                        segments,
                         session.metadata and session.metadata.zone.name or "Unknown Zone"))
                 end
             else
@@ -256,7 +259,7 @@ function SlashCommands:InitializeSimpleCommands()
             end
         --]]
         elseif command:match("^guid%s+(.+)$") then
-            local guid = command:match("^guid%s+(.+)$")
+            local guid = msg:match("^guid%s+(.+)$")  -- Use original msg, not lowercased command
             if addon.GUIDResolver then
                 local name = addon.GUIDResolver:ResolveGUID(guid)
                 local cached = addon.GUIDResolver:GetCachedName(guid)
@@ -325,6 +328,31 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("MyLoggerWindow not loaded")
             end
+        elseif command:match("^segments%s+(.+)$") then
+            local sessionId = msg:match("^segments%s+(.+)$")  -- Use original msg, not lowercased command
+            if addon.StorageManager then
+                local summary = addon.StorageManager:GetSegmentSummary(sessionId)
+                if summary then
+                    print(string.format("=== Segment Summary: %s ===", sessionId))
+                    print(string.format("Segmented: %s", summary.isSegmented and "Yes" or "No"))
+                    print(string.format("Total Duration: %.1fs, Total Events: %d", 
+                        summary.totalDuration, summary.totalEvents))
+                    
+                    if summary.segments and #summary.segments > 0 then
+                        print(string.format("Segments (%d):", #summary.segments))
+                        for _, segment in ipairs(summary.segments) do
+                            print(string.format("  %d. %s: %.1fs, %d events", 
+                                segment.index, segment.id, segment.duration, segment.eventCount))
+                        end
+                    else
+                        print("No segments found")
+                    end
+                else
+                    print("Session not found: " .. sessionId)
+                end
+            else
+                print("StorageManager not loaded")
+            end
         elseif command == "browser" then
             if addon.SessionBrowser then
                 addon.SessionBrowser:Toggle()
@@ -332,13 +360,25 @@ function SlashCommands:InitializeSimpleCommands()
                 print("SessionBrowser not loaded")
             end
         elseif command:match("^session%s+(.+)$") then
-            local sessionId = command:match("^session%s+(.+)$")
+            local sessionId = msg:match("^session%s+(.+)$")  -- Use original msg, not lowercased command
             if addon.StorageManager then
                 local session = addon.StorageManager:GetSession(sessionId)
                 if session then
-                    print(string.format("=== Session Details: %s ===", sessionId))
+                    print(string.format("=== Session Details: [%s] %s ===", session.hash or "----", sessionId))
                     print(string.format("Duration: %.1fs", session.duration or 0))
                     print(string.format("Events: %d", session.eventCount or 0))
+                    
+                    -- Show segmentation info
+                    if session.isSegmented and session.segments then
+                        print(string.format("Segmented: %d segments", #session.segments))
+                        for i, segment in ipairs(session.segments) do
+                            print(string.format("  Segment %d: %.1fs, %d events (%s)", 
+                                i, segment.duration or 0, segment.eventCount or 0, segment.id))
+                        end
+                    else
+                        print("Segmented: No")
+                    end
+                    
                     if session.metadata and session.metadata.zone then
                         print(string.format("Zone: %s", session.metadata.zone.name or "Unknown"))
                     end
@@ -348,7 +388,7 @@ function SlashCommands:InitializeSimpleCommands()
                         for i = startIndex, #session.events do
                             local event = session.events[i]
                             print(string.format("  [%.3f] %s: %s -> %s", 
-                                event.realTime or 0,
+                                event.realTime or event.time or 0,
                                 event.subevent or "UNKNOWN",
                                 event.sourceName or "?",
                                 event.destName or "?"))
@@ -374,7 +414,8 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui testwarning - Test storage warning system")
             print("  /myui poolstats - Table pooling statistics")
             print("  /myui sessions - Recent combat sessions")
-            print("  /myui session <id> - Show detailed session data")
+            print("  /myui session <id|hash> - Show detailed session data")
+            print("  /myui segments <id|hash> - Show session segment details")
             print("  /myui counters - Show session counter status")
             print("  /myui guids - Show GUID resolver status")
             print("  /myui guid <guid> - Resolve specific GUID")
