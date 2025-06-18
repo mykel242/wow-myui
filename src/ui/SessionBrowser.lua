@@ -783,7 +783,7 @@ function SessionBrowser:LoadChunk(chunkIndex)
     local startIdx = (chunkIndex - 1) * CONFIG.EVENTS_PER_CHUNK + 1
     local endIdx = math.min(startIdx + CONFIG.EVENTS_PER_CHUNK - 1, #session.events)
     
-    local chunkLines = {}
+    local chunkEventLines = {}
     
     -- Generate content for this chunk
     for i = startIdx, endIdx do
@@ -806,11 +806,21 @@ function SessionBrowser:LoadChunk(chunkIndex)
                 sourceId,
                 destId)
             
-            table.insert(chunkLines, eventLine)
+            table.insert(chunkEventLines, eventLine)
         end
     end
     
-    vs.loadedChunks[chunkIndex] = table.concat(chunkLines, "\n")
+    vs.loadedChunks[chunkIndex] = chunkEventLines
+    
+    -- Update the full structure with loaded chunk
+    if vs.fullStructure then
+        for i = 1, #chunkEventLines do
+            local globalLineIndex = vs.headerLineCount + startIdx + i - 1
+            if globalLineIndex <= #vs.fullStructure then
+                vs.fullStructure[globalLineIndex] = chunkEventLines[i]
+            end
+        end
+    end
 end
 
 -- Update the virtual content display
@@ -819,34 +829,14 @@ function SessionBrowser:UpdateVirtualContent()
         return
     end
     
-    local session = viewerFrame.currentSession
     local vs = viewerFrame.virtualScroll
     
-    -- Build content from loaded chunks
-    local contentLines = {}
-    
-    -- Add session header (always visible)
-    table.insert(contentLines, "=== Combat Session Log ===")
-    table.insert(contentLines, "Session ID: " .. (session.id or "Unknown"))
-    table.insert(contentLines, "Duration: " .. string.format("%.1fs", session.duration or 0))
-    table.insert(contentLines, "Total Events: " .. tostring(session.eventCount or 0))
-    table.insert(contentLines, "")
-    table.insert(contentLines, "=== Event Log (Virtual Scrolling) ===")
-    table.insert(contentLines, "")
-    
-    -- Add loaded chunks in order
-    for chunkIndex = 1, vs.totalChunks do
-        if vs.loadedChunks[chunkIndex] then
-            table.insert(contentLines, vs.loadedChunks[chunkIndex])
-        else
-            -- Placeholder for unloaded chunks
-            local startIdx = (chunkIndex - 1) * CONFIG.EVENTS_PER_CHUNK + 1
-            local endIdx = math.min(startIdx + CONFIG.EVENTS_PER_CHUNK - 1, #session.events)
-            table.insert(contentLines, string.format("[Loading events %d-%d...]", startIdx, endIdx))
-        end
+    if not vs.fullStructure then
+        return
     end
     
-    local newContent = table.concat(contentLines, "\n")
+    -- Update content from full structure (with loaded chunks integrated)
+    local newContent = table.concat(vs.fullStructure, "\n")
     vs.currentContent = newContent
     
     viewerEditBox:SetText(newContent)
@@ -889,7 +879,46 @@ function SessionBrowser:InitializeVirtualScrolling(session)
     vs.totalChunks = math.ceil(#session.events / CONFIG.EVENTS_PER_CHUNK)
     vs.currentContent = ""
     
+    -- Create initial full-height content with placeholders
+    self:CreateVirtualScrollStructure(session)
+    
     addon:Debug("Initialized virtual scrolling: %d events, %d chunks", #session.events, vs.totalChunks)
+end
+
+-- Create the initial scroll structure with proper height
+function SessionBrowser:CreateVirtualScrollStructure(session)
+    if not viewerFrame then
+        return
+    end
+    
+    local vs = viewerFrame.virtualScroll
+    local contentLines = {}
+    
+    -- Add session header (always visible)
+    table.insert(contentLines, "=== Combat Session Log ===")
+    table.insert(contentLines, "Session ID: " .. (session.id or "Unknown"))
+    table.insert(contentLines, "Duration: " .. string.format("%.1fs", session.duration or 0))
+    table.insert(contentLines, "Total Events: " .. tostring(session.eventCount or 0))
+    table.insert(contentLines, "")
+    table.insert(contentLines, "=== Event Log (Virtual Scrolling) ===")
+    table.insert(contentLines, "")
+    
+    -- Create placeholder structure for all events to establish scroll range
+    for i = 1, #session.events do
+        table.insert(contentLines, string.format("[Event %d - Loading...]", i))
+    end
+    
+    local fullContent = table.concat(contentLines, "\n")
+    vs.fullStructure = contentLines
+    vs.headerLineCount = 7 -- Number of header lines
+    
+    -- Set initial content
+    viewerEditBox:SetText(fullContent)
+    viewerFrame.lastContent = fullContent
+    
+    -- Set EditBox height to match content
+    local lineHeight = 12
+    viewerEditBox:SetHeight(#contentLines * lineHeight)
 end
 
 -- Generate content in different formats for the viewer
