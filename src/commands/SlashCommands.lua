@@ -150,28 +150,36 @@ function SlashCommands:InitializeSimpleCommands()
                 print("MyTimestampManager not loaded")
             end
         elseif command == "logger" then
-            if addon.CombatEventLogger then
-                print(addon.CombatEventLogger:GetDebugSummary())
+            if addon.MySimpleCombatDetector then
+                local debugInfo = addon.MySimpleCombatDetector:GetDebugInfo()
+                print(string.format("Combat Detector Status: inCombat=%s, sessionId=%s", 
+                    tostring(debugInfo.inCombat), debugInfo.sessionId or "none"))
+                print(string.format("Duration: %.1fs, Events: %d, Time since activity: %.1fs", 
+                    debugInfo.duration, debugInfo.eventCount, debugInfo.timeSinceActivity))
             else
-                print("CombatEventLogger not loaded")
+                print("MySimpleCombatDetector not loaded")
             end
         elseif command == "rawdata" then
-            if addon.CombatEventLogger then
-                local events = addon.CombatEventLogger:GetCurrentEvents()
-                print(string.format("Current combat raw data: %d events", #events))
-                if #events > 0 then
-                    print("Latest 3 events:")
-                    for i = math.max(1, #events - 2), #events do
-                        local event = events[i]
-                        print(string.format("  [%s] %s: %s -> %s", 
-                            event.subevent,
-                            event.sourceName or "?",
-                            event.destName or "?",
-                            table.concat(event.args or {}, ",")))
+            if addon.MySimpleCombatDetector then
+                local session = addon.MySimpleCombatDetector:GetCurrentSession()
+                if session then
+                    print(string.format("Current combat raw data: %d events", session.eventCount))
+                    if session.eventCount > 0 then
+                        print("Latest 3 events:")
+                        local startIndex = math.max(1, #session.events - 2)
+                        for i = startIndex, #session.events do
+                            local event = session.events[i]
+                            local sourceName = session.guidMap[event.sourceGUID] or "Unknown"
+                            local destName = session.guidMap[event.destGUID] or "Unknown"
+                            print(string.format("  [%.3f] %s: %s -> %s", 
+                                event.time, event.subevent, sourceName, destName))
+                        end
                     end
+                else
+                    print("No active combat session")
                 end
             else
-                print("CombatEventLogger not loaded")
+                print("MySimpleCombatDetector not loaded")
             end
         elseif command == "metadata" then
             if addon.MetadataCollector then
@@ -222,12 +230,14 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("GUIDResolver not loaded")
             end
+        --[[ DISABLED - CombatTracker not available
         elseif command == "combatdetection" then
             if addon.CombatTracker then
                 addon.CombatTracker:DebugEnhancedCombatDetection()
             else
                 print("CombatTracker not loaded")
             end
+        --]]
         elseif command:match("^guid%s+(.+)$") then
             local guid = command:match("^guid%s+(.+)$")
             if addon.GUIDResolver then
@@ -339,8 +349,8 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui debug - Toggle debug mode")
             print("  /myui timestamps - Show MyTimestampManager debug info")
             print("")
-            print("New Tools (Active):")
-            print("  /myui logger - Combat event logger status")
+            print("Combat Analysis Tools:")
+            print("  /myui logger - Combat detector status")
             print("  /myui rawdata - Current combat raw data")
             print("  /myui metadata - Current context metadata")
             print("  /myui storage - Storage manager status")
@@ -350,12 +360,17 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui counters - Show session counter status")
             print("  /myui guids - Show GUID resolver status")
             print("  /myui guid <guid> - Resolve specific GUID")
-            print("  /myui combatdetection - Debug enhanced combat detection")
             print("  /myui browser - Toggle session browser (table view)")
             print("  /myui export - Open session browser for export")
-            print("  /myui logchannel - Join logger chat channel")
-            print("  /myui leavechannel - Leave logger chat channel")
-            print("  /myui testchannel - Send test message to logger channel")
+            print("")
+            print("Logging Tools:")
+            print("  /myui logs - Toggle log viewer window")
+            print("  /myui dumplogs - Print recent logs to chat")
+            print("  /myui copylogs - Copy recent logs to clipboard")
+            print("  /myui exportlogs - Print persistent logs to chat")
+            print("  /myui copyexportlogs - Copy persistent logs to clipboard")
+            print("  /myui testlog - Generate test log messages")
+            print("  /myui clearlogs - Clear all log data")
             print("")
             print("Note: Most features disabled during modularization.")
             print("They will return with the new combat logging system.")
