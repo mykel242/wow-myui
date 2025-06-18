@@ -201,6 +201,23 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("StorageManager not loaded")
             end
+        elseif command == "poolstats" then
+            if addon.StorageManager then
+                local stats = addon.StorageManager:GetPoolStats()
+                print("=== Table Pool Statistics ===")
+                print(string.format("Pool Size: %d / %d (%.1f%% full)", 
+                    stats.currentPoolSize, stats.maxPoolSize, 
+                    (stats.currentPoolSize / stats.maxPoolSize) * 100))
+                print(string.format("Created: %d tables", stats.created))
+                print(string.format("Reused: %d tables (%.1f%% reuse rate)", 
+                    stats.reused, stats.reuseRatio * 100))
+                print(string.format("Returned: %d tables", stats.returned))
+                print(string.format("Warnings: %d", stats.warnings))
+                local efficiency = stats.created > 0 and (stats.reused / (stats.created + stats.reused)) * 100 or 0
+                print(string.format("Memory Efficiency: %.1f%% (higher is better)", efficiency))
+            else
+                print("StorageManager not loaded")
+            end
         elseif command == "sessions" then
             if addon.StorageManager then
                 local sessions = addon.StorageManager:GetRecentSessions(5)
@@ -355,6 +372,7 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui metadata - Current context metadata")
             print("  /myui storage - Storage manager status")
             print("  /myui testwarning - Test storage warning system")
+            print("  /myui poolstats - Table pooling statistics")
             print("  /myui sessions - Recent combat sessions")
             print("  /myui session <id> - Show detailed session data")
             print("  /myui counters - Show session counter status")

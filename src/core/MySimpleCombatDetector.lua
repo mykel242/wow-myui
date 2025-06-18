@@ -384,22 +384,21 @@ function MySimpleCombatDetector:StartCombat()
     inCombat = true
     lastActivityTime = combatStartTime
     
-    -- Create session data structure with GUID mapping
-    currentSessionData = {
-        id = sessionId,
-        startTime = combatStartTime,
-        endTime = nil,
-        eventCount = 0,
-        events = {},
-        guidMap = {},  -- GUID -> name mapping for efficient storage
-        zone = GetZoneText() or "Unknown",
-        instance = GetInstanceInfo() or GetZoneText() or "Unknown",
-        player = playerName or "Unknown",
-        playerClass = UnitClass("player") or "Unknown",
-        playerLevel = UnitLevel("player") or 80,
-        groupType = IsInRaid() and "raid" or IsInGroup() and "party" or "solo",
-        groupSize = GetNumGroupMembers() or 1
-    }
+    -- Create session data structure with GUID mapping using table pool
+    currentSessionData = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    currentSessionData.id = sessionId
+    currentSessionData.startTime = combatStartTime
+    currentSessionData.endTime = nil
+    currentSessionData.eventCount = 0
+    currentSessionData.events = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    currentSessionData.guidMap = addon.StorageManager and addon.StorageManager:GetTable() or {}  -- GUID -> name mapping for efficient storage
+    currentSessionData.zone = GetZoneText() or "Unknown"
+    currentSessionData.instance = GetInstanceInfo() or GetZoneText() or "Unknown"
+    currentSessionData.player = playerName or "Unknown"
+    currentSessionData.playerClass = UnitClass("player") or "Unknown"
+    currentSessionData.playerLevel = UnitLevel("player") or 80
+    currentSessionData.groupType = IsInRaid() and "raid" or IsInGroup() and "party" or "solo"
+    currentSessionData.groupSize = GetNumGroupMembers() or 1
     
     debugPrint("Combat started: %s (cached %d group members)", sessionId, self:TableSize(groupMemberGUIDs))
 end
@@ -493,14 +492,13 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
             tonumber(timestamp) or 0, tonumber(combatStartTime) or 0, tonumber(relativeTime) or 0)
     end
     
-    -- Store only GUIDs and relative time - much more efficient
-    local eventData = {
-        time = relativeTime,           -- Relative time from combat start
-        subevent = eventType,
-        sourceGUID = sourceGUID,
-        destGUID = destGUID
-        -- Names are resolved from guidMap during export
-    }
+    -- Store only GUIDs and relative time - use table pool for efficiency
+    local eventData = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    eventData.time = relativeTime           -- Relative time from combat start
+    eventData.subevent = eventType
+    eventData.sourceGUID = sourceGUID
+    eventData.destGUID = destGUID
+    -- Names are resolved from guidMap during export
     
     table.insert(currentSessionData.events, eventData)
     currentSessionData.eventCount = currentSessionData.eventCount + 1
@@ -576,6 +574,9 @@ function MySimpleCombatDetector:EndCombat()
         infoPrint("Session stored: %s", currentSessionData.id)
     else
         debugPrint("Session discarded: insufficient activity (%s)", currentSessionData.id)
+        
+        -- Return pooled tables to pool for discarded sessions
+        self:CleanupSessionTables(currentSessionData)
     end
     
     -- Reset combat state
@@ -592,6 +593,34 @@ function MySimpleCombatDetector:StoreSession(sessionData)
     else
         errorPrint("StorageManager not available - session lost")
     end
+end
+
+-- Clean up pooled tables for discarded sessions
+function MySimpleCombatDetector:CleanupSessionTables(sessionData)
+    if not sessionData or not addon.StorageManager then
+        return
+    end
+    
+    -- Return individual event tables to pool
+    if sessionData.events then
+        for _, eventData in ipairs(sessionData.events) do
+            if eventData then
+                addon.StorageManager:ReleaseTable(eventData)
+            end
+        end
+        -- Return the events array itself
+        addon.StorageManager:ReleaseTable(sessionData.events)
+    end
+    
+    -- Return the guidMap table to pool
+    if sessionData.guidMap then
+        addon.StorageManager:ReleaseTable(sessionData.guidMap)
+    end
+    
+    -- Return the main session data table to pool
+    addon.StorageManager:ReleaseTable(sessionData)
+    
+    debugPrint("Cleaned up pooled tables for discarded session")
 end
 
 -- Cancel the timeout timer

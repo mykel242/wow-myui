@@ -12,6 +12,17 @@ local isInitialized = false
 local sessionStorage = {}
 local memoryStats = {}
 
+-- Table Pooling System (based on Recount's approach)
+local tablePool = {}
+local poolStats = {
+    created = 0,        -- Total tables created
+    reused = 0,         -- Tables reused from pool
+    returned = 0,       -- Tables returned to pool
+    currentPoolSize = 0, -- Current pool size
+    maxPoolSize = 100,   -- Maximum pool size to prevent memory bloat
+    warnings = 0        -- Pool-related warnings
+}
+
 -- Get current storage configuration (hardcoded defaults since SettingsWindow is disabled)
 local function GetStorageConfig()
     return {
@@ -25,6 +36,133 @@ end
 
 -- Saved variable for persistent storage
 local STORAGE_KEY = "MyUI_CombatSessions"
+
+-- ============================================================================
+-- TABLE POOLING SYSTEM (based on Recount's methodology)
+-- ============================================================================
+
+-- Get a table from the pool (reuse existing or create new)
+function StorageManager:GetTable()
+    local table
+    
+    if #tablePool > 0 then
+        -- Reuse existing table from pool
+        table = tablePool[#tablePool]
+        tablePool[#tablePool] = nil
+        poolStats.currentPoolSize = poolStats.currentPoolSize - 1
+        poolStats.reused = poolStats.reused + 1
+        
+        -- Sanity check - warn if table isn't empty (indicates improper cleanup)
+        local count = 0
+        for _ in pairs(table) do
+            count = count + 1
+        end
+        
+        if count > 0 then
+            poolStats.warnings = poolStats.warnings + 1
+            if addon.MyLogger then
+                addon.MyLogger:Warn("Table pool warning: reused table has %d entries (should be empty)", count)
+            end
+            -- Clear the table to prevent data corruption
+            for k in pairs(table) do
+                table[k] = nil
+            end
+        end
+    else
+        -- Create new table
+        table = {}
+        poolStats.created = poolStats.created + 1
+    end
+    
+    return table
+end
+
+-- Return a table to the pool for reuse
+function StorageManager:ReleaseTable(table)
+    if not table then
+        if addon.MyLogger then
+            addon.MyLogger:Warn("Attempted to release nil table to pool")
+        end
+        return
+    end
+    
+    -- Clear all contents before returning to pool
+    for k in pairs(table) do
+        table[k] = nil
+    end
+    
+    -- Only add to pool if we haven't exceeded maximum size
+    if poolStats.currentPoolSize < poolStats.maxPoolSize then
+        tablePool[#tablePool + 1] = table
+        poolStats.currentPoolSize = poolStats.currentPoolSize + 1
+        poolStats.returned = poolStats.returned + 1
+    else
+        -- Pool is full, let this table be garbage collected
+        -- This prevents memory bloat while still providing pooling benefits
+    end
+end
+
+-- Get table pool statistics for debugging/monitoring
+function StorageManager:GetPoolStats()
+    return {
+        created = poolStats.created,
+        reused = poolStats.reused,
+        returned = poolStats.returned,
+        currentPoolSize = poolStats.currentPoolSize,
+        maxPoolSize = poolStats.maxPoolSize,
+        warnings = poolStats.warnings,
+        reuseRatio = poolStats.reused > 0 and (poolStats.reused / (poolStats.created + poolStats.reused)) or 0
+    }
+end
+
+-- Reset pool statistics (useful for testing)
+function StorageManager:ResetPoolStats()
+    poolStats.created = 0
+    poolStats.reused = 0
+    poolStats.returned = 0
+    poolStats.warnings = 0
+    -- Don't reset currentPoolSize or maxPoolSize as they reflect actual state
+end
+
+-- Clear the entire table pool (emergency cleanup)
+function StorageManager:ClearTablePool()
+    for i = 1, #tablePool do
+        tablePool[i] = nil
+    end
+    poolStats.currentPoolSize = 0
+    if addon.MyLogger then
+        addon.MyLogger:Info("Table pool cleared")
+    end
+end
+
+-- Helper function to clean up pooled tables in a session before removal
+local function CleanupSessionPooledTables(sessionData)
+    if not sessionData then
+        return
+    end
+    
+    -- Clean up event tables
+    if sessionData.events then
+        for _, eventData in ipairs(sessionData.events) do
+            if eventData and type(eventData) == "table" then
+                StorageManager:ReleaseTable(eventData)
+            end
+        end
+        StorageManager:ReleaseTable(sessionData.events)
+    end
+    
+    -- Clean up GUID map
+    if sessionData.guidMap then
+        StorageManager:ReleaseTable(sessionData.guidMap)
+    end
+    
+    -- Clean up the main session table
+    StorageManager:ReleaseTable(sessionData)
+end
+
+-- ============================================================================
+-- END TABLE POOLING SYSTEM
+-- ============================================================================
 
 -- Initialize the storage manager
 function StorageManager:Initialize()
@@ -268,7 +406,8 @@ function StorageManager:PerformMemoryCleanup()
     -- Remove sessions exceeding max count (oldest first)
     local initialCount = #sessionStorage
     while #sessionStorage > config.MAX_SESSIONS do
-        table.remove(sessionStorage, 1)
+        local removedSession = table.remove(sessionStorage, 1)
+        CleanupSessionPooledTables(removedSession)
         cleaned = true
     end
     if initialCount > #sessionStorage then
@@ -282,7 +421,8 @@ function StorageManager:PerformMemoryCleanup()
     while i <= #sessionStorage do
         local session = sessionStorage[i]
         if session.serverTime and session.serverTime < cutoffTime then
-            table.remove(sessionStorage, i)
+            local removedSession = table.remove(sessionStorage, i)
+            CleanupSessionPooledTables(removedSession)
             expiredRemoved = expiredRemoved + 1
             cleaned = true
         else
@@ -300,7 +440,8 @@ function StorageManager:PerformMemoryCleanup()
         -- Remove oldest 25% of sessions
         local removeCount = math.floor(#sessionStorage * 0.25)
         for i = 1, removeCount do
-            table.remove(sessionStorage, 1)
+            local removedSession = table.remove(sessionStorage, 1)
+            CleanupSessionPooledTables(removedSession)
         end
         cleaned = true
         table.insert(cleanupLog, string.format("Removed %d sessions for memory limit", removeCount))
@@ -425,7 +566,8 @@ end
 function StorageManager:DeleteSession(sessionId)
     for i, session in ipairs(sessionStorage) do
         if session.id == sessionId then
-            table.remove(sessionStorage, i)
+            local removedSession = table.remove(sessionStorage, i)
+            CleanupSessionPooledTables(removedSession)
             self:UpdateMemoryStats()
             self:SaveToSavedVariables() -- Auto-save after deletion
             return true
@@ -435,6 +577,10 @@ function StorageManager:DeleteSession(sessionId)
 end
 
 function StorageManager:ClearAllSessions()
+    -- Clean up all pooled tables before clearing
+    for _, session in ipairs(sessionStorage) do
+        CleanupSessionPooledTables(session)
+    end
     sessionStorage = {}
     memoryStats.sessionsStored = 0
     memoryStats.totalMemoryKB = 0
@@ -472,6 +618,7 @@ end
 function StorageManager:GetDebugSummary()
     local status = self:GetStatus()
     local stats = self:GetMemoryStats()
+    local poolStats = self:GetPoolStats()
     
     return string.format(
         "StorageManager Status:\n" ..
@@ -480,7 +627,11 @@ function StorageManager:GetDebugSummary()
         "  Memory Usage: %.2f / %.1f MB (%.0f%%)\n" ..
         "  Session Age Limit: %d days\n" ..
         "  Compression: %s (%.1f%% ratio)\n" ..
-        "  Recent Sessions: %d available",
+        "  Recent Sessions: %d available\n" ..
+        "Table Pool Stats:\n" ..
+        "  Pool Size: %d / %d\n" ..
+        "  Created: %d, Reused: %d (%.1f%% reuse)\n" ..
+        "  Returned: %d, Warnings: %d",
         tostring(status.isInitialized),
         stats.sessionsStored,
         stats.maxSessions,
@@ -491,7 +642,14 @@ function StorageManager:GetDebugSummary()
         stats.maxSessionAgeDays,
         stats.compressionEnabled and "ON" or "OFF",
         (stats.compressionRatio * 100),
-        math.min(5, stats.sessionsStored)
+        math.min(5, stats.sessionsStored),
+        poolStats.currentPoolSize,
+        poolStats.maxPoolSize,
+        poolStats.created,
+        poolStats.reused,
+        (poolStats.reuseRatio * 100),
+        poolStats.returned,
+        poolStats.warnings
     )
 end
 
