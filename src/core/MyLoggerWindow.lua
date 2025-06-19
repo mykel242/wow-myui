@@ -1,13 +1,12 @@
 -- MyLoggerWindow.lua
 -- Dedicated log viewer window for MyLogger
 --
--- HYBRID PERFORMANCE SYSTEM:
--- - COMBAT MODE: Memory-only logging with zero display updates during combat
+-- RATE-LIMITED PERFORMANCE SYSTEM:
+-- - CIRCULAR BUFFER: Fixed-size buffer with overflow handling (2000 entries)
+-- - 1Hz REFRESH LIMIT: Maximum 1 second between UI updates prevents stalls
 -- - MANUAL CONTROLS: Pause/Resume and "Refresh Now" buttons for user control
--- - LIGHTWEIGHT MODE: FontString display for minimal overhead (if needed)
--- - FULL MODE: Normal EditBox with virtual scrolling when out of combat
--- - BUFFERED DISPLAY: Shows "X new messages" counter during paused states
--- - Automatic mode switching based on combat state with manual override options
+-- - LAG DETECTION: Automatic tail mode when buffer falls behind
+-- - MEMORY BOUNDED: Fixed memory usage prevents runaway growth
 
 local addonName, addon = ...
 
@@ -44,14 +43,18 @@ local WINDOW_HEIGHT = 400
 local LOG_ENTRY_HEIGHT = 16
 local MAX_VISIBLE_LOGS = math.floor((WINDOW_HEIGHT - 100) / LOG_ENTRY_HEIGHT)
 
--- Performance configuration for hybrid combat approach
+-- Performance configuration for rate-limited buffering
 local PERFORMANCE_CONFIG = {
-    REFRESH_THROTTLE_MS = 250,     -- Normal refresh rate when not in combat
-    BATCH_SIZE = 20,               -- Process up to 20 entries per batch
+    REFRESH_THROTTLE_MS = 1000,    -- HARD LIMIT: Max 1Hz refresh rate
+    BATCH_SIZE = 50,               -- Larger batches for better efficiency
     MAX_PENDING_ENTRIES = 500,     -- Increased for combat memory buffering
     BUSY_THRESHOLD = 5,            -- Consider "busy" if 5+ entries in 1 second
-    COMBAT_MEMORY_ONLY = true,     -- During combat: memory-only, no display updates
+    COMBAT_MEMORY_ONLY = false,    -- DISABLED: Set to true to re-enable auto-pause during combat
     MAX_COMBAT_BUFFER = 1000,      -- Maximum messages to buffer during combat
+    
+    -- Circular buffer configuration
+    CIRCULAR_BUFFER_SIZE = 2000,   -- Fixed buffer size for all messages
+    LAG_THRESHOLD = 500,           -- When read lag exceeds this, switch to tail mode
 }
 
 -- Filter types
@@ -80,6 +83,17 @@ local currentFilter = "ALL"
 local copyEditBox = nil
 local isRefreshing = false
 
+-- Circular buffer for rate-limited logging
+local circularBuffer = {
+    entries = {},                          -- Fixed-size array
+    capacity = PERFORMANCE_CONFIG.CIRCULAR_BUFFER_SIZE,
+    writeIndex = 1,                        -- Next write position
+    readIndex = 1,                         -- Last UI read position
+    size = 0,                             -- Current entries count
+    overflowCount = 0,                    -- Messages lost to overflow
+    totalWritten = 0,                     -- Total messages ever written
+}
+
 -- Performance tracking and hybrid display state
 local performanceState = {
     lastRefreshTime = 0,
@@ -92,8 +106,123 @@ local performanceState = {
     combatBuffer = {},          -- Messages stored during combat
     isPaused = false,           -- Manual pause state
     newMessageCount = 0,        -- Count of unprocessed messages
-    displayMode = "full"        -- "full", "lightweight", "paused"
+    displayMode = "full",       -- "full", "lightweight", "paused"
+    bufferLagged = false,       -- True when buffer is too far behind
+    laggedMessageCount = 0,     -- How many messages behind when lagged
 }
+
+-- =============================================================================
+-- CIRCULAR BUFFER FUNCTIONS
+-- =============================================================================
+
+-- Write entry to circular buffer (always succeeds, overwrites if full)
+local function WriteToCircularBuffer(entry)
+    circularBuffer.entries[circularBuffer.writeIndex] = entry
+    circularBuffer.totalWritten = circularBuffer.totalWritten + 1
+    
+    -- Update size and handle overflow
+    if circularBuffer.size < circularBuffer.capacity then
+        circularBuffer.size = circularBuffer.size + 1
+    else
+        -- Buffer is full, we're overwriting
+        circularBuffer.overflowCount = circularBuffer.overflowCount + 1
+        
+        -- If read index is about to be overwritten, advance it
+        if circularBuffer.readIndex == circularBuffer.writeIndex then
+            circularBuffer.readIndex = circularBuffer.readIndex + 1
+            if circularBuffer.readIndex > circularBuffer.capacity then
+                circularBuffer.readIndex = 1
+            end
+        end
+    end
+    
+    -- Advance write index (circular)
+    circularBuffer.writeIndex = circularBuffer.writeIndex + 1
+    if circularBuffer.writeIndex > circularBuffer.capacity then
+        circularBuffer.writeIndex = 1
+    end
+end
+
+-- Read unread entries from circular buffer
+local function ReadFromCircularBuffer()
+    local entries = {}
+    local count = 0
+    
+    -- Calculate unread entries
+    local unreadCount
+    if circularBuffer.size == 0 then
+        return entries, 0
+    elseif circularBuffer.writeIndex > circularBuffer.readIndex then
+        unreadCount = circularBuffer.writeIndex - circularBuffer.readIndex
+    elseif circularBuffer.writeIndex < circularBuffer.readIndex then
+        unreadCount = (circularBuffer.capacity - circularBuffer.readIndex) + circularBuffer.writeIndex
+    else
+        -- writeIndex == readIndex
+        if circularBuffer.size == circularBuffer.capacity then
+            -- Buffer is full, all entries are unread
+            unreadCount = circularBuffer.capacity
+        else
+            -- Buffer is empty or fully read
+            return entries, 0
+        end
+    end
+    
+    -- Read entries
+    local currentIndex = circularBuffer.readIndex
+    for i = 1, unreadCount do
+        if circularBuffer.entries[currentIndex] then
+            table.insert(entries, circularBuffer.entries[currentIndex])
+            count = count + 1
+        end
+        
+        currentIndex = currentIndex + 1
+        if currentIndex > circularBuffer.capacity then
+            currentIndex = 1
+        end
+    end
+    
+    -- Update read index
+    circularBuffer.readIndex = circularBuffer.writeIndex
+    
+    return entries, count
+end
+
+-- Get buffer lag (unread entries count)
+local function GetBufferLag()
+    if circularBuffer.size == 0 then
+        return 0
+    elseif circularBuffer.writeIndex > circularBuffer.readIndex then
+        return circularBuffer.writeIndex - circularBuffer.readIndex
+    elseif circularBuffer.writeIndex < circularBuffer.readIndex then
+        return (circularBuffer.capacity - circularBuffer.readIndex) + circularBuffer.writeIndex
+    else
+        -- writeIndex == readIndex
+        return circularBuffer.size == circularBuffer.capacity and circularBuffer.capacity or 0
+    end
+end
+
+-- Reset circular buffer read position to end (tail mode)
+local function JumpToBufferTail()
+    circularBuffer.readIndex = circularBuffer.writeIndex
+    return GetBufferLag()
+end
+
+-- Get buffer statistics for debugging/monitoring
+function MyLoggerWindow:GetBufferStats()
+    return {
+        capacity = circularBuffer.capacity,
+        size = circularBuffer.size,
+        writeIndex = circularBuffer.writeIndex,
+        readIndex = circularBuffer.readIndex,
+        overflowCount = circularBuffer.overflowCount,
+        totalWritten = circularBuffer.totalWritten,
+        currentLag = GetBufferLag(),
+        isLagged = performanceState.bufferLagged,
+        laggedCount = performanceState.laggedMessageCount,
+        displayBufferSize = #logEntries,
+        refreshRate = PERFORMANCE_CONFIG.REFRESH_THROTTLE_MS,
+    }
+end
 
 -- =============================================================================
 -- PERFORMANCE OPTIMIZATION FUNCTIONS
@@ -163,20 +292,51 @@ local function ProcessPendingEntries()
     end
 end
 
--- Schedule a throttled refresh
-local function ScheduleThrottledRefresh()
+-- Schedule a rate-limited refresh (max 1Hz)
+local function ScheduleRateLimitedRefresh()
     if performanceState.refreshTimer then
         return -- Already scheduled
     end
     
-    -- Use longer delay during combat for better performance
-    local delay = performanceState.inCombat and (PERFORMANCE_CONFIG.COMBAT_THROTTLE_MS / 1000) or (PERFORMANCE_CONFIG.REFRESH_THROTTLE_MS / 1000)
+    -- HARD LIMIT: 1 second minimum between refreshes
+    local delay = PERFORMANCE_CONFIG.REFRESH_THROTTLE_MS / 1000
     
     performanceState.refreshTimer = C_Timer.After(delay, function()
         performanceState.refreshTimer = nil
+        
         if logWindow and logWindow:IsVisible() then
-            ProcessPendingEntries()
-            MyLoggerWindow:RefreshLogs()
+            -- Read new entries from circular buffer
+            local newEntries, newCount = ReadFromCircularBuffer()
+            
+            if newCount > 0 then
+                -- Check for buffer lag
+                local currentLag = GetBufferLag()
+                
+                if currentLag > PERFORMANCE_CONFIG.LAG_THRESHOLD then
+                    -- Buffer is too far behind, switch to tail mode
+                    JumpToBufferTail()
+                    performanceState.bufferLagged = true
+                    performanceState.laggedMessageCount = currentLag
+                else
+                    performanceState.bufferLagged = false
+                end
+                
+                -- Add new entries to display buffer
+                for _, entry in ipairs(newEntries) do
+                    table.insert(logEntries, entry)
+                end
+                
+                -- Keep display buffer bounded
+                if #logEntries > 500 then
+                    local removeCount = #logEntries - 500
+                    for i = 1, removeCount do
+                        table.remove(logEntries, 1)
+                    end
+                end
+                
+                -- Refresh the display
+                MyLoggerWindow:RefreshLogs()
+            end
         end
     end)
 end
@@ -475,7 +635,7 @@ function MyLoggerWindow:CreateCopyArea()
             -- Auto-scroll to bottom when enabled
             logContentFrame:SetCursorPosition(string.len(logContentFrame:GetText() or ""))
         end
-        addon:Debug("Follow messages: %s", isChecked and "enabled" or "disabled")
+        -- User setting change - no need to log this
     end)
     
     logWindow.followCheckbox = followCheckbox
@@ -539,8 +699,6 @@ end
 -- =============================================================================
 
 function MyLoggerWindow:AddLogEntry(level, message, timestamp)
-    local currentTime = GetTime()
-    
     -- Update combat state
     UpdateCombatState()
     
@@ -555,56 +713,23 @@ function MyLoggerWindow:AddLogEntry(level, message, timestamp)
         )
     }
     
-    -- Handle different modes
-    if performanceState.displayMode == "paused" or performanceState.isPaused then
-        -- MODE: Memory-only during combat or manual pause
-        table.insert(performanceState.combatBuffer, entry)
+    -- ALWAYS write to circular buffer first (off-screen buffering)
+    WriteToCircularBuffer(entry)
+    
+    -- Track recent entry times for busy period detection
+    local currentTime = GetTime()
+    table.insert(performanceState.recentEntryTimes, currentTime)
+    
+    -- Schedule rate-limited UI refresh (max 1Hz)
+    if logWindow and logWindow:IsVisible() then
+        ScheduleRateLimitedRefresh()
+    end
+    
+    -- Update status display if paused (immediate for user feedback)
+    if (performanceState.displayMode == "paused" or performanceState.isPaused) and 
+       logWindow and logWindow:IsVisible() then
         performanceState.newMessageCount = performanceState.newMessageCount + 1
-        
-        -- Prevent memory bloat during long combat
-        if #performanceState.combatBuffer > PERFORMANCE_CONFIG.MAX_COMBAT_BUFFER then
-            table.remove(performanceState.combatBuffer, 1)
-        end
-        
-        -- Update status display if window is visible
-        if logWindow and logWindow:IsVisible() then
-            self:UpdateStatusDisplay()
-        end
-        
-    elseif performanceState.displayMode == "lightweight" then
-        -- MODE: Lightweight display (FontString only, no virtual scrolling)
-        table.insert(logEntries, entry)
-        
-        -- Keep only last 100 entries for lightweight mode
-        if #logEntries > 100 then
-            table.remove(logEntries, 1)
-        end
-        
-        -- Update lightweight display if window is visible
-        if logWindow and logWindow:IsVisible() then
-            self:UpdateLightweightDisplay()
-        end
-        
-    else
-        -- MODE: Full display with virtual scrolling
-        table.insert(logEntries, entry)
-        
-        -- Keep only last 500 entries to prevent memory issues
-        if #logEntries > 500 then
-            table.remove(logEntries, 1)
-        end
-        
-        -- Normal refresh if window exists and is visible
-        if logWindow and logWindow:IsVisible() then
-            -- Use throttled refresh for busy periods only
-            local isBusy = IsBusyPeriod()
-            if isBusy then
-                table.insert(performanceState.pendingEntries, entry)
-                ScheduleThrottledRefresh()
-            else
-                self:RefreshLogs()
-            end
-        end
+        self:UpdateStatusDisplay()
     end
 end
 
@@ -850,10 +975,16 @@ end
 function MyLoggerWindow:UpdateStatusDisplay()
     if not logWindow or not logWindow.statusFrame then return end
     
-    local statusText = performanceState.inCombat and "COMBAT MODE - Logging Paused" or "LOGGING PAUSED"
+    local statusText = "LOGGING PAUSED"  -- Combat auto-pause disabled
     logWindow.statusFrame.statusText:SetText(statusText)
     
-    local countText = string.format("%d new messages buffered", performanceState.newMessageCount)
+    local countText
+    if performanceState.bufferLagged then
+        countText = string.format("⚠️ %d messages behind (showing latest)", performanceState.laggedMessageCount)
+    else
+        local currentLag = GetBufferLag()
+        countText = string.format("%d messages buffered", currentLag)
+    end
     logWindow.statusFrame.counterText:SetText(countText)
 end
 

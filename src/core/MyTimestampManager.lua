@@ -100,14 +100,12 @@ function MyTimestampManager:GetRelativeTime(inputTimestamp)
         -- Convert using the established offset
         local relativeTime = inputTimestamp - (timestampData.combatStartTime + timestampData.logTimeOffset)
         
-        logger:Trace("TimestampManager: LogTime %.3f - Offset %.3f = Relative %.3f", 
-            inputTimestamp, (timestampData.combatStartTime + timestampData.logTimeOffset), relativeTime)
+        -- Removed: Per-event trace logging caused massive spam
         return relativeTime
     else
         -- This is already a GetTime() timestamp
         local relativeTime = inputTimestamp - timestampData.combatStartTime
-        logger:Trace("TimestampManager: GetTime %.3f -> Relative %.3f", 
-            inputTimestamp, relativeTime)
+        -- Removed: Per-event trace logging caused massive spam
         return relativeTime
     end
 end
@@ -181,8 +179,7 @@ function MyTimestampManager:ValidateTimestamp(inputTimestamp, expectedRange)
         isValid = isValid and relativeTime >= expectedRange.min and relativeTime <= expectedRange.max
     end
     
-    logger:Trace("TimestampManager: Validation - Input: %.3f, Relative: %.3f, Valid: %s", 
-        inputTimestamp, relativeTime, tostring(isValid))
+    -- Removed: Per-event validation trace caused massive spam
     
     return isValid, relativeTime
 end

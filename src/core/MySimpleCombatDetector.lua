@@ -599,9 +599,7 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
         end
     end
     
-    -- Log recording with GUID info for debugging
-    debugPrint("RECORD: %s (%s -> %s)", 
-        eventType, sourceName or "nil", destName or "nil")
+    -- Removed: Per-event debug logging caused massive spam
     
     -- Update activity time for relevant events (optimized with cached GUIDs)
     if sourceGUID == playerGUID then
@@ -614,21 +612,16 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     local relativeTime = 0
     if addon.MyTimestampManager then
         relativeTime = addon.MyTimestampManager:GetRelativeTime(timestamp)
-        -- Debug: Log the timestamp calculation
-        logger:Debug("ProcessCombatEvent: timestamp=%.3f, relativeTime=%.3f", 
-            tonumber(timestamp) or 0, tonumber(relativeTime) or 0)
     else
         -- Fallback to manual calculation
         relativeTime = timestamp and combatStartTime and (timestamp - combatStartTime) or 0
-        logger:Debug("ProcessCombatEvent: FALLBACK timestamp=%.3f, combatStartTime=%.3f, relativeTime=%.3f", 
-            tonumber(timestamp) or 0, tonumber(combatStartTime) or 0, tonumber(relativeTime) or 0)
     end
     
     -- Check if we need to create a new segment
     if self:ShouldCreateNewSegment() then
         self:FinalizeCurrentSegment()
         currentSegment = self:CreateNewSegment()
-        debugPrint("Created new segment: %s", currentSegment and currentSegment.id or "failed")
+        -- Segment creation already logged in CreateNewSegment() function
     end
     
     -- Store event data using table pool for efficiency
@@ -644,10 +637,7 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
         table.insert(currentSegment.events, eventData)
         currentSegment.eventCount = currentSegment.eventCount + 1
         
-        -- Only show segment count every 10 events to reduce spam
-        if currentSegment.eventCount % 10 == 0 then
-            debugPrint("Segment %s: %d events", currentSegment.id, currentSegment.eventCount)
-        end
+        -- Removed: Even throttled segment counting caused spam during intense combat
     end
     
     -- Also add to main session events for backward compatibility during transition

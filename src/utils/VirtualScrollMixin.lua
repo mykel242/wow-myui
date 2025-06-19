@@ -68,7 +68,7 @@ function VirtualScrollMixin:Initialize(frame, scrollFrame, editBox, config)
     -- Set up scroll monitoring
     self:SetupScrollMonitoring()
     
-    addon:Debug("VirtualScrollMixin initialized for %s", frame:GetName() or "Unknown")
+    -- Initialization complete (removed debug spam)
 end
 
 -- Merge configuration tables
@@ -237,7 +237,7 @@ function VirtualScrollMixin:DisplayTraditional(contentLines, headerLines, footer
     self.editBox:SetText(fullContent)
     self.editBox:SetHeight(#allLines * self.config.LINE_HEIGHT)
     
-    addon:Debug("Traditional display: %d total lines", #allLines)
+    -- Removed: This was causing logging recursion in MyLoggerWindow
 end
 
 -- Handle scroll position changes

@@ -191,8 +191,7 @@ function addon.FocusManager:SetFocus(frame)
             windowInfo.pixelMeter:SyncStrataWithParent()
         end
         
-        addon:Debug("FocusManager: %s focused, boosted to level %d", 
-            frame:GetName() or "Unknown", boostedLevel)
+        -- Removed: Focus boost logging was spammy during window interaction
     end
 end
 

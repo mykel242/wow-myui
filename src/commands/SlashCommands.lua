@@ -359,6 +359,66 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("SessionBrowser not loaded")
             end
+        elseif command == "memory" then
+            -- Display memory usage information
+            local memoryKB = collectgarbage("count")
+            local memoryMB = memoryKB / 1024
+            
+            print(string.format("=== MyUI2 Memory Usage ==="))
+            print(string.format("Total Lua Memory: %.2f MB (%.0f KB)", memoryMB, memoryKB))
+            
+            -- Storage breakdown
+            if addon.StorageManager then
+                local stats = addon.StorageManager:GetDebugSummary()
+                print("Storage Manager:")
+                print(string.format("  Sessions: %s", stats:match("Sessions: ([^,]+)") or "Unknown"))
+                print(string.format("  Memory Usage: %s", stats:match("Memory: ([^,]+)") or "Unknown"))
+            end
+            
+            -- GUID cache
+            if addon.GUIDResolver then
+                local guidStats = addon.GUIDResolver:GetDebugSummary()
+                local cacheCount = guidStats:match("Cache: (%d+)") or "Unknown"
+                print(string.format("  GUID Cache: %s entries", cacheCount))
+            end
+            
+            -- Table pool
+            if addon.StorageManager then
+                local poolStats = addon.StorageManager:GetPoolStats()
+                print(string.format("  Table Pool: %d/%d tables (%.1f%% reuse)", 
+                    poolStats.currentPoolSize, poolStats.maxPoolSize, poolStats.reuseRatio * 100))
+            end
+            
+            -- Logger buffer statistics
+            if addon.MyLoggerWindow then
+                local bufferStats = addon.MyLoggerWindow:GetBufferStats()
+                print(string.format("  Logger Buffer: %d/%d entries (%.1f%% full)", 
+                    bufferStats.size, bufferStats.capacity, 
+                    (bufferStats.size / bufferStats.capacity) * 100))
+                print(string.format("    Display Buffer: %d entries", bufferStats.displayBufferSize))
+                print(string.format("    Overflow Count: %d messages lost", bufferStats.overflowCount))
+                print(string.format("    Current Lag: %d unread messages", bufferStats.currentLag))
+                if bufferStats.isLagged then
+                    print(string.format("    ⚠️ Buffer lagged: %d messages behind", bufferStats.laggedCount))
+                end
+                print(string.format("    Refresh Rate: %dms (%.1fHz)", 
+                    bufferStats.refreshRate, 1000 / bufferStats.refreshRate))
+            elseif addon.MyLogger then
+                print("  Logger: ~100 recent messages in memory")
+            end
+            
+            print("Use '/myui gc' to force garbage collection")
+        elseif command == "gc" then
+            -- Force garbage collection
+            local beforeKB = collectgarbage("count")
+            collectgarbage("collect")
+            local afterKB = collectgarbage("count")
+            local freedKB = beforeKB - afterKB
+            
+            print(string.format("=== Garbage Collection ==="))
+            print(string.format("Before: %.2f MB (%.0f KB)", beforeKB / 1024, beforeKB))
+            print(string.format("After: %.2f MB (%.0f KB)", afterKB / 1024, afterKB))
+            print(string.format("Freed: %.2f MB (%.0f KB)", freedKB / 1024, freedKB))
         elseif command:match("^session%s+(.+)$") then
             local sessionId = msg:match("^session%s+(.+)$")  -- Use original msg, not lowercased command
             if addon.StorageManager then
@@ -421,6 +481,10 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui guid <guid> - Resolve specific GUID")
             print("  /myui browser - Toggle session browser (table view)")
             print("  /myui export - Open session browser for export")
+            print("")
+            print("Memory & Performance:")
+            print("  /myui memory - Show memory usage breakdown")
+            print("  /myui gc - Force garbage collection")
             print("")
             print("Logging Tools:")
             print("  /myui logs - Toggle log viewer window")
