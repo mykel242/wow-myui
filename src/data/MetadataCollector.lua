@@ -45,38 +45,41 @@ end
 
 -- Collect comprehensive metadata about current context
 function MetadataCollector:RefreshMetadata()
-    currentMetadata = {
-        -- Timestamp
-        timestamp = GetTime(),
-        serverTime = GetServerTime(),
-        
-        -- Player info
-        player = {
-            name = UnitName("player"),
-            realm = GetRealmName(),
-            class = UnitClass("player"),
-            level = UnitLevel("player"),
-            spec = self:GetPlayerSpecialization(),
-            itemLevel = self:GetAverageItemLevel(),
-        },
-        
-        -- Zone info
-        zone = {
-            name = GetZoneText(),
-            subzone = GetSubZoneText(),
-            mapID = C_Map.GetBestMapForUnit("player"),
-            instanceInfo = self:GetInstanceInfo(),
-        },
-        
-        -- Group composition
-        group = self:GetGroupComposition(),
-        
-        -- Game version info
-        client = {
-            version = GetBuildInfo(),
-            addonVersion = addon.VERSION,
-        },
-    }
+    -- Release old metadata tables back to pool if they exist
+    if currentMetadata and addon.StorageManager then
+        self:ReleaseMetadataTables(currentMetadata)
+    end
+    
+    -- Create new metadata using table pool
+    currentMetadata = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    
+    -- Timestamp
+    currentMetadata.timestamp = GetTime()
+    currentMetadata.serverTime = GetServerTime()
+    
+    -- Player info using table pool
+    currentMetadata.player = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    currentMetadata.player.name = UnitName("player")
+    currentMetadata.player.realm = GetRealmName()
+    currentMetadata.player.class = UnitClass("player")
+    currentMetadata.player.level = UnitLevel("player")
+    currentMetadata.player.spec = self:GetPlayerSpecialization()
+    currentMetadata.player.itemLevel = self:GetAverageItemLevel()
+    
+    -- Zone info using table pool
+    currentMetadata.zone = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    currentMetadata.zone.name = GetZoneText()
+    currentMetadata.zone.subzone = GetSubZoneText()
+    currentMetadata.zone.mapID = C_Map.GetBestMapForUnit("player")
+    currentMetadata.zone.instanceInfo = self:GetInstanceInfo()
+    
+    -- Group composition
+    currentMetadata.group = self:GetGroupComposition()
+    
+    -- Game version info using table pool
+    currentMetadata.client = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    currentMetadata.client.version = GetBuildInfo()
+    currentMetadata.client.addonVersion = addon.VERSION
     
     addon:Debug("Metadata refreshed: %s in %s (%s)", 
         currentMetadata.player.name,
@@ -88,20 +91,20 @@ end
 function MetadataCollector:GetPlayerSpecialization()
     local specIndex = GetSpecialization()
     if not specIndex then
-        return {
-            name = "None",
-            role = "NONE",
-            id = 0
-        }
+        local specInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+        specInfo.name = "None"
+        specInfo.role = "NONE"
+        specInfo.id = 0
+        return specInfo
     end
     
     local id, name, description, icon, role = GetSpecializationInfo(specIndex)
-    return {
-        name = name,
-        role = role,
-        id = id,
-        icon = icon
-    }
+    local specInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    specInfo.name = name
+    specInfo.role = role
+    specInfo.id = id
+    specInfo.icon = icon
+    return specInfo
 end
 
 -- Get average item level
@@ -132,22 +135,23 @@ function MetadataCollector:GetInstanceInfo()
           dynamicDifficulty, isDynamic, instanceID, instanceGroupSize, 
           LfgDungeonID = GetInstanceInfo()
     
-    return {
-        name = name,
-        type = instanceType,
-        difficultyID = difficultyID,
-        difficultyName = difficultyName,
-        maxPlayers = maxPlayers,
-        instanceID = instanceID,
-        isLFG = LfgDungeonID ~= nil
-    }
+    local instanceInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    instanceInfo.name = name
+    instanceInfo.type = instanceType
+    instanceInfo.difficultyID = difficultyID
+    instanceInfo.difficultyName = difficultyName
+    instanceInfo.maxPlayers = maxPlayers
+    instanceInfo.instanceID = instanceID
+    instanceInfo.isLFG = LfgDungeonID ~= nil
+    
+    return instanceInfo
 end
 
 -- Get group composition details
 function MetadataCollector:GetGroupComposition()
     local groupType = "solo"
     local size = 1
-    local members = {}
+    local members = addon.StorageManager and addon.StorageManager:GetTable() or {}
     
     if IsInRaid() then
         groupType = "raid"
@@ -178,12 +182,13 @@ function MetadataCollector:GetGroupComposition()
         table.insert(members, self:GetUnitInfo("player"))
     end
     
-    return {
-        type = groupType,
-        size = size,
-        members = members,
-        roles = self:GetRoleDistribution(members)
-    }
+    local groupInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    groupInfo.type = groupType
+    groupInfo.size = size
+    groupInfo.members = members
+    groupInfo.roles = self:GetRoleDistribution(members)
+    
+    return groupInfo
 end
 
 -- Get unit information
@@ -193,23 +198,23 @@ function MetadataCollector:GetUnitInfo(unit)
     local level = UnitLevel(unit)
     local role = UnitGroupRolesAssigned(unit)
     
-    return {
-        name = name,
-        class = class,
-        level = level,
-        role = role,
-        isPlayer = UnitIsUnit(unit, "player")
-    }
+    local unitInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    unitInfo.name = name
+    unitInfo.class = class
+    unitInfo.level = level
+    unitInfo.role = role
+    unitInfo.isPlayer = UnitIsUnit(unit, "player")
+    
+    return unitInfo
 end
 
 -- Analyze role distribution in group
 function MetadataCollector:GetRoleDistribution(members)
-    local roles = {
-        TANK = 0,
-        HEALER = 0,
-        DAMAGER = 0,
-        NONE = 0
-    }
+    local roles = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    roles.TANK = 0
+    roles.HEALER = 0
+    roles.DAMAGER = 0
+    roles.NONE = 0
     
     for _, member in ipairs(members) do
         local role = member.role or "NONE"
@@ -220,19 +225,72 @@ function MetadataCollector:GetRoleDistribution(members)
 end
 
 -- Public API methods
+-- Release metadata tables back to pool
+function MetadataCollector:ReleaseMetadataTables(metadata)
+    if not metadata or not addon.StorageManager then
+        return
+    end
+    
+    -- Release nested tables
+    if metadata.player then
+        if metadata.player.spec then
+            addon.StorageManager:ReleaseTable(metadata.player.spec)
+        end
+        addon.StorageManager:ReleaseTable(metadata.player)
+    end
+    
+    if metadata.zone then
+        if metadata.zone.instanceInfo then
+            addon.StorageManager:ReleaseTable(metadata.zone.instanceInfo)
+        end
+        addon.StorageManager:ReleaseTable(metadata.zone)
+    end
+    
+    if metadata.group then
+        if metadata.group.members then
+            -- Release each member info table
+            for _, member in ipairs(metadata.group.members) do
+                addon.StorageManager:ReleaseTable(member)
+            end
+            addon.StorageManager:ReleaseTable(metadata.group.members)
+        end
+        if metadata.group.roles then
+            addon.StorageManager:ReleaseTable(metadata.group.roles)
+        end
+        addon.StorageManager:ReleaseTable(metadata.group)
+    end
+    
+    if metadata.client then
+        addon.StorageManager:ReleaseTable(metadata.client)
+    end
+    
+    -- Release the main metadata table
+    addon.StorageManager:ReleaseTable(metadata)
+end
+
 function MetadataCollector:GetCurrentMetadata()
-    -- Return copy to prevent modification
-    local metadata = {}
+    -- Return deep copy using table pool to prevent modification
+    local metadata = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    
     for k, v in pairs(currentMetadata) do
         if type(v) == "table" then
-            metadata[k] = {}
+            metadata[k] = addon.StorageManager and addon.StorageManager:GetTable() or {}
             for k2, v2 in pairs(v) do
-                metadata[k][k2] = v2
+                if type(v2) == "table" then
+                    -- Handle nested tables (like player.spec, zone.instanceInfo)
+                    metadata[k][k2] = addon.StorageManager and addon.StorageManager:GetTable() or {}
+                    for k3, v3 in pairs(v2) do
+                        metadata[k][k2][k3] = v3
+                    end
+                else
+                    metadata[k][k2] = v2
+                end
             end
         else
             metadata[k] = v
         end
     end
+    
     return metadata
 end
 
@@ -243,6 +301,11 @@ function MetadataCollector:GetMetadataForCombat(combatId)
     metadata.captureTime = GetTime()
     
     return metadata
+end
+
+-- Release metadata returned by GetCurrentMetadata or GetMetadataForCombat
+function MetadataCollector:ReleaseMetadata(metadata)
+    self:ReleaseMetadataTables(metadata)
 end
 
 function MetadataCollector:IsInInstance()
@@ -269,6 +332,16 @@ function MetadataCollector:GetStatus()
         groupType = self:GetGroupType(),
         groupSize = currentMetadata.group and currentMetadata.group.size or 1
     }
+end
+
+-- Cleanup all metadata tables (for shutdown or reset)
+function MetadataCollector:Cleanup()
+    if currentMetadata and addon.StorageManager then
+        self:ReleaseMetadataTables(currentMetadata)
+        currentMetadata = {}
+    end
+    
+    addon:Debug("MetadataCollector: cleaned up all metadata tables")
 end
 
 -- Debug summary for slash commands

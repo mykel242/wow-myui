@@ -12,12 +12,12 @@ local isInitialized = false
 local guidNameCache = {}
 local recentEncounters = {}
 
--- Configuration
+-- Configuration (REDUCED for memory management)
 local CONFIG = {
     CACHE_CLEANUP_INTERVAL = 300, -- 5 minutes
-    MAX_CACHE_SIZE = 2000,        -- Maximum cached entries
-    CACHE_EXPIRY_TIME = 3600,     -- 1 hour expiry for entries
-    ENCOUNTER_RETENTION = 86400,   -- 24 hours for encounter data
+    MAX_CACHE_SIZE = 1000,        -- Reduced from 2000 - Maximum cached entries  
+    CACHE_EXPIRY_TIME = 1800,     -- Reduced from 3600 - 30 min expiry for entries
+    ENCOUNTER_RETENTION = 3600,   -- Reduced from 86400 - 1 hour for encounter data (was 24 hours!)
 }
 
 -- Saved variable key for persistent cache
@@ -112,23 +112,37 @@ function GUIDResolver:StoreGUIDName(guid, name, metadata)
         return
     end
     
-    guidNameCache[guid] = {
-        name = name,
-        metadata = metadata or {},
-        lastSeen = GetTime(),
-        seenCount = (guidNameCache[guid] and guidNameCache[guid].seenCount or 0) + 1
-    }
+    -- Use table pool for cache entries
+    local cacheEntry = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    cacheEntry.name = name
+    cacheEntry.metadata = metadata or {}
+    cacheEntry.lastSeen = GetTime()
+    cacheEntry.seenCount = (guidNameCache[guid] and guidNameCache[guid].seenCount or 0) + 1
+    
+    -- Release old entry back to pool if it exists
+    if guidNameCache[guid] and addon.StorageManager then
+        addon.StorageManager:ReleaseTable(guidNameCache[guid])
+    end
+    
+    guidNameCache[guid] = cacheEntry
     
     -- Also store encounter data for creatures
     if metadata and metadata.unitType == "Creature" then
-        recentEncounters[guid] = {
-            name = name,
-            level = metadata.level,
-            classification = metadata.classification,
-            creatureType = metadata.creatureType,
-            firstSeen = recentEncounters[guid] and recentEncounters[guid].firstSeen or GetTime(),
-            lastSeen = GetTime()
-        }
+        -- Use table pool for encounter entries
+        local encounterEntry = addon.StorageManager and addon.StorageManager:GetTable() or {}
+        encounterEntry.name = name
+        encounterEntry.level = metadata.level
+        encounterEntry.classification = metadata.classification
+        encounterEntry.creatureType = metadata.creatureType
+        encounterEntry.firstSeen = recentEncounters[guid] and recentEncounters[guid].firstSeen or GetTime()
+        encounterEntry.lastSeen = GetTime()
+        
+        -- Release old encounter entry back to pool if it exists
+        if recentEncounters[guid] and addon.StorageManager then
+            addon.StorageManager:ReleaseTable(recentEncounters[guid])
+        end
+        
+        recentEncounters[guid] = encounterEntry
     end
 end
 
@@ -169,8 +183,12 @@ end
 
 -- Scan active units for GUID
 function GUIDResolver:ScanActiveUnits(guid)
-    -- Check common units
-    local units = {"target", "mouseover", "focus", "player"}
+    -- Check common units using table pool
+    local units = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    units[1] = "target"
+    units[2] = "mouseover" 
+    units[3] = "focus"
+    units[4] = "player"
     
     -- Add group members
     if IsInGroup() then
@@ -192,9 +210,20 @@ function GUIDResolver:ScanActiveUnits(guid)
             if name and name ~= "" then
                 -- Cache this discovery
                 self:CacheUnitName(unitID)
+                
+                -- Release units table back to pool
+                if addon.StorageManager then
+                    addon.StorageManager:ReleaseTable(units)
+                end
+                
                 return name
             end
         end
+    end
+    
+    -- Release units table back to pool
+    if addon.StorageManager then
+        addon.StorageManager:ReleaseTable(units)
     end
     
     return nil
@@ -250,8 +279,8 @@ end
 
 -- Get comprehensive name mapping for a session
 function GUIDResolver:GetSessionNameMapping(events)
-    local mapping = {}
-    local uniqueGUIDs = {}
+    local mapping = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    local uniqueGUIDs = addon.StorageManager and addon.StorageManager:GetTable() or {}
     
     -- Collect all unique GUIDs from events
     for _, event in ipairs(events) do
@@ -263,14 +292,20 @@ function GUIDResolver:GetSessionNameMapping(events)
         end
     end
     
-    -- Build name mapping
+    -- Build name mapping using table pool
     for guid, _ in pairs(uniqueGUIDs) do
-        mapping[guid] = {
-            name = self:ResolveGUID(guid),
-            guidType = self:ParseGUIDType(guid),
-            cached = guidNameCache[guid] ~= nil,
-            metadata = guidNameCache[guid] and guidNameCache[guid].metadata or nil
-        }
+        local mappingEntry = addon.StorageManager and addon.StorageManager:GetTable() or {}
+        mappingEntry.name = self:ResolveGUID(guid)
+        mappingEntry.guidType = self:ParseGUIDType(guid)
+        mappingEntry.cached = guidNameCache[guid] ~= nil
+        mappingEntry.metadata = guidNameCache[guid] and guidNameCache[guid].metadata or nil
+        
+        mapping[guid] = mappingEntry
+    end
+    
+    -- Release uniqueGUIDs table back to pool
+    if addon.StorageManager then
+        addon.StorageManager:ReleaseTable(uniqueGUIDs)
     end
     
     return mapping
@@ -295,6 +330,10 @@ function GUIDResolver:PerformCleanup()
     -- Clean expired cache entries
     for guid, entry in pairs(guidNameCache) do
         if entry.lastSeen and (now - entry.lastSeen) > CONFIG.CACHE_EXPIRY_TIME then
+            -- Release cache entry back to pool before removing
+            if addon.StorageManager then
+                addon.StorageManager:ReleaseTable(entry)
+            end
             guidNameCache[guid] = nil
             removed = removed + 1
         end
@@ -303,15 +342,22 @@ function GUIDResolver:PerformCleanup()
     -- Clean old encounter data
     for guid, encounter in pairs(recentEncounters) do
         if encounter.lastSeen and (now - encounter.lastSeen) > CONFIG.ENCOUNTER_RETENTION then
+            -- Release encounter entry back to pool before removing
+            if addon.StorageManager then
+                addon.StorageManager:ReleaseTable(encounter)
+            end
             recentEncounters[guid] = nil
         end
     end
     
     -- Size-based cleanup if still too large
     if self:GetCacheSize() > CONFIG.MAX_CACHE_SIZE then
-        local sortedEntries = {}
+        local sortedEntries = addon.StorageManager and addon.StorageManager:GetTable() or {}
         for guid, entry in pairs(guidNameCache) do
-            table.insert(sortedEntries, {guid = guid, lastSeen = entry.lastSeen})
+            local sortEntry = addon.StorageManager and addon.StorageManager:GetTable() or {}
+            sortEntry.guid = guid
+            sortEntry.lastSeen = entry.lastSeen
+            table.insert(sortedEntries, sortEntry)
         end
         
         -- Sort by last seen time (oldest first)
@@ -321,9 +367,24 @@ function GUIDResolver:PerformCleanup()
         local removeCount = self:GetCacheSize() - CONFIG.MAX_CACHE_SIZE
         for i = 1, removeCount do
             if sortedEntries[i] then
-                guidNameCache[sortedEntries[i].guid] = nil
+                local guidToRemove = sortedEntries[i].guid
+                
+                -- Release the cache entry back to pool before removing
+                if guidNameCache[guidToRemove] and addon.StorageManager then
+                    addon.StorageManager:ReleaseTable(guidNameCache[guidToRemove])
+                end
+                
+                guidNameCache[guidToRemove] = nil
                 removed = removed + 1
             end
+        end
+        
+        -- Release sorted entries and their content back to pool
+        if addon.StorageManager then
+            for _, sortEntry in ipairs(sortedEntries) do
+                addon.StorageManager:ReleaseTable(sortEntry)
+            end
+            addon.StorageManager:ReleaseTable(sortedEntries)
         end
     end
     
@@ -380,6 +441,17 @@ function GUIDResolver:GetRecentEncounters()
 end
 
 function GUIDResolver:ClearCache()
+    -- Release all cache entries back to pool before clearing
+    if addon.StorageManager then
+        for _, entry in pairs(guidNameCache) do
+            addon.StorageManager:ReleaseTable(entry)
+        end
+        
+        for _, encounter in pairs(recentEncounters) do
+            addon.StorageManager:ReleaseTable(encounter)
+        end
+    end
+    
     guidNameCache = {}
     recentEncounters = {}
     self:SaveToSavedVariables()
@@ -396,12 +468,38 @@ function GUIDResolver:GetStatus()
     }
 end
 
+-- Get cache statistics for memory reporting
+function GUIDResolver:GetCacheStats()
+    return {
+        cacheSize = self:GetCacheSize(),
+        encounterCount = self:GetTableSize(recentEncounters),
+        maxCacheSize = CONFIG.MAX_CACHE_SIZE,
+        cacheUtilization = (self:GetCacheSize() / CONFIG.MAX_CACHE_SIZE) * 100,
+        expiryTime = CONFIG.CACHE_EXPIRY_TIME
+    }
+end
+
 function GUIDResolver:GetTableSize(tbl)
     local count = 0
     for _ in pairs(tbl) do
         count = count + 1
     end
     return count
+end
+
+-- Release session name mapping tables back to pool
+function GUIDResolver:ReleaseSessionNameMapping(mapping)
+    if not mapping or not addon.StorageManager then
+        return
+    end
+    
+    -- Release each mapping entry
+    for _, entry in pairs(mapping) do
+        addon.StorageManager:ReleaseTable(entry)
+    end
+    
+    -- Release the main mapping table
+    addon.StorageManager:ReleaseTable(mapping)
 end
 
 -- Debug summary

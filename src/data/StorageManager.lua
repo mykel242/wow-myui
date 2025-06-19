@@ -19,18 +19,20 @@ local poolStats = {
     reused = 0,         -- Tables reused from pool
     returned = 0,       -- Tables returned to pool
     currentPoolSize = 0, -- Current pool size
-    maxPoolSize = 100,   -- Maximum pool size to prevent memory bloat
+    maxPoolSize = 500,   -- Increased for better reuse during intensive combat
     warnings = 0        -- Pool-related warnings
 }
 
 -- Get current storage configuration (hardcoded defaults since SettingsWindow is disabled)
+-- MEMORY OPTIMIZATION: Reduced limits to prevent 34MB saved file issue
 local function GetStorageConfig()
     return {
-        MAX_SESSIONS = 50,
-        MAX_SESSION_AGE_DAYS = 7,
-        MAX_MEMORY_MB = 10,
+        MAX_SESSIONS = 15,        -- Reduced from 50 - prevents memory bloat
+        MAX_SESSION_AGE_DAYS = 3, -- Reduced from 7 - more aggressive cleanup
+        MAX_MEMORY_MB = 5,        -- Reduced from 10 - tighter memory control
         COMPRESSION_ENABLED = true,
-        WARNING_THRESHOLD = 0.8 -- Warn at 80% of limits
+        ENHANCED_COMPRESSION = true, -- NEW: More aggressive compression for saved data
+        WARNING_THRESHOLD = 0.7   -- Warn at 70% instead of 80% - earlier warnings
     }
 end
 
@@ -111,7 +113,7 @@ function StorageManager:GetPoolStats()
         currentPoolSize = poolStats.currentPoolSize,
         maxPoolSize = poolStats.maxPoolSize,
         warnings = poolStats.warnings,
-        reuseRatio = poolStats.reused > 0 and (poolStats.reused / (poolStats.created + poolStats.reused)) or 0
+        reuseRatio = (poolStats.created > 0) and (poolStats.reused / poolStats.created) or 0
     }
 end
 
@@ -208,6 +210,11 @@ function StorageManager:Initialize()
         self:CheckStorageLimits()
     end)
     
+    -- REGULAR AUTO-CLEANUP: Schedule periodic cleanup every 30 minutes
+    self.cleanupTimer = C_Timer.NewTicker(1800, function() -- 30 minutes
+        self:PerformScheduledCleanup()
+    end)
+    
     addon:Debug("StorageManager initialized - %d sessions loaded", #sessionStorage)
 end
 
@@ -271,8 +278,8 @@ function StorageManager:CompressEvents(events)
         return {}
     end
     
-    local compressed = {}
-    local eventTypeMap = {} -- Map event types to short codes
+    local compressed = self:GetTable() or {}
+    local eventTypeMap = self:GetTable() or {} -- Map event types to short codes
     local nextTypeId = 1
     
     for _, event in ipairs(events) do
@@ -283,23 +290,23 @@ function StorageManager:CompressEvents(events)
             nextTypeId = nextTypeId + 1
         end
         
-        -- Create compressed event record
-        local compressedEvent = {
-            t = math.floor(((event.time or event.realTime) or 0) * 1000), -- Timestamp in ms (handle both formats)
-            e = eventTypeMap[eventType], -- Event type ID
-            s = event.sourceGUID, -- Source GUID
-            d = event.destGUID,   -- Dest GUID
-            a = event.args and #event.args > 0 and event.args or nil -- Args only if present
-        }
+        -- Create compressed event record using table pool
+        local compressedEvent = self:GetTable() or {}
+        compressedEvent.t = math.floor(((event.time or event.realTime) or 0) * 1000) -- Timestamp in ms (handle both formats)
+        compressedEvent.e = eventTypeMap[eventType] -- Event type ID
+        compressedEvent.s = event.sourceGUID -- Source GUID
+        compressedEvent.d = event.destGUID   -- Dest GUID
+        compressedEvent.a = event.args and #event.args > 0 and event.args or nil -- Args only if present
         
         table.insert(compressed, compressedEvent)
     end
     
-    return {
-        events = compressed,
-        typeMap = eventTypeMap,
-        originalCount = #events
-    }
+    local result = self:GetTable() or {}
+    result.events = compressed
+    result.typeMap = eventTypeMap
+    result.originalCount = #events
+    
+    return result
 end
 
 -- Decompress event data for reading
@@ -308,24 +315,26 @@ function StorageManager:DecompressEvents(compressedData)
         return {}
     end
     
-    local events = {}
-    local reverseTypeMap = {} -- Reverse the type mapping
+    local events = self:GetTable() or {}
+    local reverseTypeMap = self:GetTable() or {} -- Reverse the type mapping
     
     for eventType, id in pairs(compressedData.typeMap) do
         reverseTypeMap[id] = eventType
     end
     
     for _, compressed in ipairs(compressedData.events) do
-        local event = {
-            realTime = compressed.t and (compressed.t / 1000) or 0,
-            subevent = reverseTypeMap[compressed.e] or "UNKNOWN",
-            sourceGUID = compressed.s,
-            destGUID = compressed.d,
-            args = compressed.a or {}
-        }
+        local event = self:GetTable() or {}
+        event.realTime = compressed.t and (compressed.t / 1000) or 0
+        event.subevent = reverseTypeMap[compressed.e] or "UNKNOWN"
+        event.sourceGUID = compressed.s
+        event.destGUID = compressed.d
+        event.args = compressed.a or {}
         
         table.insert(events, event)
     end
+    
+    -- Release the reverseTypeMap back to pool
+    self:ReleaseTable(reverseTypeMap)
     
     return events
 end
@@ -535,31 +544,309 @@ function StorageManager:ShowStorageWarning(warnings, cleanupNeeded)
     StaticPopup_Show("MYUI_STORAGE_WARNING")
 end
 
--- Load sessions from saved variables
+-- LAZY LOADING: Load only session metadata on startup, full data when accessed
 function StorageManager:LoadFromSavedVariables()
     if MyUIDB and MyUIDB[STORAGE_KEY] then
-        sessionStorage = MyUIDB[STORAGE_KEY]
-        addon:Debug("Loaded %d combat sessions from saved variables", #sessionStorage)
+        local loadedSessions = MyUIDB[STORAGE_KEY]
+        sessionStorage = {}
+        
+        -- LAZY LOADING: Only load metadata, mark events/segments as lazy
+        for _, session in ipairs(loadedSessions) do
+            local lightSession = self:GetTable()
+            
+            -- Copy only lightweight metadata
+            lightSession.id = session.id
+            lightSession.hash = session.hash
+            lightSession.duration = session.duration
+            lightSession.eventCount = session.eventCount
+            lightSession.storedAt = session.storedAt
+            lightSession.serverTime = session.serverTime
+            lightSession.compressed = session.compressed
+            lightSession.isSegmented = session.isSegmented
+            lightSession.segmentCount = session.segmentCount
+            
+            -- Copy lightweight metadata only
+            if session.metadata then
+                lightSession.metadata = self:GetTable()
+                lightSession.metadata.zone = session.metadata.zone and session.metadata.zone.name or "Unknown"
+                lightSession.metadata.player = session.metadata.player and session.metadata.player.name or "Unknown"
+                lightSession.metadata.group = session.metadata.group and session.metadata.group.type or "solo"
+            end
+            
+            -- Mark as lazy-loaded (events/segments not loaded)
+            lightSession._lazyLoaded = true
+            lightSession._originalIndex = #sessionStorage + 1
+            
+            table.insert(sessionStorage, lightSession)
+        end
+        
+        -- Store reference to full data for lazy loading
+        self._savedSessionData = loadedSessions
+        
+        addon:Debug("Loaded %d combat sessions from saved variables (lazy metadata only)", #sessionStorage)
     else
         sessionStorage = {}
+        self._savedSessionData = {}
     end
 end
 
--- Save sessions to saved variables
+-- Convert a session and all its nested data to use table pool
+function StorageManager:ConvertSessionToPool(session)
+    local pooledSession = self:GetTable()
+    
+    -- Copy basic properties
+    for k, v in pairs(session) do
+        if type(v) ~= "table" then
+            pooledSession[k] = v
+        end
+    end
+    
+    -- Convert events array if present
+    if session.events then
+        if session.compressed then
+            -- Handle compressed events structure
+            pooledSession.events = self:ConvertCompressedEventsToPool(session.events)
+        else
+            -- Handle regular events array
+            pooledSession.events = self:GetTable()
+            for _, event in ipairs(session.events) do
+                local pooledEvent = self:GetTable()
+                for k, v in pairs(event) do
+                    pooledEvent[k] = v
+                end
+                table.insert(pooledSession.events, pooledEvent)
+            end
+        end
+        pooledSession.compressed = session.compressed
+    end
+    
+    -- Convert segments array if present
+    if session.segments then
+        pooledSession.segments = self:GetTable()
+        for _, segment in ipairs(session.segments) do
+            local pooledSegment = self:GetTable()
+            
+            -- Copy segment properties
+            for k, v in pairs(segment) do
+                if type(v) ~= "table" then
+                    pooledSegment[k] = v
+                end
+            end
+            
+            -- Convert segment events if present
+            if segment.events then
+                pooledSegment.events = self:GetTable()
+                for _, event in ipairs(segment.events) do
+                    local pooledEvent = self:GetTable()
+                    for k, v in pairs(event) do
+                        pooledEvent[k] = v
+                    end
+                    table.insert(pooledSegment.events, pooledEvent)
+                end
+            end
+            
+            table.insert(pooledSession.segments, pooledSegment)
+        end
+    end
+    
+    -- Convert guidMap if present (keep as regular table since it's used for lookups)
+    if session.guidMap then
+        pooledSession.guidMap = {}
+        for k, v in pairs(session.guidMap) do
+            pooledSession.guidMap[k] = v
+        end
+    end
+    
+    -- Convert metadata if present
+    if session.metadata then
+        pooledSession.metadata = self:ConvertMetadataToPool(session.metadata)
+    end
+    
+    return pooledSession
+end
+
+-- Convert compressed events structure to use table pool
+function StorageManager:ConvertCompressedEventsToPool(compressedEvents)
+    local pooledCompressed = self:GetTable()
+    
+    -- Copy basic properties
+    pooledCompressed.originalCount = compressedEvents.originalCount
+    
+    -- Convert events array
+    if compressedEvents.events then
+        pooledCompressed.events = self:GetTable()
+        for _, event in ipairs(compressedEvents.events) do
+            local pooledEvent = self:GetTable()
+            for k, v in pairs(event) do
+                pooledEvent[k] = v
+            end
+            table.insert(pooledCompressed.events, pooledEvent)
+        end
+    end
+    
+    -- Convert type map
+    if compressedEvents.typeMap then
+        pooledCompressed.typeMap = self:GetTable()
+        for k, v in pairs(compressedEvents.typeMap) do
+            pooledCompressed.typeMap[k] = v
+        end
+    end
+    
+    return pooledCompressed
+end
+
+-- Convert metadata structure to use table pool
+function StorageManager:ConvertMetadataToPool(metadata)
+    local pooledMetadata = self:GetTable()
+    
+    for k, v in pairs(metadata) do
+        if type(v) == "table" then
+            pooledMetadata[k] = self:GetTable()
+            for k2, v2 in pairs(v) do
+                if type(v2) == "table" then
+                    pooledMetadata[k][k2] = self:GetTable()
+                    for k3, v3 in pairs(v2) do
+                        pooledMetadata[k][k2][k3] = v3
+                    end
+                else
+                    pooledMetadata[k][k2] = v2
+                end
+            end
+        else
+            pooledMetadata[k] = v
+        end
+    end
+    
+    return pooledMetadata
+end
+
+-- REGULAR AUTO-CLEANUP: Scheduled cleanup to prevent memory buildup
+function StorageManager:PerformScheduledCleanup()
+    local config = GetStorageConfig()
+    local initialCount = #sessionStorage
+    local cleaned = false
+    
+    addon:Debug("Performing scheduled session cleanup (every 30 minutes)")
+    
+    -- Remove sessions older than max age
+    local cutoffTime = GetServerTime() - (config.MAX_SESSION_AGE_DAYS * 24 * 60 * 60)
+    local expiredRemoved = 0
+    local i = 1
+    while i <= #sessionStorage do
+        local session = sessionStorage[i]
+        if session.serverTime and session.serverTime < cutoffTime then
+            local removedSession = table.remove(sessionStorage, i)
+            
+            -- Clean up session data if it's fully loaded
+            if not removedSession._lazyLoaded then
+                CleanupSessionPooledTables(removedSession)
+            else
+                -- Just release the light session
+                if removedSession.metadata then
+                    self:ReleaseTable(removedSession.metadata)
+                end
+                self:ReleaseTable(removedSession)
+            end
+            
+            expiredRemoved = expiredRemoved + 1
+            cleaned = true
+        else
+            i = i + 1
+        end
+    end
+    
+    -- Remove excess sessions if over limit (oldest first)
+    while #sessionStorage > config.MAX_SESSIONS do
+        local removedSession = table.remove(sessionStorage, 1)
+        
+        -- Clean up session data if it's fully loaded
+        if not removedSession._lazyLoaded then
+            CleanupSessionPooledTables(removedSession)
+        else
+            -- Just release the light session
+            if removedSession.metadata then
+                self:ReleaseTable(removedSession.metadata)
+            end
+            self:ReleaseTable(removedSession)
+        end
+        
+        cleaned = true
+    end
+    
+    if cleaned then
+        self:UpdateMemoryStats()
+        self:SaveToSavedVariables()
+        
+        local finalCount = #sessionStorage
+        local totalRemoved = initialCount - finalCount
+        
+        if totalRemoved > 0 then
+            addon:Info("Scheduled cleanup: removed %d sessions (%d expired, %d over limit)", 
+                totalRemoved, expiredRemoved, totalRemoved - expiredRemoved)
+            addon:Info("Sessions remaining: %d / %d", finalCount, config.MAX_SESSIONS)
+        end
+    end
+end
+
+-- Save sessions to saved variables with enhanced compression
 function StorageManager:SaveToSavedVariables()
     if not MyUIDB then
         MyUIDB = {}
     end
     
-    MyUIDB[STORAGE_KEY] = sessionStorage
+    local config = GetStorageConfig()
+    
+    if config.ENHANCED_COMPRESSION then
+        -- ENHANCED COMPRESSION: Save only essential data, strip runtime fields
+        local compressedSessions = {}
+        
+        for _, session in ipairs(sessionStorage) do
+            local compressedSession = {}
+            
+            -- Copy only essential persistent fields
+            compressedSession.id = session.id
+            compressedSession.hash = session.hash
+            compressedSession.duration = session.duration
+            compressedSession.eventCount = session.eventCount
+            compressedSession.storedAt = session.storedAt
+            compressedSession.serverTime = session.serverTime
+            compressedSession.compressed = session.compressed
+            compressedSession.isSegmented = session.isSegmented
+            compressedSession.segmentCount = session.segmentCount
+            
+            -- Compress metadata to essential fields only
+            if session.metadata then
+                compressedSession.metadata = {
+                    zone = session.metadata.zone and { name = session.metadata.zone.name } or nil,
+                    player = session.metadata.player and { name = session.metadata.player.name } or nil,
+                    group = session.metadata.group and { type = session.metadata.group.type } or nil
+                }
+            end
+            
+            -- Copy events/segments only if fully loaded (not lazy)
+            if not session._lazyLoaded then
+                compressedSession.events = session.events
+                compressedSession.segments = session.segments
+                compressedSession.guidMap = session.guidMap
+            end
+            
+            table.insert(compressedSessions, compressedSession)
+        end
+        
+        MyUIDB[STORAGE_KEY] = compressedSessions
+        addon:Debug("Saved %d sessions with enhanced compression", #compressedSessions)
+    else
+        -- Standard save
+        MyUIDB[STORAGE_KEY] = sessionStorage
+    end
     
     -- Note: Silent save - no chat spam
 end
 
 -- Public API methods
 function StorageManager:GetAllSessions()
-    -- Return copy to prevent modification
-    local sessions = {}
+    -- Return copy to prevent modification using table pool
+    local sessions = self:GetTable() or {}
     for i, session in ipairs(sessionStorage) do
         sessions[i] = session
     end
@@ -567,12 +854,21 @@ function StorageManager:GetAllSessions()
 end
 
 function StorageManager:GetSession(sessionId)
-    for _, session in ipairs(sessionStorage) do
+    for i, session in ipairs(sessionStorage) do
         if session.id == sessionId or (session.hash and string.upper(session.hash) == string.upper(sessionId)) then
-            -- Return copy with decompressed events if needed
-            local sessionCopy = {}
+            
+            -- LAZY LOADING: Load full session data if needed
+            if session._lazyLoaded then
+                addon:Debug("Lazy loading full session data for: %s", sessionId)
+                session = self:LazyLoadFullSession(i)
+            end
+            
+            -- Return copy with decompressed events if needed using table pool
+            local sessionCopy = self:GetTable() or {}
             for k, v in pairs(session) do
-                sessionCopy[k] = v
+                if k ~= "_lazyLoaded" and k ~= "_originalIndex" then
+                    sessionCopy[k] = v
+                end
             end
             
             -- Handle legacy compressed events
@@ -583,9 +879,9 @@ function StorageManager:GetSession(sessionId)
             
             -- Handle segmented sessions - decompress segment events
             if session.segments and session.isSegmented then
-                sessionCopy.segments = {}
+                sessionCopy.segments = self:GetTable() or {}
                 for i, segment in ipairs(session.segments) do
-                    local segmentCopy = {}
+                    local segmentCopy = self:GetTable() or {}
                     for k, v in pairs(segment) do
                         segmentCopy[k] = v
                     end
@@ -606,9 +902,39 @@ function StorageManager:GetSession(sessionId)
     return nil
 end
 
+-- LAZY LOADING: Load full session data when accessed
+function StorageManager:LazyLoadFullSession(sessionIndex)
+    local lightSession = sessionStorage[sessionIndex]
+    if not lightSession._lazyLoaded or not self._savedSessionData then
+        return lightSession -- Already fully loaded
+    end
+    
+    local originalIndex = lightSession._originalIndex
+    if not self._savedSessionData[originalIndex] then
+        addon:Warn("Lazy loading failed: original session data not found")
+        return lightSession
+    end
+    
+    -- Convert the full session data to use table pool
+    local fullSession = self:ConvertSessionToPool(self._savedSessionData[originalIndex])
+    
+    -- Replace the light session with the full session
+    -- Release the light session back to pool first
+    if lightSession.metadata then
+        self:ReleaseTable(lightSession.metadata)
+    end
+    self:ReleaseTable(lightSession)
+    
+    -- Store the full session
+    sessionStorage[sessionIndex] = fullSession
+    
+    addon:Debug("Lazy loaded full session: %s (%d events)", fullSession.id, fullSession.eventCount)
+    return fullSession
+end
+
 function StorageManager:GetRecentSessions(count)
     count = count or 10
-    local recent = {}
+    local recent = self:GetTable() or {}
     local startIndex = math.max(1, #sessionStorage - count + 1)
     
     for i = startIndex, #sessionStorage do
@@ -756,6 +1082,68 @@ function StorageManager:GetMemoryStats()
         maxSessionAgeDays = config.MAX_SESSION_AGE_DAYS,
         compressionEnabled = config.COMPRESSION_ENABLED
     }
+end
+
+-- Release compressed data structure back to pool
+function StorageManager:ReleaseCompressedData(compressedData)
+    if not compressedData then
+        return
+    end
+    
+    -- Release individual compressed events
+    if compressedData.events then
+        for _, event in ipairs(compressedData.events) do
+            self:ReleaseTable(event)
+        end
+        self:ReleaseTable(compressedData.events)
+    end
+    
+    -- Release the type map
+    if compressedData.typeMap then
+        self:ReleaseTable(compressedData.typeMap)
+    end
+    
+    -- Release the main structure
+    self:ReleaseTable(compressedData)
+end
+
+-- Release session copy returned by GetSession
+function StorageManager:ReleaseSessionCopy(sessionCopy)
+    if not sessionCopy then
+        return
+    end
+    
+    -- Release events array if it was decompressed
+    if sessionCopy.events then
+        for _, event in ipairs(sessionCopy.events) do
+            self:ReleaseTable(event)
+        end
+        self:ReleaseTable(sessionCopy.events)
+    end
+    
+    -- Release segments if they exist
+    if sessionCopy.segments then
+        for _, segment in ipairs(sessionCopy.segments) do
+            if segment.events then
+                for _, event in ipairs(segment.events) do
+                    self:ReleaseTable(event)
+                end
+                self:ReleaseTable(segment.events)
+            end
+            self:ReleaseTable(segment)
+        end
+        self:ReleaseTable(sessionCopy.segments)
+    end
+    
+    -- Release the main session copy
+    self:ReleaseTable(sessionCopy)
+end
+
+-- Release session list returned by GetAllSessions or GetRecentSessions
+function StorageManager:ReleaseSessionList(sessionList)
+    if sessionList then
+        self:ReleaseTable(sessionList)
+    end
 end
 
 function StorageManager:GetStatus()
