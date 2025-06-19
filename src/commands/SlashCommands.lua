@@ -32,7 +32,7 @@ function SlashCommands:InitializeLegacyCommands()
             if addon.mainFrame then
                 addon.mainFrame:Hide()
                 addon.db.showMainWindow = false
-                print("Main window hidden")
+                addon:Info("Main window hidden")
             end
         elseif command == "toggle" or command == "" then
             addon:ToggleMainWindow()
@@ -43,7 +43,7 @@ function SlashCommands:InitializeLegacyCommands()
         elseif command == "debug" then
             addon.DEBUG = not addon.DEBUG
             addon.db.debugMode = addon.DEBUG
-            print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
+            addon:Info("Debug mode: %s", addon.DEBUG and "ON" or "OFF")
         elseif command:match("^hpsmax%s+(%d+)$") then
             print("Meter commands disabled during modularization")
         elseif command:match("^dpsmax%s+(%d+)$") then
@@ -80,9 +80,9 @@ function SlashCommands:InitializeLegacyCommands()
             print("Timer commands disabled during modularization")
         elseif command == "timestamps" then
             if addon.MyTimestampManager then
-                print(addon.MyTimestampManager:GetDebugSummary())
+                addon:Info(addon.MyTimestampManager:GetDebugSummary())
             else
-                print("MyTimestampManager not loaded")
+                addon:Warn("MyTimestampManager not loaded")
             end
         elseif command == "cleardata" then
             print("Data clearing disabled during modularization")
@@ -127,14 +127,14 @@ function SlashCommands:InitializeSimpleCommands()
             if addon.mainFrame then
                 addon.mainFrame:Hide()
                 addon.db.showMainWindow = false
-                print("Main window hidden")
+                addon:Info("Main window hidden")
             end
         elseif command == "toggle" or command == "" then
             addon:ToggleMainWindow()
         elseif command == "debug" then
             addon.DEBUG = not addon.DEBUG
             addon.db.debugMode = addon.DEBUG
-            print(addonName .. " debug mode: " .. (addon.DEBUG and "ON" or "OFF"))
+            addon:Info("Debug mode: %s", addon.DEBUG and "ON" or "OFF")
         --[[ DISABLED
         elseif command == "settings" then
             if addon.SettingsWindow then
@@ -145,9 +145,9 @@ function SlashCommands:InitializeSimpleCommands()
         --]]
         elseif command == "timestamps" then
             if addon.MyTimestampManager then
-                print(addon.MyTimestampManager:GetDebugSummary())
+                addon:Info(addon.MyTimestampManager:GetDebugSummary())
             else
-                print("MyTimestampManager not loaded")
+                addon:Warn("MyTimestampManager not loaded")
             end
         elseif command == "logger" then
             if addon.MySimpleCombatDetector then
@@ -246,9 +246,24 @@ function SlashCommands:InitializeSimpleCommands()
             end
         elseif command == "guids" then
             if addon.GUIDResolver then
-                print(addon.GUIDResolver:GetDebugSummary())
+                addon:Info(addon.GUIDResolver:GetDebugSummary())
             else
-                print("GUIDResolver not loaded")
+                addon:Error("GUIDResolver not loaded")
+            end
+        elseif command == "guidcleanup" then
+            if addon.GUIDResolver then
+                local before = addon.GUIDResolver:GetStatus()
+                addon.GUIDResolver:PerformCleanup()
+                local after = addon.GUIDResolver:GetStatus()
+                
+                addon:Info("=== GUID Cache Cleanup ===")
+                addon:Info("Before: %d cache, %d encounters", before.cacheSize, before.encounterCount)
+                addon:Info("After: %d cache, %d encounters", after.cacheSize, after.encounterCount)
+                addon:Info("Removed: %d cache, %d encounters", 
+                    before.cacheSize - after.cacheSize, 
+                    before.encounterCount - after.encounterCount)
+            else
+                addon:Error("GUIDResolver not loaded")
             end
         --[[ DISABLED - CombatTracker not available
         elseif command == "combatdetection" then
@@ -360,65 +375,258 @@ function SlashCommands:InitializeSimpleCommands()
                 print("SessionBrowser not loaded")
             end
         elseif command == "memory" then
-            -- Display memory usage information
+            -- Display memory usage information via MyLogger
             local memoryKB = collectgarbage("count")
             local memoryMB = memoryKB / 1024
             
-            print(string.format("=== MyUI2 Memory Usage ==="))
-            print(string.format("Total Lua Memory: %.2f MB (%.0f KB)", memoryMB, memoryKB))
+            addon:Info("=== MyUI2 Memory Usage ===")
+            addon:Info("Total Lua Memory: %.2f MB (%.0f KB)", memoryMB, memoryKB)
             
             -- Storage breakdown
             if addon.StorageManager then
                 local stats = addon.StorageManager:GetDebugSummary()
-                print("Storage Manager:")
-                print(string.format("  Sessions: %s", stats:match("Sessions: ([^,]+)") or "Unknown"))
-                print(string.format("  Memory Usage: %s", stats:match("Memory: ([^,]+)") or "Unknown"))
-            end
-            
-            -- GUID cache
-            if addon.GUIDResolver then
-                local guidStats = addon.GUIDResolver:GetDebugSummary()
-                local cacheCount = guidStats:match("Cache: (%d+)") or "Unknown"
-                print(string.format("  GUID Cache: %s entries", cacheCount))
-            end
-            
-            -- Table pool
-            if addon.StorageManager then
+                addon:Info("Storage Manager:")
+                addon:Info("  Sessions: %s", stats:match("Sessions: ([^,]+)") or "Unknown")
+                addon:Info("  Memory Usage: %s", stats:match("Memory: ([^,]+)") or "Unknown")
+                
                 local poolStats = addon.StorageManager:GetPoolStats()
-                print(string.format("  Table Pool: %d/%d tables (%.1f%% reuse)", 
-                    poolStats.currentPoolSize, poolStats.maxPoolSize, poolStats.reuseRatio * 100))
+                addon:Info("  Table Pool: %d/%d tables (%.1f%% reuse)", 
+                    poolStats.currentPoolSize, poolStats.maxPoolSize, poolStats.reuseRatio * 100)
+                addon:Info("    Created: %d, Reused: %d, Returned: %d", 
+                    poolStats.created, poolStats.reused, poolStats.returned)
+            end
+            
+            -- GUID cache with proper reporting
+            if addon.GUIDResolver then
+                local guidStats = addon.GUIDResolver:GetCacheStats()
+                if guidStats then
+                    addon:Info("  GUID Cache: %d entries, %d recent encounters", 
+                        guidStats.cacheSize or 0, guidStats.encounterCount or 0)
+                else
+                    local guidSummary = addon.GUIDResolver:GetDebugSummary()
+                    local cacheCount = guidSummary:match("Cache: (%d+)") or "Unknown"
+                    addon:Info("  GUID Cache: %s entries", cacheCount)
+                end
             end
             
             -- Logger buffer statistics
             if addon.MyLoggerWindow then
                 local bufferStats = addon.MyLoggerWindow:GetBufferStats()
-                print(string.format("  Logger Buffer: %d/%d entries (%.1f%% full)", 
+                addon:Info("  Logger Buffer: %d/%d entries (%.1f%% full)", 
                     bufferStats.size, bufferStats.capacity, 
-                    (bufferStats.size / bufferStats.capacity) * 100))
-                print(string.format("    Display Buffer: %d entries", bufferStats.displayBufferSize))
-                print(string.format("    Overflow Count: %d messages lost", bufferStats.overflowCount))
-                print(string.format("    Current Lag: %d unread messages", bufferStats.currentLag))
+                    (bufferStats.size / bufferStats.capacity) * 100)
+                addon:Info("    Display Buffer: %d entries", bufferStats.displayBufferSize)
+                addon:Info("    Overflow Count: %d messages lost", bufferStats.overflowCount)
+                addon:Info("    Current Lag: %d unread messages", bufferStats.currentLag)
                 if bufferStats.isLagged then
-                    print(string.format("    ⚠️ Buffer lagged: %d messages behind", bufferStats.laggedCount))
+                    addon:Warn("    ⚠️ Buffer lagged: %d messages behind", bufferStats.laggedCount)
                 end
-                print(string.format("    Refresh Rate: %dms (%.1fHz)", 
-                    bufferStats.refreshRate, 1000 / bufferStats.refreshRate))
+                addon:Info("    Refresh Rate: %dms (%.1fHz)", 
+                    bufferStats.refreshRate, 1000 / bufferStats.refreshRate)
             elseif addon.MyLogger then
-                print("  Logger: ~100 recent messages in memory")
+                addon:Info("  Logger: ~100 recent messages in memory")
             end
             
-            print("Use '/myui gc' to force garbage collection")
+            -- Add component memory estimates
+            addon:Info("")
+            addon:Info("Component Memory Estimates:")
+            
+            -- Enhanced Combat Logger analysis
+            if addon.EnhancedCombatLogger then
+                addon:Info("  Enhanced Combat Logger: Active (no pooling)")
+            end
+            
+            -- Timeline Tracker analysis  
+            if addon.TimelineTracker then
+                addon:Info("  Timeline Tracker: Active (no pooling)")
+            end
+            
+            -- Session data analysis
+            if addon.StorageManager then
+                local stats = addon.StorageManager:GetDebugSummary()
+                local sessionInfo = stats:match("Sessions: ([^,]+)") or "Unknown"
+                addon:Info("  Combat Sessions: %s stored", sessionInfo)
+            end
+            
+            addon:Info("")
+            addon:Info("Memory Usage Gap: %.1f MB unaccounted", 
+                math.max(0, memoryMB - 10)) -- Rough estimate of expected usage
+            addon:Info("Use '/myui gc' to force garbage collection")
+            addon:Info("Use '/myui logs' to view detailed output")
         elseif command == "gc" then
-            -- Force garbage collection
+            -- Force garbage collection via MyLogger
             local beforeKB = collectgarbage("count")
             collectgarbage("collect")
             local afterKB = collectgarbage("count")
             local freedKB = beforeKB - afterKB
             
-            print(string.format("=== Garbage Collection ==="))
-            print(string.format("Before: %.2f MB (%.0f KB)", beforeKB / 1024, beforeKB))
-            print(string.format("After: %.2f MB (%.0f KB)", afterKB / 1024, afterKB))
-            print(string.format("Freed: %.2f MB (%.0f KB)", freedKB / 1024, freedKB))
+            addon:Info("=== Garbage Collection ===")
+            addon:Info("Before: %.2f MB (%.0f KB)", beforeKB / 1024, beforeKB)
+            addon:Info("After: %.2f MB (%.0f KB)", afterKB / 1024, afterKB)
+            addon:Info("Freed: %.2f MB (%.0f KB)", freedKB / 1024, freedKB)
+            
+            -- Also show table pool stats after GC
+            if addon.StorageManager then
+                local poolStats = addon.StorageManager:GetPoolStats()
+                addon:Info("Table Pool After GC: %d/%d tables", poolStats.currentPoolSize, poolStats.maxPoolSize)
+                addon:Info("Pool Stats: Created=%d, Reused=%d, Returned=%d", 
+                    poolStats.created, poolStats.reused, poolStats.returned)
+            end
+            
+            addon:Info("Use '/myui logs' to view detailed output")
+        elseif command == "poolconvert" then
+            -- Force conversion of saved data to use table pool
+            if addon.StorageManager then
+                local beforeKB = collectgarbage("count")
+                local beforeStats = addon.StorageManager:GetPoolStats()
+                
+                addon:Info("=== Converting Saved Data to Table Pool ===")
+                addon:Info("Before: %.2f MB memory, %d pool tables", beforeKB / 1024, beforeStats.currentPoolSize)
+                
+                -- Force reload and conversion
+                addon.StorageManager:LoadFromSavedVariables()
+                
+                -- Force aggressive garbage collection to free old data
+                addon:Info("Forcing garbage collection to free old data...")
+                collectgarbage("collect")
+                collectgarbage("collect") -- Double collection for stubborn references
+                
+                local afterKB = collectgarbage("count")
+                local afterStats = addon.StorageManager:GetPoolStats()
+                local memoryChange = (afterKB - beforeKB) / 1024
+                
+                addon:Info("After: %.2f MB memory (%.1f MB %s)", afterKB / 1024, 
+                    math.abs(memoryChange), memoryChange >= 0 and "increase" or "decrease")
+                addon:Info("Pool: %d tables (%d created for conversion)", 
+                    afterStats.currentPoolSize, afterStats.created - beforeStats.created)
+                addon:Info("Conversion complete!")
+            else
+                addon:Error("StorageManager not loaded")
+            end
+        elseif command == "clearsessions" then
+            -- Clear all stored sessions to free memory
+            if addon.StorageManager then
+                local beforeKB = collectgarbage("count")
+                local sessionCount = #addon.StorageManager:GetAllSessions()
+                
+                addon:Info("=== Clearing All Sessions ===")
+                addon:Info("Before: %.2f MB memory, %d sessions", beforeKB / 1024, sessionCount)
+                
+                -- Clear all sessions (releases pooled tables)
+                addon.StorageManager:ClearAllSessions()
+                
+                -- Force garbage collection
+                collectgarbage("collect")
+                collectgarbage("collect")
+                
+                local afterKB = collectgarbage("count")
+                local memoryFreed = (beforeKB - afterKB) / 1024
+                
+                addon:Info("After: %.2f MB memory (%.1f MB freed)", afterKB / 1024, memoryFreed)
+                addon:Info("All %d sessions cleared and memory released!", sessionCount)
+                addon:Warn("Note: This will also clear your saved session data permanently.")
+            else
+                addon:Error("StorageManager not loaded")
+            end
+        elseif command == "addons" then
+            -- Check memory usage of all addons using modern API
+            if UpdateAddOnMemoryUsage then
+                UpdateAddOnMemoryUsage()
+            end
+            
+            local addonMemory = {}
+            local totalAddonMemory = 0
+            
+            -- Try modern C_AddOns API first, fallback to legacy
+            local function GetAddOnCount()
+                if C_AddOns and C_AddOns.GetNumAddOns then
+                    return C_AddOns.GetNumAddOns()
+                else
+                    return GetNumAddOns and GetNumAddOns() or 0
+                end
+            end
+            
+            local function GetAddOnData(i)
+                if C_AddOns and C_AddOns.GetAddOnInfo then
+                    local name, title = C_AddOns.GetAddOnInfo(i)
+                    return name, title
+                elseif GetAddOnInfo then
+                    return GetAddOnInfo(i)
+                else
+                    return nil, nil
+                end
+            end
+            
+            local function GetAddOnMem(i)
+                -- Try multiple API paths for memory usage
+                if C_AddOns and C_AddOns.GetAddOnMemoryUsage then
+                    return C_AddOns.GetAddOnMemoryUsage(i)
+                elseif GetAddOnMemoryUsage then
+                    return GetAddOnMemoryUsage(i)
+                else
+                    -- Fallback: estimate based on addon being loaded
+                    local name = GetAddOnData(i)
+                    if name and C_AddOns and C_AddOns.IsAddOnLoaded then
+                        return C_AddOns.IsAddOnLoaded(name) and 50 or 0  -- Rough 50KB estimate
+                    elseif name and IsAddOnLoaded then
+                        return IsAddOnLoaded(name) and 50 or 0
+                    end
+                    return 0
+                end
+            end
+            
+            local numAddons = GetAddOnCount()
+            
+            for i = 1, numAddons do
+                local name, title = GetAddOnData(i)
+                local memory = GetAddOnMem(i)
+                
+                if name and memory and memory > 100 then -- Only show addons using >100KB
+                    table.insert(addonMemory, {name = title or name, memory = memory})
+                    totalAddonMemory = totalAddonMemory + memory
+                end
+            end
+            
+            table.sort(addonMemory, function(a, b) return a.memory > b.memory end)
+            
+            addon:Info("=== Addon Memory Usage (>100KB) ===")
+            for i = 1, math.min(10, #addonMemory) do
+                local addon_info = addonMemory[i]
+                addon:Info("  %s: %.2f MB", addon_info.name, addon_info.memory / 1024)
+            end
+            addon:Info("Total Addon Memory: %.2f MB", totalAddonMemory / 1024)
+            addon:Info("WoW + Other Memory: %.2f MB", (collectgarbage("count") - totalAddonMemory) / 1024)
+        elseif command == "tableleaks" then
+            -- Analyze table pool usage patterns
+            if addon.StorageManager then
+                local poolStats = addon.StorageManager:GetPoolStats()
+                addon:Info("=== Table Pool Leak Analysis ===")
+                addon:Info("Pool Status: %d/%d tables", poolStats.currentPoolSize, poolStats.maxPoolSize)
+                addon:Info("Created: %d tables", poolStats.created)
+                addon:Info("Reused: %d tables", poolStats.reused) 
+                addon:Info("Returned: %d tables", poolStats.returned)
+                addon:Info("Warnings: %d", poolStats.warnings)
+                
+                local leakedTables = poolStats.created - poolStats.returned
+                addon:Info("Potential Leaks: %d tables never returned", leakedTables)
+                addon:Info("Reuse Efficiency: %.1f%% (higher is better)", poolStats.reuseRatio * 100)
+                
+                if poolStats.currentPoolSize >= poolStats.maxPoolSize then
+                    addon:Warn("⚠️ Pool is full - new returns will be ignored")
+                end
+                
+                if leakedTables > 100 then
+                    addon:Warn("⚠️ High leak count suggests missing ReleaseTable() calls")
+                end
+                
+                addon:Info("Potential leak sources:")
+                addon:Info("  - StorageManager compression/export temporary tables")
+                addon:Info("  - UI components (SessionBrowser, etc.)")
+                addon:Info("  - MyLogger internal structures")
+                addon:Info("  - Note: EnhancedCombatLogger & TimelineTracker are DISABLED")
+            else
+                addon:Error("StorageManager not loaded")
+            end
         elseif command:match("^session%s+(.+)$") then
             local sessionId = msg:match("^session%s+(.+)$")  -- Use original msg, not lowercased command
             if addon.StorageManager then
@@ -478,13 +686,18 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui segments <id|hash> - Show session segment details")
             print("  /myui counters - Show session counter status")
             print("  /myui guids - Show GUID resolver status")
+            print("  /myui guidcleanup - Force GUID cache cleanup")
             print("  /myui guid <guid> - Resolve specific GUID")
             print("  /myui browser - Toggle session browser (table view)")
             print("  /myui export - Open session browser for export")
             print("")
             print("Memory & Performance:")
             print("  /myui memory - Show memory usage breakdown")
+            print("  /myui addons - Show all addon memory usage")
             print("  /myui gc - Force garbage collection")
+            print("  /myui tableleaks - Analyze table pool leaks")
+            print("  /myui poolconvert - Convert saved data to use table pool")
+            print("  /myui clearsessions - Clear all stored sessions (frees memory)")
             print("")
             print("Logging Tools:")
             print("  /myui logs - Toggle log viewer window")

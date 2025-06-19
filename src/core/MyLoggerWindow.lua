@@ -39,7 +39,7 @@ StaticPopupDialogs["MYLOGGER_CLEAR_CONFIRM"] = {
 -- =============================================================================
 
 local WINDOW_WIDTH = 600
-local WINDOW_HEIGHT = 400
+local WINDOW_HEIGHT = 600  -- Increased from 400 to 600 (1.5x taller)
 local LOG_ENTRY_HEIGHT = 16
 local MAX_VISIBLE_LOGS = math.floor((WINDOW_HEIGHT - 100) / LOG_ENTRY_HEIGHT)
 
