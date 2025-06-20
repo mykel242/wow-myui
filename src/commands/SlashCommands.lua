@@ -116,12 +116,14 @@ function SlashCommands:InitializeSimpleCommands()
     function SlashCmdList.MYUI(msg, editBox)
         local command = string.lower(msg)
 
+
         if command == "toggle" or command == "" then
             addon:ToggleMainWindow()
         elseif command:match("^session%s+(.+)$") then
             local sessionId = msg:match("^session%s+(.+)$")  -- Use original msg, not lowercased command
             if addon.StorageManager then
                 local session = addon.StorageManager:GetSession(sessionId)
+
                 if session then
                     addon:Info("=== Session Details: [%s] %s ===", session.hash or "----", sessionId)
                     addon:Info("Duration: %.1fs", session.duration or 0)
@@ -316,6 +318,7 @@ function SlashCommands:InitializeSimpleCommands()
             end
             
             -- Session data analysis
+
             if addon.StorageManager then
                 local stats = addon.StorageManager:GetDebugSummary()
                 local sessionInfo = stats:match("Sessions: ([^,]+)") or "Unknown"

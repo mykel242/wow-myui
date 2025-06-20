@@ -27,6 +27,7 @@ local poolStats = {
 -- MEMORY OPTIMIZATION: Reduced limits to prevent 34MB saved file issue
 local function GetStorageConfig()
     return {
+
         MAX_SESSIONS = 25,        -- Increased from 15 - better history balance
         MAX_SESSION_AGE_DAYS = 7, -- Restored to 7 - full week of raid history
         MAX_MEMORY_MB = 8,        -- Increased from 5 - reasonable for combat data
@@ -36,6 +37,7 @@ local function GetStorageConfig()
         -- New tiered retention strategy
         PRIORITY_SESSIONS = 10,   -- Keep most recent 10 sessions regardless of age
         LONG_TERM_SESSIONS = 15   -- Keep additional 15 sessions up to age limit
+
     }
 end
 
@@ -656,6 +658,7 @@ function StorageManager:ConvertSessionToPool(session)
     -- Convert metadata if present
     if session.metadata then
         pooledSession.metadata = self:ConvertMetadataToPool(session.metadata)
+
     end
     
     return pooledSession
