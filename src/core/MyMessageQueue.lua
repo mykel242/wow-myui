@@ -39,6 +39,8 @@ end
 
 -- Push a message to the queue
 function MyMessageQueue:Push(messageType, data)
+    -- Debug logging removed - system is working
+    
     local message = {
         type = messageType,
         data = data,
@@ -117,11 +119,13 @@ end
 -- SUBSCRIPTION SYSTEM
 -- =============================================================================
 
--- Subscribe to queue messages
-function MyMessageQueue:Subscribe(name, callback, filter)
-    self.subscribers[name] = {
+-- Subscribe to queue messages by message type
+function MyMessageQueue:Subscribe(messageType, callback, filter)
+    -- Use messageType as subscriber key for automatic filtering
+    self.subscribers[messageType] = {
         callback = callback,
-        filter = filter,  -- Optional filter function
+        messageType = messageType,  -- Store the message type for filtering
+        filter = filter,  -- Optional additional filter function
         active = true
     }
 end
@@ -131,16 +135,22 @@ function MyMessageQueue:Unsubscribe(name)
     self.subscribers[name] = nil
 end
 
--- Notify all active subscribers
+-- Notify subscribers that match the message type
 function MyMessageQueue:NotifySubscribers(message)
-    for name, subscriber in pairs(self.subscribers) do
+    -- Debug logging removed - system is working
+    
+    for subscriberKey, subscriber in pairs(self.subscribers) do
         if subscriber.active then
-            -- Apply filter if present
-            if not subscriber.filter or subscriber.filter(message) then
-                -- Protected call to prevent one subscriber from breaking others
-                local success, err = pcall(subscriber.callback, message)
-                if not success then
-                    addon:Debug("MyMessageQueue subscriber error in %s: %s", name, err)
+            -- Check if this subscriber wants this message type
+            if subscriber.messageType == message.type then
+                
+                -- Apply additional filter if present
+                if not subscriber.filter or subscriber.filter(message) then
+                    -- Protected call to prevent one subscriber from breaking others
+                    local success, err = pcall(subscriber.callback, message)
+                    if not success then
+                        addon:Debug("MyMessageQueue subscriber error in %s: %s", subscriberKey, err)
+                    end
                 end
             end
         end

@@ -1,3 +1,24 @@
+--[[
+==================================================================================
+⚠️  DEPRECATED - DO NOT USE ⚠️  
+==================================================================================
+
+This file is DEPRECATED and replaced by MySimpleCombatDetector.lua
+
+Original Purpose: Enhanced combat logging from prototype
+Replacement: src/core/MySimpleCombatDetector.lua
+Deprecated Date: 2025-06-20
+Status: Not loaded in TOC file
+
+This file is kept for reference only. Combat event processing has been
+simplified and moved to MySimpleCombatDetector.lua with message queue integration.
+
+Key parsing logic from this file was used to fix damage amount parsing in the
+new system. See lines 385-394 for the correct combat log parsing approach.
+
+==================================================================================
+--]]
+
 -- EnhancedCombatLogger.lua
 -- Enhanced combat logging for detailed session insights
 

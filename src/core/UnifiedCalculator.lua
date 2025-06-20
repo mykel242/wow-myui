@@ -1,3 +1,21 @@
+--[[
+==================================================================================
+⚠️  DEPRECATED - DO NOT USE ⚠️  
+==================================================================================
+
+This file is DEPRECATED and replaced by MyCombatMeterCalculator.lua
+
+Original Purpose: Legacy calculation system from prototype
+Replacement: src/core/MyCombatMeterCalculator.lua 
+Deprecated Date: 2025-06-20
+Status: Not loaded in TOC file
+
+This file is kept for reference only. All calculation functionality has been
+moved to the new modular MyCombatMeterCalculator.lua system.
+
+==================================================================================
+--]]
+
 local addonName, addon = ...
 
 addon.UnifiedCalculator = {}

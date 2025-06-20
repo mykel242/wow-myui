@@ -502,6 +502,9 @@ function MySimpleCombatDetector:StartCombat()
     inCombat = true
     lastActivityTime = combatStartTime
     
+    -- Publish combat state change to message queue
+    self:PublishCombatStateChange(true)
+    
     -- Initialize segmentation state
     segmentCounter = 0
     lastSegmentTime = combatStartTime
@@ -643,6 +646,131 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     -- Also add to main session events for backward compatibility during transition
     table.insert(currentSessionData.events, eventData)
     currentSessionData.eventCount = currentSessionData.eventCount + 1
+    
+    -- Publish events to message queue for real-time components (like combat meter)
+    -- Pass all parameters from the combat log event
+    self:PublishEventToMessageQueue(...)
+end
+
+-- =============================================================================
+-- MESSAGE QUEUE INTEGRATION
+-- =============================================================================
+
+-- Publish combat events to message queue for real-time components
+function MySimpleCombatDetector:PublishEventToMessageQueue(...)
+    if not addon.CombatEventQueue then
+        return -- Combat event queue not available
+    end
+    
+    -- Extract all combat log parameters
+    local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
+          destGUID, destName, destFlags, destRaidFlags = ...
+          
+    local amount = 0
+    
+    -- Parse damage events with proper combat log structure
+    if eventType:find("DAMAGE") then
+        if eventType == "SWING_DAMAGE" then
+            -- For swing damage: parameter 12 is the damage amount
+            amount = select(12, ...) or 0
+            -- Removed: too verbose for normal operation
+        elseif eventType == "SPELL_DAMAGE" or eventType == "RANGE_DAMAGE" or eventType == "SPELL_PERIODIC_DAMAGE" then
+            -- For spell damage: params are spellId(12), spellName(13), spellSchool(14), amount(15)
+            local spellId = select(12, ...)
+            local spellName = select(13, ...)
+            local spellSchool = select(14, ...)
+            amount = select(15, ...) or 0
+            -- Removed: too verbose for normal operation
+        else
+            -- For other damage types, try parameter 15
+            amount = select(15, ...) or 0
+            -- Removed: too verbose for normal operation
+        end
+        
+        -- Convert to number
+        amount = tonumber(amount) or 0
+        
+        -- Sanity check: damage should be between 1 and 10 million (reasonable for retail WoW)
+        if amount > 10000000 then
+            debugPrint("Rejected unrealistic damage amount: %d (eventType: %s)", amount, eventType)
+            amount = 0
+        end
+        
+        if amount > 0 then
+            if addon.CombatEventQueue and addon.CombatEventQueue.Push then
+                addon.CombatEventQueue:Push("DAMAGE_EVENT", {
+                    eventType = eventType,
+                    amount = amount,
+                    source = sourceGUID,
+                    target = destGUID,
+                    timestamp = timestamp
+                })
+                -- Trace level to reduce log noise during normal operation
+                if logger and logger.Trace then
+                    logger:Trace("Published DAMAGE_EVENT: %s -> %s, amount: %d", sourceGUID or "nil", destGUID or "nil", amount)
+                end
+            else
+                debugPrint("ERROR: CombatEventQueue not available for DAMAGE_EVENT")
+            end
+        else
+            -- Debug log when no damage amount found
+            debugPrint("No damage amount found for event: %s", eventType)
+        end
+    end
+    
+    -- Parse healing events with proper combat log structure
+    if eventType:find("HEAL") then
+        -- For heal events: spellId(12), spellName(13), spellSchool(14), amount(15), overhealing(16), absorbed(17), critical(18)
+        local spellId = select(12, ...)
+        local spellName = select(13, ...)
+        local spellSchool = select(14, ...)
+        amount = select(15, ...) or 0
+        -- Removed: too verbose for normal operation
+        
+        -- Convert to number
+        amount = tonumber(amount) or 0
+        
+        -- Sanity check: healing should be between 1 and 10 million (reasonable for retail WoW)
+        if amount > 10000000 then
+            debugPrint("Rejected unrealistic heal amount: %d (eventType: %s)", amount, eventType)
+            amount = 0
+        end
+        
+        if amount > 0 then
+            if addon.CombatEventQueue and addon.CombatEventQueue.Push then
+                addon.CombatEventQueue:Push("HEAL_EVENT", {
+                    eventType = eventType,
+                    amount = amount,
+                    source = sourceGUID,
+                    target = destGUID,
+                    timestamp = timestamp
+                })
+                -- Trace level to reduce log noise during normal operation  
+                if logger and logger.Trace then
+                    logger:Trace("Published HEAL_EVENT: %s -> %s, amount: %d", sourceGUID or "nil", destGUID or "nil", amount)
+                end
+            else
+                debugPrint("ERROR: CombatEventQueue not available for HEAL_EVENT")
+            end
+        else
+            -- Debug log when no heal amount found
+            debugPrint("No heal amount found for event: %s", eventType)
+        end
+    end
+end
+
+-- Publish combat state changes
+function MySimpleCombatDetector:PublishCombatStateChange(inCombatState)
+    if not addon.CombatEventQueue then
+        return
+    end
+    
+    addon.CombatEventQueue:Push("COMBAT_STATE_CHANGED", {
+        inCombat = inCombatState,
+        startTime = combatStartTime,
+        timestamp = GetTime(),
+        sessionId = currentSessionData and currentSessionData.id or nil
+    })
 end
 
 -- Start the activity timeout timer
@@ -719,6 +847,9 @@ function MySimpleCombatDetector:EndCombat()
         -- Return pooled tables to pool for discarded sessions
         self:CleanupSessionTables(currentSessionData)
     end
+    
+    -- Publish combat state change to message queue before resetting
+    self:PublishCombatStateChange(false)
     
     -- Reset combat state including segmentation
     inCombat = false

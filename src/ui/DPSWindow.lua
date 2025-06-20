@@ -1,3 +1,21 @@
+--[[
+==================================================================================
+⚠️  DEPRECATED - DO NOT USE ⚠️  
+==================================================================================
+
+This file is DEPRECATED and replaced by MyCombatMeterWindow.lua
+
+Original Purpose: Legacy DPS meter window from prototype
+Replacement: src/core/MyCombatMeterWindow.lua
+Deprecated Date: 2025-06-20
+Status: Not loaded in TOC file
+
+This file is kept for reference only. DPS/HPS meter functionality has been
+unified into MyCombatMeterWindow.lua with message queue architecture.
+
+==================================================================================
+--]]
+
 -- DPSWindow.lua
 -- DPS tracking window using BaseMeterWindow with integrated pixel meter
 

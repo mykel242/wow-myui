@@ -411,23 +411,15 @@ function addon:OnInitialize()
         error(addonName .. ": MyLogger module not available - cannot continue")
     end
     
-    -- TEMPORARILY DISABLE EventQueues to fix circular dependency
-    -- Initialize specialized event queues for transparent data flow
-    print("MyUI: Creating CombatEventQueue...")
-    self.CombatEventQueue = self:CreateCombatEventQueue({
-        maxSize = 2500,
-        ttl = 300
-    })
-    print("MyUI: CombatEventQueue created")
-    
-    print("MyUI: Creating LogEventQueue...")
-    self.LogEventQueue = self:CreateLogEventQueue({
-        maxSize = 2000,
-        ttl = 600
-    })
-    print("MyUI: LogEventQueue created")
-    
-    print("MyUI: Both queues created successfully")
+    -- Initialize MyMessageQueue for decoupled communication
+    if self.MyMessageQueue then
+        self.MyMessageQueue = self.MyMessageQueue:New({
+            maxSize = 1000,
+            ttl = 300,
+            name = "MainEventQueue"
+        })
+        self:Debug("MyMessageQueue instance created")
+    end
     
     -- Extract version hash for unique channel naming
     local versionHash = self.VERSION:match("%-([^%-]+)$") or "dev"

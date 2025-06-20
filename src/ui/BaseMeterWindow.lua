@@ -1,3 +1,21 @@
+--[[
+==================================================================================
+⚠️  DEPRECATED - DO NOT USE ⚠️  
+==================================================================================
+
+This file is DEPRECATED and replaced by direct window creation
+
+Original Purpose: Base class for meter windows from prototype
+Replacement: Direct window creation in MyCombatMeterWindow.lua
+Deprecated Date: 2025-06-20
+Status: Not loaded in TOC file
+
+This file is kept for reference only. Meter windows now use direct creation
+instead of inheritance-based approach.
+
+==================================================================================
+--]]
+
 -- BaseMeterWindow.lua
 -- Shared base class for DPS and HPS meter windows with PixelMeter support
 

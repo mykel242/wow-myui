@@ -113,10 +113,15 @@ function MyLogger:Initialize(options)
     -- Initialize logging storage
     self:InitializeStorage()
     
-    -- Initialize message queue if available
-    if addon.MyQueueFactory then
-        self.messageQueue = addon.LogMessageQueue or addon.MyQueueFactory:CreateLogQueue()
-        addon.LogMessageQueue = self.messageQueue
+    -- Initialize log event queue if available
+    if addon.LogEventQueue then
+        self.logEventQueue = addon.LogEventQueue
+        self:Debug("Logger connected to LogEventQueue")
+    elseif addon.EventQueueFactory then
+        -- Fallback: create our own if not already created
+        self.logEventQueue = addon.EventQueueFactory:CreateLogEventQueue()
+        addon.LogEventQueue = self.logEventQueue
+        self:Debug("Logger created LogEventQueue")
     end
     
     -- Log initialization
@@ -182,9 +187,17 @@ end
 
 -- Format a log message
 function MyLogger:FormatMessage(level, message, ...)
-    -- Format the message content
+    -- Ensure message is a string
+    message = tostring(message)
+    
+    -- Format the message content if additional arguments provided
     if ... then
-        message = string.format(message, ...)
+        -- Convert all arguments to strings to prevent function formatting errors
+        local args = {...}
+        for i = 1, #args do
+            args[i] = tostring(args[i])
+        end
+        message = string.format(message, unpack(args))
     end
     
     local parts = {}
@@ -221,9 +234,9 @@ function MyLogger:Log(level, message, ...)
     -- Store the message
     self:StoreLogMessage(level, message)
     
-    -- Push to message queue if available
-    if self.messageQueue then
-        self.messageQueue:Push("LOG", {
+    -- Push to log event queue if available
+    if self.logEventQueue then
+        self.logEventQueue:Push("LOG", {
             level = level,
             levelName = self.LEVEL_NAMES[level] or "UNKNOWN",
             message = message,

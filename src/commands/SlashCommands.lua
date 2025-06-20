@@ -250,6 +250,195 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("SessionBrowser not loaded")
             end
+        elseif command == "meter" then
+            if addon.MyCombatMeterWindow then
+                addon.MyCombatMeterWindow:Toggle()
+            else
+                print("Combat meter not loaded")
+            end
+        elseif command:match("^metermethod%s+(.+)$") then
+            local method = msg:match("^metermethod%s+(.+)$"):lower()
+            if addon.MyCombatMeterWindow then
+                if addon.MyCombatMeterWindow:SetCalculationMethod(method) then
+                    addon:Info("Combat meter calculation method set to: %s", method)
+                else
+                    addon:Error("Invalid method: %s. Valid: rolling, final, hybrid", method)
+                end
+            else
+                print("Combat meter not loaded")
+            end
+        elseif command:match("^meterscale%s+(.+)$") then
+            local scaleArg = msg:match("^meterscale%s+(.+)$")
+            if addon.MyCombatMeterScaler then
+                local dpsScale, hpsScale = scaleArg:match("(%d+)%s*,?%s*(%d*)")
+                dpsScale = tonumber(dpsScale)
+                hpsScale = tonumber(hpsScale) or dpsScale
+                
+                if dpsScale then
+                    addon.MyCombatMeterScaler:SetManualScale(dpsScale, hpsScale)
+                    addon:Info("Manual meter scale set: DPS=%.0f, HPS=%.0f", dpsScale, hpsScale)
+                else
+                    addon:Error("Invalid scale format. Use: /myui meterscale <dps> [hps]")
+                end
+            else
+                print("Combat meter scaler not loaded")
+            end
+        elseif command == "meteranalyze" then
+            if addon.MyCombatMeterScaler then
+                local analysis = addon.MyCombatMeterScaler:ForceScaleUpdate()
+                if analysis then
+                    addon:Info("=== Scale Analysis Complete ===")
+                    addon:Info("Analyzed %d sessions", analysis.sessionsAnalyzed)
+                    addon:Info("Recommended DPS Scale: %.0f", analysis.recommendedDPSScale)
+                    addon:Info("Recommended HPS Scale: %.0f", analysis.recommendedHPSScale)
+                    addon:Info("Use '/myui logs' to view detailed output")
+                else
+                    addon:Error("No sessions available for analysis")
+                end
+            else
+                print("Combat meter scaler not loaded")
+            end
+        elseif command == "queuesubscribers" or command == "subscribers" then
+            -- Show detailed subscriber information for all queues
+            addon:Info("=== Event Queue Subscribers ===")
+            
+            if addon.CombatEventQueue then
+                local subscribers = addon.CombatEventQueue:GetSubscribers()
+                addon:Info("Combat Event Queue (%d subscribers):", #subscribers)
+                for _, sub in ipairs(subscribers) do
+                    addon:Info("  [%d] %s -> %s (%d msgs, %.1fs)", 
+                        sub.id, sub.name, sub.messageType, sub.messageCount, sub.duration)
+                end
+            else
+                addon:Warn("  Combat Event Queue: Not available")
+            end
+            
+            if addon.LogEventQueue then
+                local subscribers = addon.LogEventQueue:GetSubscribers()
+                addon:Info("Log Event Queue (%d subscribers):", #subscribers)
+                for _, sub in ipairs(subscribers) do
+                    addon:Info("  [%d] %s -> %s (%d msgs, %.1fs)", 
+                        sub.id, sub.name, sub.messageType, sub.messageCount, sub.duration)
+                end
+            else
+                addon:Warn("  Log Event Queue: Not available")
+            end
+            
+        elseif command == "queuestats" or command == "queuestats" then
+            -- Show statistics for all event queues
+            addon:Info("=== Event Queue Statistics ===")
+            
+            if addon.CombatEventQueue then
+                local stats = addon.CombatEventQueue:GetStats()
+                addon:Info("Combat Event Queue:")
+                addon:Info("  Name: %s", stats.name)
+                local utilization = stats.maxSize > 0 and (stats.currentSize / stats.maxSize * 100) or 0
+                addon:Info("  Size: %d/%d (%.1f%% full)", 
+                    stats.currentSize, stats.maxSize, utilization)
+                addon:Info("  Messages: %d pushed, %d dropped (%.2f%% drop rate)", 
+                    stats.totalPushed, stats.totalDropped, stats.dropRate * 100)
+                addon:Info("  Subscribers: %d active", stats.subscriberCount)
+                addon:Info("  Performance: %.2f msg/sec over %.1fs", 
+                    stats.messagesPerSecond, stats.uptime)
+                
+                -- Show message type breakdown
+                if next(stats.messageTypes) then
+                    addon:Info("  Message Types:")
+                    for msgType, count in pairs(stats.messageTypes) do
+                        addon:Info("    %s: %d", msgType, count)
+                    end
+                end
+            else
+                addon:Warn("  Combat Event Queue: Not available")
+            end
+            
+            if addon.LogEventQueue then
+                local stats = addon.LogEventQueue:GetStats()
+                addon:Info("")
+                addon:Info("Log Event Queue:")
+                addon:Info("  Name: %s", stats.name)
+                local utilization = stats.maxSize > 0 and (stats.currentSize / stats.maxSize * 100) or 0
+                addon:Info("  Size: %d/%d (%.1f%% full)", 
+                    stats.currentSize, stats.maxSize, utilization)
+                addon:Info("  Messages: %d pushed, %d dropped (%.2f%% drop rate)", 
+                    stats.totalPushed, stats.totalDropped, stats.dropRate * 100)
+                addon:Info("  Subscribers: %d active", stats.subscriberCount)
+                addon:Info("  Performance: %.2f msg/sec over %.1fs", 
+                    stats.messagesPerSecond, stats.uptime)
+            else
+                addon:Warn("  Log Event Queue: Not available")
+            end
+            
+            addon:Info("Use '/myui logs' to view detailed output")
+        elseif command == "queuedebug" then
+            -- Debug current state of all queues
+            addon:Info("=== Event Queue Debug Information ===")
+            
+            if addon.CombatEventQueue then
+                addon.CombatEventQueue:DebugState()
+            else
+                addon:Warn("Combat Event Queue: Not available")
+            end
+            
+            if addon.LogEventQueue then
+                addon.LogEventQueue:DebugState()
+            else
+                addon:Warn("Log Event Queue: Not available")
+            end
+            
+            addon:Info("Use '/myui logs' to view detailed output")
+        elseif command:match("^queuesubscribers?%s*(.*)$") then
+            local queueName = command:match("^queuesubscribers?%s*(.*)$")
+            
+            local queue = nil
+            if queueName == "combat" or queueName == "" then
+                queue = addon.CombatEventQueue
+                queueName = "Combat Event Queue"
+            elseif queueName == "log" then
+                queue = addon.LogEventQueue
+                queueName = "Log Event Queue"
+            end
+            
+            if queue then
+                local subscribers = queue:GetSubscribers()
+                addon:Info("=== %s Subscribers ===", queueName)
+                
+                if #subscribers == 0 then
+                    addon:Info("No active subscribers")
+                else
+                    for _, sub in ipairs(subscribers) do
+                        local runtime = GetTime() - sub.subscribeTime
+                        addon:Info("  %s -> %s", sub.id, sub.messageType)
+                        addon:Info("    Messages received: %d", sub.messagesReceived)
+                        addon:Info("    Runtime: %.1fs", runtime)
+                        addon:Info("    Has filter: %s", sub.hasFilter and "Yes" or "No")
+                        if next(sub.metadata) then
+                            addon:Info("    Metadata: %s", table.concat(addon:GetTableKeys(sub.metadata), ", "))
+                        end
+                    end
+                end
+            else
+                addon:Error("Unknown queue: %s. Use 'combat' or 'log'", queueName)
+            end
+            
+            addon:Info("Use '/myui logs' to view detailed output")
+        elseif command == "queueclear" then
+            -- Clear both queues
+            local clearedCombat, clearedLog = 0, 0
+            
+            if addon.CombatEventQueue then
+                clearedCombat = addon.CombatEventQueue.size
+                addon.CombatEventQueue:Clear()
+                addon:Info("Combat Event Queue cleared (%d messages)", clearedCombat)
+            end
+            
+            if addon.LogEventQueue then
+                clearedLog = addon.LogEventQueue.size
+                addon.LogEventQueue:Clear()
+                addon:Info("Log Event Queue cleared (%d messages)", clearedLog)
+            end
+            
+            addon:Info("Total cleared: %d messages", clearedCombat + clearedLog)
         elseif command == "memory" then
             -- Display memory usage information via MyLogger
             local memoryKB = collectgarbage("count")
@@ -367,6 +556,18 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui memory - Show memory usage")
             print("  /myui storagestats - Show storage analysis")
             print("  /myui version - Show addon version")
+            print("")
+            print("Combat Meter:")
+            print("  /myui meter - Toggle combat meter")
+            print("  /myui metermethod <method> - Set calculation method")
+            print("  /myui meterscale <dps> [hps] - Set manual scale")
+            print("  /myui meteranalyze - Force scale analysis")
+            print("")
+            print("Event Queue Debugging:")
+            print("  /myui queuestats - Show queue statistics")
+            print("  /myui queuedebug - Show detailed queue debug info")
+            print("  /myui queuesubscribers [combat|log] - List queue subscribers")
+            print("  /myui queueclear - Clear all queues")
         end
     end
 end
