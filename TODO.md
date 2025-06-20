@@ -1,187 +1,152 @@
-# MyUI2 Modularization TODO
+# MyUI2 - Next Steps & Development Roadmap
 
-## Overview
-Disable existing session management, DPS/HPS meters, and complex UI features to create a clean foundation for the new combat logging system. Simplify the main window to act as a launcher for new tools.
-
-## Phase 1: Disable Existing Features
-
-### 1. Disable Session Management & History
-**Files to modify:**
-- `MyUI.lua` - Remove session history panel, charts, and related UI
-- `src/data/SessionManager.lua` - Disable initialization and data collection
-- `src/data/EnhancedCombatLogger.lua` - Disable initialization
-
-**Actions:**
-- Comment out session-related initialization code
-- Remove session history display from main window
-- Remove performance charts
-- Keep data structures intact for future re-enable
-
-### 2. Disable DPS/HPS Meters
-**Files to modify:**
-- `MyUI.lua` - Remove DPS/HPS window toggles and initialization
-- `src/ui/DPSWindow.lua` - Disable initialization
-- `src/ui/HPSWindow.lua` - Disable initialization
-- `src/ui/BaseMeterWindow.lua` - Keep for future use
-- move the code for slash commands into a separate file
-
-**Actions:**
-- Comment out meter window initialization
-- Remove meter buttons from main UI
-- Remove meter update timers
-- Preserve meter classes for future re-enable
-
-### 3. Remove Calculation Method Dropdown
-**Files to modify:**
-- `MyUI.lua` - Remove calculation dropdown from control panel
-
-**Actions:**
-- Remove dropdown UI components
-- Keep calculation logic intact in backend
-- Remove dropdown update functions
-
-### 4. Simplify Slash Commands
-**Current commands to disable:**
-- `/myui dps`, `/myui hps` - meter toggles
-- `/myui dpsmax`, `/myui hpsmax`, `/myui dpsreset`, `/myui hpsreset` - meter scaling
-- `/myui resetmeters`, `/myui meterinfo` - meter management
-- `/myui sessions`, `/myui list`, `/myui mark`, `/myui ids` - session management
-- `/myui scaling`, `/myui enhancedlog`, `/myui enhancedconfig` - advanced features
-- `/myui clear`, `/myui resetcombat`, `/myui memory` - data management
-- `/myui calc` - calculation methods
-
-**Keep only:**
-- `/myui` - toggle main window
-- `/myui debug` - debug mode toggle
-- `/myui show/hide/toggle` - basic window management
-
-### 5. Simplify Main Window
-**New simplified layout:**
-- **Header**: Title and close button
-- **Status Panel**: Simple addon status (debug on/off, version info)
-- **Tool Launcher Panel**: Buttons for new tools as they're developed
-- **Footer**: Minimal info (version, build date)
-- Use a default warcraft ui style for this window including normal size and position, close button etc. use a default strata so that the elements inherit the window's strata.
-
-**Remove:**
-- Current combat display panel
-- Session history table and scrolling
-- Performance charts
-- Complex control panel with multiple buttons
-- Calculation method dropdown
-
-## Phase 2: Create New Tool Foundation
-
-### 1. Combat Log Viewer Button
-**Add to simplified main window:**
-- "Combat Logger" button - launches new combat logging tool
-- Initially shows placeholder/coming soon message
-
-### 2. Future Tool Placeholder Buttons
-**Prepare launcher spots for:**
-- "Raw Data Viewer" button
-- "Export Tools" button
-- "Session Browser" button (when re-enabled with new data layer)
-
-### 3. New Slash Commands
-**Add minimal new commands:**
-- `/myui logger` - open combat log viewer
-- `/myui rawdata` - open raw data viewer (when implemented)
-
-## Phase 3: Preserve for Re-enable
-
-### What to Keep Intact
-**Core Systems (preserve but disable initialization):**
-- `TimestampManager` - keep fully functional
-- `UnifiedCalculator` - keep calculation logic
-- `CombatData` - keep data structures
-- `CombatTracker` - keep API facade
-
-**UI Systems (preserve classes but disable):**
-- `BaseMeterWindow` - keep for future meters
-- `DPSWindow`, `HPSWindow` - disable but preserve
-- `SessionDetailWindow`, `EnhancedSessionDetailWindow` - disable but preserve
-
-**Data Systems (preserve but disable):**
-- `SessionManager` - keep structures, disable collection
-- `EnhancedCombatLogger` - keep for future integration
-- `ContentDetection` - keep logic intact
-
-## Implementation Strategy
-
-### Step 1: Comment Out Initialization
-- Wrap existing module initializations in `if false then` blocks
-- Preserve all existing code for easy re-enable
-- Add clear comments marking disabled sections
-
-### Step 2: Remove UI Components
-- Remove complex panels from main window creation
-- Replace with simple launcher interface
-- Keep UI creation functions intact but not called
-
-### Step 3: Disable Slash Commands
-- Comment out complex command handlers
-- Keep command parsing structure for easy re-add
-- Add placeholder responses for disabled commands
-
-### Step 4: Add New Foundation
-- Create simple launcher buttons
-- Add new slash commands for future tools
-- Prepare UI hooks for new combat logging system
-
-## Benefits
-
-### Clean Development Environment
-- No interference from existing complex systems
-- Clear separation between old and new functionality
-- Easier debugging during development
-
-### Easier Re-integration
-- All existing code preserved and commented
-- Clear path to re-enable features with new data layer
-- Maintains all existing configuration and saved data structures
-
-### User Experience
-- Simpler, focused interface during development
-- Clear indication of what's being rebuilt
-- Gradual feature rollout as new system develops
-
-## Result
-A streamlined addon that:
-- Shows simple launcher window with tool buttons
-- Keeps essential debug and window management commands
-- Preserves all existing code for future re-enable
-- Provides clean foundation for new combat logging system
-- Maintains user's saved settings and data
+## ✅ COMPLETED: EventQueue Architecture Foundation
+- **EventQueue system**: CombatEventQueue (2500 capacity) + LogEventQueue (2000 capacity)
+- **Combat meter**: Real-time DPS/HPS tracking via queue subscriptions 
+- **Zero message loss**: Both queues operating efficiently with 0% drop rate
+- **Clean separation**: Combat data flows through queues, debugging through logs
+- **Monitoring tools**: `/myui queuestats`, `/myui queuedebug`, `/myui queuesubscribers`
+- **Foundation ready**: Architecture supports multiple specialized agent windows
 
 ---
 
-## Core Abilities to Implement
+## 🎯 IMMEDIATE PRIORITIES
 
-### 1. Combat Detection and Raw Logging System
-**Goal**: Create a single source of truth for combat activity analysis
+### 1. Specialized Agent Windows (High Priority)
+The EventQueue architecture is ready for your vision of "many small agent windows that subscribe to specific combat events."
 
-**Features**:
-- Detect combat and create raw log of events
-- Store metadata (player, zone, participants, encounter, quality score)
-- Maintain sequence and relative timing of events
-- Non-destructive logging preserving original event data
-- Forever storage with intelligent memory management
-- Quality-based retention and cleanup
+**Example Agent Ideas:**
+```lua
+-- Buff/Debuff Tracker Agent
+addon.CombatEventQueue:Subscribe("BUFF_EVENT", function(message)
+    -- Track important buffs/debuffs
+end, "BuffTracker")
 
-### 2. Combat Log Viewer UI
-**Goal**: Historical session browser and raw data viewer
+-- Cooldown Monitor Agent  
+addon.CombatEventQueue:Subscribe("SPELL_CAST", function(message)
+    -- Track ability cooldowns
+end, "CooldownMonitor")
 
-**Features**:
-- Scrollable text area showing real-time logging activity
-- Session list with metadata (date, duration, location, quality)
-- Load and view raw data for any historical session
-- Export data to external tools (JSON, CSV, etc.)
-- Delete individual sessions
-- Search and filter functionality
+-- Threat Meter Agent
+addon.CombatEventQueue:Subscribe("THREAT_EVENT", function(message)
+    -- Track threat levels
+end, "ThreatMeter")
 
-**UI Components**:
-- Main window with session browser
-- Live logging panel with real-time event stream
-- Raw data viewer for detailed event inspection
-- Export dialog, we want to be able to look at the data in external tools
+-- Performance Analysis Agent
+addon.CombatEventQueue:Subscribe("DAMAGE_EVENT", function(message)
+    -- Analyze DPS patterns, efficiency
+end, "PerformanceAnalyzer")
+```
+
+**Implementation Steps:**
+1. Choose first agent type (buff tracker, cooldown monitor, etc.)
+2. Create new window file in `src/ui/`
+3. Subscribe to relevant combat events
+4. Build minimal UI for display
+5. Test with queue monitoring tools
+
+### 2. Expand Combat Event Types (Medium Priority)
+Currently publishing: `DAMAGE_EVENT`, `HEAL_EVENT`, `COMBAT_STATE_CHANGED`
+
+**Add Support For:**
+- `BUFF_EVENT` / `DEBUFF_EVENT` (aura tracking)
+- `SPELL_CAST_EVENT` (ability usage)  
+- `THREAT_EVENT` (threat changes)
+- `DEATH_EVENT` (player/enemy deaths)
+- `INTERRUPT_EVENT` (spell interruptions)
+- `DISPEL_EVENT` (dispel/purge events)
+
+**Location:** `src/core/MySimpleCombatDetector.lua` - expand event detection logic
+
+### 3. Queue Performance Optimization (Low Priority)
+- **Message filtering**: Add filters to subscriptions to reduce processing
+- **Batch processing**: Group similar events for efficiency
+- **Memory management**: TTL-based automatic cleanup
+- **Compression**: Store repeated data more efficiently
+
+---
+
+## 🏗️ ARCHITECTURAL IMPROVEMENTS
+
+### 4. Enhanced Session Management
+- **Queue integration**: Connect combat events to session storage
+- **Real-time sessions**: Live session updates via queues
+- **Session analysis**: Post-combat analysis through queues
+- **Export integration**: Queue-based data export
+
+### 5. Configuration System
+- **Agent configuration**: Enable/disable specific agents
+- **Queue tuning**: Adjustable queue sizes and TTL
+- **Event filtering**: User-configurable event filtering
+- **Performance tuning**: Subscription management UI
+
+### 6. Advanced Monitoring
+- **Queue health dashboard**: Visual queue monitoring window
+- **Performance metrics**: Latency, throughput analysis  
+- **Subscriber management**: Enable/disable subscribers dynamically
+- **Debug tools**: Advanced debugging and profiling tools
+
+---
+
+## 🎨 UI/UX ENHANCEMENTS
+
+### 7. Visual Improvements
+- **Combat meter styling**: Improve visual design
+- **Agent window themes**: Consistent styling across agents
+- **Layout management**: Window positioning and docking
+- **Responsive design**: Support for different screen sizes
+
+### 8. User Experience
+- **Setup wizard**: Guide users through agent configuration
+- **Presets**: Pre-configured agent combinations for different roles
+- **Help system**: In-game documentation and tutorials
+- **Performance recommendations**: Automatic optimization suggestions
+
+---
+
+## 🧪 TESTING & VALIDATION
+
+### 9. Stress Testing
+- **High combat scenarios**: Raid environments, mass PvP
+- **Memory leak detection**: Long-term stability testing
+- **Performance benchmarking**: Queue throughput under load
+- **Error handling**: Graceful degradation testing
+
+### 10. Integration Testing
+- **Multiple agents**: Test many concurrent subscribers
+- **Cross-agent communication**: Agent interaction patterns
+- **Session integration**: End-to-end data flow validation
+- **Export functionality**: Data consistency verification
+
+---
+
+## 📋 CURRENT SYSTEM STATUS
+
+**EventQueue Performance:**
+- CombatEventQueue: 256/2500 (10.2% full), 2.47 msg/sec, 0% drop rate
+- LogEventQueue: 566/2000 (28.3% full), 5.46 msg/sec, 0% drop rate
+
+**Active Subscribers:**
+- CombatMeterWindow_StateTracker → COMBAT_STATE_CHANGED
+- CombatMeterWindow_DamageTracker → DAMAGE_EVENT  
+- CombatMeterWindow_HealTracker → HEAL_EVENT
+- LoggerWindowLightweight → LOG
+
+**Available Commands:**
+- `/myui queuestats` - Queue performance statistics
+- `/myui queuedebug` - Detailed queue debugging
+- `/myui queuesubscribers [combat|log]` - Subscriber information
+- `/myui meter` - Toggle combat meter window
+
+---
+
+## 🚀 RECOMMENDED NEXT STEP
+
+**Start with a simple Buff/Debuff Tracker agent:**
+1. Creates a small window showing active buffs/debuffs
+2. Subscribes to aura-related combat events  
+3. Demonstrates the agent pattern clearly
+4. Low complexity, high visual impact
+5. Foundation for more complex agents
+
+This would validate the agent architecture and provide immediate value while setting the pattern for future specialized windows.
