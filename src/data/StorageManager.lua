@@ -27,12 +27,17 @@ local poolStats = {
 -- MEMORY OPTIMIZATION: Reduced limits to prevent 34MB saved file issue
 local function GetStorageConfig()
     return {
-        MAX_SESSIONS = 15,        -- Reduced from 50 - prevents memory bloat
-        MAX_SESSION_AGE_DAYS = 3, -- Reduced from 7 - more aggressive cleanup
-        MAX_MEMORY_MB = 5,        -- Reduced from 10 - tighter memory control
+
+        MAX_SESSIONS = 25,        -- Increased from 15 - better history balance
+        MAX_SESSION_AGE_DAYS = 7, -- Restored to 7 - full week of raid history
+        MAX_MEMORY_MB = 8,        -- Increased from 5 - reasonable for combat data
         COMPRESSION_ENABLED = true,
-        ENHANCED_COMPRESSION = true, -- NEW: More aggressive compression for saved data
-        WARNING_THRESHOLD = 0.7   -- Warn at 70% instead of 80% - earlier warnings
+        ENHANCED_COMPRESSION = true, -- More aggressive compression for saved data
+        WARNING_THRESHOLD = 0.7,  -- Warn at 70% instead of 80% - earlier warnings
+        -- New tiered retention strategy
+        PRIORITY_SESSIONS = 10,   -- Keep most recent 10 sessions regardless of age
+        LONG_TERM_SESSIONS = 15   -- Keep additional 15 sessions up to age limit
+
     }
 end
 
@@ -240,6 +245,10 @@ function StorageManager:StoreCombatSession(sessionData)
     -- Get context metadata if available
     if addon.MetadataCollector then
         sessionData.metadata = addon.MetadataCollector:GetMetadataForCombat(sessionData.id)
+        local zoneName = sessionData.metadata and sessionData.metadata.zone and sessionData.metadata.zone.name or "NO_ZONE"
+        addon:Debug("StorageManager: Collected metadata with zone: %s", zoneName)
+    else
+        addon:Debug("StorageManager: MetadataCollector not available")
     end
     
     -- Compress event data if enabled
@@ -504,44 +513,33 @@ function StorageManager:PerformMemoryCleanup()
     end
 end
 
--- Show storage warning to user
+-- Show storage warning to user (now silent - logs instead of popup)
 function StorageManager:ShowStorageWarning(warnings, cleanupNeeded)
-    local message = "Storage Usage Warning:\n\n"
+    -- Log warnings silently instead of showing popup
+    addon:Info("Storage Usage Warning:")
     for _, warning in ipairs(warnings) do
-        message = message .. "• " .. warning .. "\n"
+        addon:Info("  • " .. warning)
     end
     
     if cleanupNeeded then
-        message = message .. "\nAutomatic cleanup will occur to stay within limits."
+        addon:Info("  Automatic cleanup will occur to stay within limits.")
     else
-        message = message .. "\nConsider exporting important sessions or increasing storage limits in Settings."
+        addon:Info("  Consider exporting important sessions or adjusting storage limits.")
     end
     
-    message = message .. "\n\nOpen Session Browser to export sessions?\nOpen Settings to adjust limits?"
-    
-    -- Create warning dialog (escape % characters to prevent format errors)
-    StaticPopupDialogs["MYUI_STORAGE_WARNING"] = {
-        text = message:gsub("%%", "%%%%"),
-        button1 = "Session Browser",
-        button2 = "Settings", 
-        button3 = "Dismiss",
-        OnAccept = function()
-            if addon.SessionBrowser then
-                addon.SessionBrowser:Show()
-            end
-        end,
-        OnCancel = function()
-            if addon.SettingsWindow then
-                addon.SettingsWindow:Show()
-            end
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-    
-    StaticPopup_Show("MYUI_STORAGE_WARNING")
+    -- Also log to MyLogger if available for persistent visibility
+    if addon.MyLogger then
+        addon.MyLogger:Info("Storage Usage Warning:")
+        for _, warning in ipairs(warnings) do
+            addon.MyLogger:Info("  • " .. warning)
+        end
+        
+        if cleanupNeeded then
+            addon.MyLogger:Info("  Automatic cleanup will occur to stay within limits.")
+        else
+            addon.MyLogger:Info("  Consider exporting important sessions or adjusting storage limits.")
+        end
+    end
 end
 
 -- LAZY LOADING: Load only session metadata on startup, full data when accessed
@@ -660,6 +658,7 @@ function StorageManager:ConvertSessionToPool(session)
     -- Convert metadata if present
     if session.metadata then
         pooledSession.metadata = self:ConvertMetadataToPool(session.metadata)
+
     end
     
     return pooledSession
@@ -814,13 +813,53 @@ function StorageManager:SaveToSavedVariables()
             compressedSession.isSegmented = session.isSegmented
             compressedSession.segmentCount = session.segmentCount
             
-            -- Compress metadata to essential fields only
+            -- Compress metadata to essential fields only (handle both nested and flat formats)
             if session.metadata then
+                local zoneValue = nil
+                if session.metadata.zone then
+                    if type(session.metadata.zone) == "string" then
+                        zoneValue = { name = session.metadata.zone }
+                    elseif session.metadata.zone.name then
+                        zoneValue = { name = session.metadata.zone.name }
+                    else
+                        zoneValue = { name = "Unknown" }
+                    end
+                end
+                
+                local playerValue = nil
+                if session.metadata.player then
+                    if type(session.metadata.player) == "string" then
+                        playerValue = { name = session.metadata.player }
+                    elseif session.metadata.player.name then
+                        playerValue = { name = session.metadata.player.name }
+                    else
+                        playerValue = { name = "Unknown" }
+                    end
+                end
+                
+                local groupValue = nil
+                if session.metadata.group then
+                    if type(session.metadata.group) == "string" then
+                        groupValue = { type = session.metadata.group }
+                    elseif session.metadata.group.type then
+                        groupValue = { type = session.metadata.group.type }
+                    else
+                        groupValue = { type = "solo" }
+                    end
+                end
+                
                 compressedSession.metadata = {
-                    zone = session.metadata.zone and { name = session.metadata.zone.name } or nil,
-                    player = session.metadata.player and { name = session.metadata.player.name } or nil,
-                    group = session.metadata.group and { type = session.metadata.group.type } or nil
+                    zone = zoneValue,
+                    player = playerValue,
+                    group = groupValue
                 }
+                
+                -- Debug logging for metadata preservation
+                if logger then
+                    logger:Debug("Saving session metadata - Zone: %s (type: %s)", 
+                        zoneValue and zoneValue.name or "nil", 
+                        session.metadata.zone and type(session.metadata.zone) or "nil")
+                end
             end
             
             -- Copy events/segments only if fully loaded (not lazy)

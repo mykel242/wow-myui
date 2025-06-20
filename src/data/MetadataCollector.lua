@@ -68,8 +68,8 @@ function MetadataCollector:RefreshMetadata()
     
     -- Zone info using table pool
     currentMetadata.zone = addon.StorageManager and addon.StorageManager:GetTable() or {}
-    currentMetadata.zone.name = GetZoneText()
-    currentMetadata.zone.subzone = GetSubZoneText()
+    currentMetadata.zone.name = GetRealZoneText() or GetZoneText() or GetMinimapZoneText() or "Unknown"
+    currentMetadata.zone.subzone = GetSubZoneText() or ""
     currentMetadata.zone.mapID = C_Map.GetBestMapForUnit("player")
     currentMetadata.zone.instanceInfo = self:GetInstanceInfo()
     

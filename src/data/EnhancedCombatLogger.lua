@@ -155,15 +155,16 @@ local function TrackDamageTaken(timestamp, sourceGUID, sourceName, destGUID, des
             elapsed = addon.MyTimestampManager:GetRelativeTime(timestamp)
         end
         
-        table.insert(enhancedSessionData.damageTaken, {
-            -- REMOVED: No longer store absolute timestamps, only relative time
-            elapsed = elapsed,
-            sourceGUID = sourceGUID,
-            sourceName = sourceName,
-            spellId = spellId,
-            spellName = spellName,
-            amount = amount
-        })
+        -- Use table pool for damage entries  
+        local damageEntry = addon.StorageManager and addon.StorageManager:GetTable() or {}
+        damageEntry.elapsed = elapsed
+        damageEntry.sourceGUID = sourceGUID
+        damageEntry.sourceName = sourceName
+        damageEntry.spellId = spellId
+        damageEntry.spellName = spellName
+        damageEntry.amount = amount
+        
+        table.insert(enhancedSessionData.damageTaken, damageEntry)
     end
 end
 
@@ -199,17 +200,18 @@ local function TrackGroupDamage(timestamp, sourceGUID, sourceName, destGUID, des
             elapsed = addon.MyTimestampManager:GetRelativeTime(timestamp)
         end
         
-        table.insert(enhancedSessionData.groupDamage, {
-            -- REMOVED: No longer store absolute timestamps, only relative time
-            elapsed = elapsed,
-            sourceGUID = sourceGUID,
-            sourceName = sourceName,
-            destGUID = destGUID,
-            destName = destName,
-            spellId = spellId,
-            spellName = spellName,
-            amount = amount
-        })
+        -- Use table pool for group damage entries
+        local groupDamageEntry = addon.StorageManager and addon.StorageManager:GetTable() or {}
+        groupDamageEntry.elapsed = elapsed
+        groupDamageEntry.sourceGUID = sourceGUID
+        groupDamageEntry.sourceName = sourceName
+        groupDamageEntry.destGUID = destGUID
+        groupDamageEntry.destName = destName
+        groupDamageEntry.spellId = spellId
+        groupDamageEntry.spellName = spellName
+        groupDamageEntry.amount = amount
+        
+        table.insert(enhancedSessionData.groupDamage, groupDamageEntry)
     end
 end
 
@@ -240,16 +242,17 @@ local function TrackCooldownUsage(timestamp, sourceGUID, sourceName, destGUID, s
             end
         end
         
-        table.insert(enhancedSessionData.cooldownUsage, {
-            -- REMOVED: No longer store absolute timestamps, only relative time
-            elapsed = elapsed,
-            sourceGUID = sourceGUID,
-            sourceName = sourceName,
-            spellId = spellId,
-            spellName = spellName,
-            cooldownType = cooldownInfo.type,
-            color = cooldownInfo.color
-        })
+        -- Use table pool for cooldown entries
+        local cooldownEntry = addon.StorageManager and addon.StorageManager:GetTable() or {}
+        cooldownEntry.elapsed = elapsed
+        cooldownEntry.sourceGUID = sourceGUID
+        cooldownEntry.sourceName = sourceName
+        cooldownEntry.spellId = spellId
+        cooldownEntry.spellName = spellName
+        cooldownEntry.cooldownType = cooldownInfo.type
+        cooldownEntry.color = cooldownInfo.color
+        
+        table.insert(enhancedSessionData.cooldownUsage, cooldownEntry)
 
         addon:Debug("Cooldown tracked: %s used %s at %.1fs",
             sourceName, spellName, elapsed)
@@ -330,16 +333,18 @@ local function TrackDeath(timestamp, destGUID, destName, destFlags)
         elapsed = currentTime - combatStartTime
     end
     
-    table.insert(enhancedSessionData.deaths, {
-        timestamp = timestamp,           -- Original combat log timestamp
-        elapsed = elapsed,               -- Time since combat start (from MyTimestampManager)
-        destGUID = destGUID,
-        destName = destName,
-        entityType = entityType,         -- "player", "boss", "minion"
-        isPlayer = isPlayer,
-        isNPC = isNPC,
-        isPet = isPet
-    })
+    -- Use table pool for death entries
+    local deathEntry = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    deathEntry.timestamp = timestamp           -- Original combat log timestamp
+    deathEntry.elapsed = elapsed               -- Time since combat start (from MyTimestampManager)
+    deathEntry.destGUID = destGUID
+    deathEntry.destName = destName
+    deathEntry.entityType = entityType         -- "player", "boss", "minion"
+    deathEntry.isPlayer = isPlayer
+    deathEntry.isNPC = isNPC
+    deathEntry.isPet = isPet
+    
+    table.insert(enhancedSessionData.deaths, deathEntry)
     
     -- Mark target as dead to filter future damage events
     deadTargets[destGUID] = {
@@ -433,17 +438,18 @@ function EnhancedCombatLogger:ParseEnhancedCombatLog(timestamp, subevent, _, sou
                 elapsed = addon.MyTimestampManager:GetRelativeTime(timestamp)
             end
             
-            table.insert(enhancedSessionData.healingEvents, {
-                -- REMOVED: No longer store absolute timestamps, only relative time
-                elapsed = elapsed,
-                sourceGUID = sourceGUID,
-                sourceName = sourceName,
-                destGUID = destGUID,
-                destName = destName,
-                spellId = spellId,
-                spellName = spellName,
-                amount = amount
-            })
+            -- Use table pool for healing entries
+            local healingEntry = addon.StorageManager and addon.StorageManager:GetTable() or {}
+            healingEntry.elapsed = elapsed
+            healingEntry.sourceGUID = sourceGUID
+            healingEntry.sourceName = sourceName
+            healingEntry.destGUID = destGUID
+            healingEntry.destName = destName
+            healingEntry.spellId = spellId
+            healingEntry.spellName = spellName
+            healingEntry.amount = amount
+            
+            table.insert(enhancedSessionData.healingEvents, healingEntry)
 
             -- Update participant healing stats
             if enhancedSessionData.participants[sourceGUID] then
@@ -548,6 +554,11 @@ end
 -- =============================================================================
 
 function EnhancedCombatLogger:StartEnhancedTracking()
+    -- Release tables from previous session back to pool
+    if enhancedSessionData then
+        self:ReleaseSessionTables()
+    end
+    
     -- Reset all data structures
     enhancedSessionData = {
         participants = {},
@@ -562,6 +573,49 @@ function EnhancedCombatLogger:StartEnhancedTracking()
     deadTargets = {}
 
     addon:Debug("Enhanced combat logging started - data structures reset")
+end
+
+-- Release all tables from current session back to the pool
+function EnhancedCombatLogger:ReleaseSessionTables()
+    if not enhancedSessionData or not addon.StorageManager then
+        return
+    end
+    
+    local releasedCount = 0
+    
+    -- Release damage entries
+    for _, entry in ipairs(enhancedSessionData.damageTaken or {}) do
+        addon.StorageManager:ReleaseTable(entry)
+        releasedCount = releasedCount + 1
+    end
+    
+    -- Release cooldown entries
+    for _, entry in ipairs(enhancedSessionData.cooldownUsage or {}) do
+        addon.StorageManager:ReleaseTable(entry)
+        releasedCount = releasedCount + 1
+    end
+    
+    -- Release group damage entries
+    for _, entry in ipairs(enhancedSessionData.groupDamage or {}) do
+        addon.StorageManager:ReleaseTable(entry)
+        releasedCount = releasedCount + 1
+    end
+    
+    -- Release death entries  
+    for _, entry in ipairs(enhancedSessionData.deaths or {}) do
+        addon.StorageManager:ReleaseTable(entry)
+        releasedCount = releasedCount + 1
+    end
+    
+    -- Release healing entries
+    for _, entry in ipairs(enhancedSessionData.healingEvents or {}) do
+        addon.StorageManager:ReleaseTable(entry)
+        releasedCount = releasedCount + 1
+    end
+    
+    if releasedCount > 0 then
+        addon:Debug("Enhanced Combat Logger: Released %d tables back to pool", releasedCount)
+    end
 end
 
 -- End enhanced tracking

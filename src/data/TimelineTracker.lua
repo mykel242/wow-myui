@@ -81,30 +81,33 @@ local function CreateSample(deltaTime)
     -- UNIFIED TIMESTAMP: Get elapsed time from MyTimestampManager only
     local elapsed = addon.MyTimestampManager:GetCurrentRelativeTime()
 
-    return {
-        -- REMOVED: No more storing absolute timestamps, only relative time
-        elapsed = elapsed,
-        -- Cumulative totals
-        totalDamage = combatData.damage,
-        totalHealing = combatData.healing,
-        totalOverheal = combatData.overheal,
-        totalAbsorb = combatData.absorb,
-        -- Instantaneous rates (since last sample)
-        instantDPS = instantDPS,
-        instantHPS = instantHPS,
-        instantEffectiveHPS = instantEffectiveHPS,
-        instantAbsorbRate = dt > 0 and (absorbDelta / dt) or 0,
-        -- Percentages
-        overhealPercent = overhealPercent,
-        -- Overall averages (from combat start)
-        averageDPS = addon.CombatData:GetDPS(),
-        averageHPS = addon.CombatData:GetHPS(),
-        -- Delta values
-        damageDelta = damageDelta,
-        healingDelta = healingDelta,
-        overhealDelta = overhealDelta,
-        absorbDelta = absorbDelta
-    }
+    -- Use table pool for timeline samples
+    local sample = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    
+    -- REMOVED: No more storing absolute timestamps, only relative time
+    sample.elapsed = elapsed
+    -- Cumulative totals
+    sample.totalDamage = combatData.damage
+    sample.totalHealing = combatData.healing
+    sample.totalOverheal = combatData.overheal
+    sample.totalAbsorb = combatData.absorb
+    -- Instantaneous rates (since last sample)
+    sample.instantDPS = instantDPS
+    sample.instantHPS = instantHPS
+    sample.instantEffectiveHPS = instantEffectiveHPS
+    sample.instantAbsorbRate = dt > 0 and (absorbDelta / dt) or 0
+    -- Percentages
+    sample.overhealPercent = overhealPercent
+    -- Overall averages (from combat start)
+    sample.averageDPS = addon.CombatData:GetDPS()
+    sample.averageHPS = addon.CombatData:GetHPS()
+    -- Delta values
+    sample.damageDelta = damageDelta
+    sample.healingDelta = healingDelta
+    sample.overhealDelta = overhealDelta
+    sample.absorbDelta = absorbDelta
+    
+    return sample
 end
 
 -- Add sample to rolling window (circular buffer)
@@ -275,6 +278,9 @@ end
 
 -- Start combat tracking
 function TimelineTracker:StartCombat()
+    -- Release old timeline samples back to pool
+    self:ReleaseTimelineTables()
+    
     -- Clear rolling window and timeline
     rollingData.samples = {}
     rollingData.currentIndex = 1
@@ -294,6 +300,9 @@ end
 
 -- Reset data
 function TimelineTracker:Reset()
+    -- Release tables back to pool before clearing
+    self:ReleaseTimelineTables()
+    
     rollingData.samples = {}
     rollingData.currentIndex = 1
     rollingData.initialized = false
@@ -318,16 +327,16 @@ function TimelineTracker:GetTimelineForSession(duration, enhancedData)
     for i = 1, #timelineData.samples, step do
         local sample = timelineData.samples[i]
         if sample then
-            local timelinePoint = {
-                elapsed = sample.elapsed,
-                instantDPS = sample.averageDPS or 0, -- Use average instead of instant for stability
-                instantHPS = sample.averageHPS or 0, -- Use average instead of instant for stability
-                averageDPS = sample.averageDPS or 0,
-                averageHPS = sample.averageHPS or 0,
-                totalDamage = sample.totalDamage,
-                totalHealing = sample.totalHealing,
-                overhealPercent = sample.overhealPercent
-            }
+            -- Use table pool for session timeline points
+            local timelinePoint = addon.StorageManager and addon.StorageManager:GetTable() or {}
+            timelinePoint.elapsed = sample.elapsed
+            timelinePoint.instantDPS = sample.averageDPS or 0 -- Use average instead of instant for stability
+            timelinePoint.instantHPS = sample.averageHPS or 0 -- Use average instead of instant for stability
+            timelinePoint.averageDPS = sample.averageDPS or 0
+            timelinePoint.averageHPS = sample.averageHPS or 0
+            timelinePoint.totalDamage = sample.totalDamage
+            timelinePoint.totalHealing = sample.totalHealing
+            timelinePoint.overhealPercent = sample.overhealPercent
 
             -- Enhanced data integration - add damage taken data if available
             if enhancedData and enhancedData.damageTaken then
@@ -517,6 +526,35 @@ function TimelineTracker:FindTimelinePointsNearEvents(events, tolerance)
     end
 
     return matchedPoints
+end
+
+-- Release all timeline tables back to pool
+function TimelineTracker:ReleaseTimelineTables()
+    if not addon.StorageManager then
+        return
+    end
+    
+    local releasedCount = 0
+    
+    -- Release rolling window samples
+    for i = 1, #rollingData.samples do
+        if rollingData.samples[i] then
+            addon.StorageManager:ReleaseTable(rollingData.samples[i])
+            releasedCount = releasedCount + 1
+        end
+    end
+    
+    -- Release timeline samples
+    for i = 1, #timelineData.samples do
+        if timelineData.samples[i] then
+            addon.StorageManager:ReleaseTable(timelineData.samples[i])
+            releasedCount = releasedCount + 1
+        end
+    end
+    
+    if releasedCount > 0 then
+        addon:Debug("TimelineTracker: Released %d tables back to pool", releasedCount)
+    end
 end
 
 -- Clear enhanced timeline data

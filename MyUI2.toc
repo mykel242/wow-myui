@@ -6,9 +6,11 @@
 ## SavedVariables: MyUIDB
 ## DefaultState: enabled
 
+src/core/MyMessageQueue.lua
 src/core/MyLogger.lua
 src/utils/VirtualScrollMixin.lua
-src/core/MyLoggerWindow.lua
+## src/core/MyLoggerWindow.lua
+src/core/MyLoggerWindow_Lightweight.lua
 src/core/MyTimestampManager.lua
 src/core/MySimpleCombatDetector.lua
 MyUI.lua

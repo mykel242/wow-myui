@@ -169,40 +169,40 @@ function SessionManager:CreateSessionFromCombatData(enhancedData)
         avgHPS = duration > 0 and (combatData.finalHealing / duration) or 0
     end
 
-    local sessionData = {
-        sessionId = GenerateSessionId(),
-        startTime = combatData.startTime,
-        endTime = combatData.endTime,
-        duration = duration,
+    -- Use table pool for session data
+    local sessionData = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    sessionData.sessionId = GenerateSessionId()
+    sessionData.startTime = combatData.startTime
+    sessionData.endTime = combatData.endTime
+    sessionData.duration = duration
 
-        -- Performance metrics
-        totalDamage = combatData.finalDamage,
-        totalHealing = combatData.finalHealing,
-        totalOverheal = combatData.finalOverheal,
-        totalAbsorb = combatData.finalAbsorb,
-        avgDPS = avgDPS,
-        avgHPS = avgHPS,
-        peakDPS = calculator and calculator:GetMaxDPS() or combatData.finalMaxDPS,
-        peakHPS = calculator and calculator:GetMaxHPS() or combatData.finalMaxHPS,
+    -- Performance metrics
+    sessionData.totalDamage = combatData.finalDamage
+    sessionData.totalHealing = combatData.finalHealing
+    sessionData.totalOverheal = combatData.finalOverheal
+    sessionData.totalAbsorb = combatData.finalAbsorb
+    sessionData.avgDPS = avgDPS
+    sessionData.avgHPS = avgHPS
+    sessionData.peakDPS = calculator and calculator:GetMaxDPS() or combatData.finalMaxDPS
+    sessionData.peakHPS = calculator and calculator:GetMaxHPS() or combatData.finalMaxHPS
 
-        -- Metadata
-        location = GetRealZoneText() or GetZoneText() or GetMinimapZoneText() or "Unknown",
-        playerLevel = UnitLevel("player"),
-        actionCount = addon.CombatData:GetActionCount(),
+    -- Metadata
+    sessionData.location = GetRealZoneText() or GetZoneText() or GetMinimapZoneText() or "Unknown"
+    sessionData.playerLevel = UnitLevel("player")
+    sessionData.actionCount = addon.CombatData:GetActionCount()
 
-        -- User management
-        userMarked = nil, -- "keep", "ignore", "representative"
+    -- User management
+    sessionData.userMarked = nil -- "keep", "ignore", "representative"
 
-        -- Quality will be calculated
-        qualityScore = 0,
-        qualityFlags = {},
+    -- Quality will be calculated
+    sessionData.qualityScore = 0
+    sessionData.qualityFlags = {}
 
-        -- Store actual timeline data
-        timelineData = {},
+    -- Store actual timeline data
+    sessionData.timelineData = {}
 
-        -- ENHANCED DATA - Store the enhanced data directly
-        enhancedData = enhancedData
-    }
+    -- ENHANCED DATA - Store the enhanced data directly
+    sessionData.enhancedData = enhancedData
 
     -- Get timeline data from TimelineTracker
     if addon.TimelineTracker then
@@ -293,7 +293,8 @@ function SessionManager:AddSessionToHistory(session)
 
     -- Trim to limit and clean up memory-heavy data from older sessions
     while #sessionHistory > SESSION_HISTORY_LIMIT do
-        table.remove(sessionHistory)
+        local removedSession = table.remove(sessionHistory)
+        ReleaseSessionTables(removedSession)
     end
     
     -- MEMORY MANAGEMENT: Clean up enhanced data from sessions older than 25 to save memory
@@ -367,7 +368,8 @@ function SessionManager:CleanupMemory()
     
     -- Remove sessions older than limit
     while #sessionHistory > SESSION_HISTORY_LIMIT do
-        table.remove(sessionHistory)
+        local removedSession = table.remove(sessionHistory)
+        ReleaseSessionTables(removedSession)
         cleaned = cleaned + 1
     end
     
@@ -441,10 +443,38 @@ function SessionManager:MarkSession(sessionId, status)
     return false
 end
 
+-- Release tables from a session back to the pool
+local function ReleaseSessionTables(session)
+    if not session or not addon.StorageManager then
+        return
+    end
+    
+    local releasedCount = 0
+    
+    -- Release timeline data tables
+    if session.timelineData then
+        for _, point in ipairs(session.timelineData) do
+            addon.StorageManager:ReleaseTable(point)
+            releasedCount = releasedCount + 1
+        end
+    end
+    
+    -- Release the main session table
+    addon.StorageManager:ReleaseTable(session)
+    releasedCount = releasedCount + 1
+    
+    if releasedCount > 0 then
+        addon:Debug("SessionManager: Released %d tables back to pool", releasedCount)
+    end
+end
+
 -- Delete specific session
 function SessionManager:DeleteSession(sessionId)
     for i, session in ipairs(sessionHistory) do
         if session.sessionId == sessionId then
+            -- Release tables back to pool before removing
+            ReleaseSessionTables(session)
+            
             table.remove(sessionHistory, i)
 
             -- Save changes per-character-spec
@@ -474,6 +504,11 @@ end
 
 -- Clear all session history
 function SessionManager:ClearHistory()
+    -- Release all session tables back to pool
+    for _, session in ipairs(sessionHistory) do
+        ReleaseSessionTables(session)
+    end
+    
     sessionHistory = {}
     if addon.db then
         -- Clear spec-specific data

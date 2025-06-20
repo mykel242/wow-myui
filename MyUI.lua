@@ -420,10 +420,10 @@ function addon:OnInitialize()
         savedVariables = self.db -- Pass reference for persistent logging
     })
     
-    -- Initialize MyLoggerWindow and register with logger
+    -- Initialize MyLoggerWindow (now uses message queue)
     if self.MyLoggerWindow then
-        self.MyLoggerWindow:RegisterWithLogger()
-        self:Debug("MyLoggerWindow initialized and registered")
+        self.MyLoggerWindow:Initialize()
+        self:Debug("MyLoggerWindow initialized with message queue")
     end
 
     -- Initialize core modules with logger injection
