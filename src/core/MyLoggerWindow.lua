@@ -18,21 +18,8 @@ local MyLoggerWindow = {}
 addon.MyLoggerWindow = MyLoggerWindow
 
 -- =============================================================================
--- STATIC POPUPS
+-- STATIC POPUPS (Removed - using inline confirmation instead)
 -- =============================================================================
-
-StaticPopupDialogs["MYLOGGER_CLEAR_CONFIRM"] = {
-    text = "Clear all logs?\n\nThis will clear both current session logs and saved persistent logs.",
-    button1 = "Clear All",
-    button2 = "Cancel",
-    OnAccept = function()
-        MyLoggerWindow:ClearAllLogs()
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
 
 -- =============================================================================
 -- CONSTANTS AND CONFIGURATION
@@ -533,7 +520,25 @@ function MyLoggerWindow:CreateFilterButtons()
     clearAllButton:SetNormalFontObject("GameFontNormalSmall")
     
     clearAllButton:SetScript("OnClick", function()
-        StaticPopup_Show("MYLOGGER_CLEAR_CONFIRM")
+        -- Double-click protection: require two clicks within 2 seconds
+        local now = GetTime()
+        if clearAllButton.lastClickTime and (now - clearAllButton.lastClickTime) < 2 then
+            -- Second click - perform the clear
+            MyLoggerWindow:ClearAllLogs()
+            clearAllButton.lastClickTime = nil
+            clearAllButton:SetText("Clear All")
+        else
+            -- First click - change button text as confirmation
+            clearAllButton.lastClickTime = now
+            clearAllButton:SetText("Confirm?")
+            -- Reset after 2 seconds
+            C_Timer.After(2, function()
+                if clearAllButton.lastClickTime == now then
+                    clearAllButton.lastClickTime = nil
+                    clearAllButton:SetText("Clear All")
+                end
+            end)
+        end
     end)
     
     -- Add Clear View button (display only)

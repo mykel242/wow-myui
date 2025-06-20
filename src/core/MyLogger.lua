@@ -53,7 +53,6 @@ MyLogger.LEVEL_COLORS = {
 
 local config = {
     currentLevel = MyLogger.LOG_LEVELS.OFF,
-    fallbackToPrint = true,
     includeTimestamp = true,
     includeLevel = true,
     savedVariables = nil -- Reference to addon's saved variables
@@ -75,7 +74,7 @@ function MyLogger:SetLevel(level)
         end
     end
     
-    if type(level) == "number" and level >= 0 and level <= 5 then
+    if type(level) == "number" and level >= 0 and level <= 6 then
         config.currentLevel = level
         return true
     else
@@ -107,13 +106,18 @@ function MyLogger:Initialize(options)
     config.currentLevel = self.LOG_LEVELS[levelName] or self.LOG_LEVELS.OFF
     
     -- Set other options
-    config.fallbackToPrint = options.fallbackToPrint ~= false -- Default true
     config.includeTimestamp = options.includeTimestamp ~= false -- Default true
     config.includeLevel = options.includeLevel ~= false -- Default true
     config.savedVariables = options.savedVariables -- Reference for persistence
     
     -- Initialize logging storage
     self:InitializeStorage()
+    
+    -- Initialize message queue if available
+    if addon.MyQueueFactory then
+        self.messageQueue = addon.LogMessageQueue or addon.MyQueueFactory:CreateLogQueue()
+        addon.LogMessageQueue = self.messageQueue
+    end
     
     -- Log initialization
     self:Info("Log level set to: %s (%d)", levelName, config.currentLevel)
@@ -217,24 +221,30 @@ function MyLogger:Log(level, message, ...)
     -- Store the message
     self:StoreLogMessage(level, message)
     
-    -- Output to console if fallback enabled (but not for DEBUG/TRACE to avoid spam)
-    -- NOTE: PANIC level is handled separately in :Panic() method
-    if config.fallbackToPrint and level ~= self.LOG_LEVELS.PANIC and level <= self.LOG_LEVELS.INFO then
-        print(formattedMessage)
+    -- Push to message queue if available
+    if self.messageQueue then
+        self.messageQueue:Push("LOG", {
+            level = level,
+            levelName = self.LEVEL_NAMES[level] or "UNKNOWN",
+            message = message,
+            formattedMessage = formattedMessage,
+            args = {...},
+            timestamp = GetTime()
+        })
     end
+    
+    -- MyLogger never writes directly to UI - only to storage and queue
+    -- UI components pull from queue when needed
 end
 
 -- =============================================================================
 -- CONVENIENCE METHODS
 -- =============================================================================
 
--- Log at PANIC level (always shows, always saved)
+-- Log at PANIC level (critical errors that need immediate attention)
 function MyLogger:Panic(message, ...)
-    -- PANIC always prints regardless of log level
-    local formattedMessage = self:FormatMessage(self.LOG_LEVELS.PANIC, message, ...)
-    print(formattedMessage)
-    
-    -- Also log normally for consistency
+    -- PANIC goes through normal queue/storage system
+    -- UI components can subscribe to PANIC messages for immediate display
     self:Log(self.LOG_LEVELS.PANIC, message, ...)
 end
 

@@ -455,7 +455,10 @@ function SessionBrowser:CreateSessionRow(session, rowIndex)
         {text = formatDuration(session), width = 60},
         {text = tostring(session.eventCount or 0), width = 60},
         {text = getSegmentCount(session), width = 60},
-        {text = (session.metadata and session.metadata.zone and session.metadata.zone.name) or "Unknown", width = 100},
+        {text = (session.metadata and (
+            (type(session.metadata.zone) == "string" and session.metadata.zone) or 
+            (session.metadata.zone and session.metadata.zone.name)
+        )) or "Unknown", width = 100},
         {text = session.serverTime and date("%m/%d %H:%M", session.serverTime) or "Unknown", width = 110}
     }
     
@@ -540,10 +543,10 @@ function SessionBrowser:ViewSelectedSession()
     if fullSession.metadata then
         local meta = fullSession.metadata
         metaText = string.format("Zone: %s | Player: %s (%s) | Group: %s (%d)",
-            (meta.zone and meta.zone.name) or "Unknown",
-            (meta.player and meta.player.name) or "Unknown",
+            (type(meta.zone) == "string" and meta.zone) or (meta.zone and meta.zone.name) or "Unknown",
+            (type(meta.player) == "string" and meta.player) or (meta.player and meta.player.name) or "Unknown",
             (meta.player and meta.player.spec and meta.player.spec.name) or "Unknown",
-            (meta.group and meta.group.type) or "solo",
+            (type(meta.group) == "string" and meta.group) or (meta.group and meta.group.type) or "solo",
             (meta.group and meta.group.size) or 1)
     end
     viewerFrame.sessionMeta:SetText(metaText)
@@ -599,22 +602,31 @@ function SessionBrowser:GenerateSessionLog(session)
         -- Old format with nested metadata
         local meta = session.metadata
         if meta.zone then
-            table.insert(lines, "Zone: " .. (meta.zone.name or "Unknown"))
-            if meta.zone.instanceInfo and meta.zone.instanceInfo.type ~= "none" then
+            local zoneName = (type(meta.zone) == "string" and meta.zone) or (meta.zone.name) or "Unknown"
+            table.insert(lines, "Zone: " .. zoneName)
+            if type(meta.zone) == "table" and meta.zone.instanceInfo and meta.zone.instanceInfo.type ~= "none" then
                 table.insert(lines, "Instance: " .. (meta.zone.instanceInfo.name or "Unknown"))
             end
         end
         if meta.player then
-            table.insert(lines, string.format("Player: %s (%s %s, Level %d)",
-                meta.player.name or "Unknown",
-                meta.player.spec and meta.player.spec.name or "Unknown",
-                meta.player.class or "Unknown",
-                meta.player.level or 0))
+            if type(meta.player) == "string" then
+                table.insert(lines, string.format("Player: %s (Unknown Unknown, Level 0)", meta.player))
+            else
+                table.insert(lines, string.format("Player: %s (%s %s, Level %d)",
+                    meta.player.name or "Unknown",
+                    meta.player.spec and meta.player.spec.name or "Unknown",
+                    meta.player.class or "Unknown",
+                    meta.player.level or 0))
+            end
         end
         if meta.group then
-            table.insert(lines, string.format("Group: %s (%d members)",
-                meta.group.type or "unknown",
-                meta.group.size or 1))
+            if type(meta.group) == "string" then
+                table.insert(lines, string.format("Group: %s (1 members)", meta.group))
+            else
+                table.insert(lines, string.format("Group: %s (%d members)",
+                    meta.group.type or "unknown",
+                    meta.group.size or 1))
+            end
         end
     else
         -- SimpleCombatDetector format with direct fields
@@ -1043,16 +1055,23 @@ function SessionBrowser:DeleteSelectedSession()
     end
     
     if addon.StorageManager then
-        local deleted = addon.StorageManager:DeleteSession(selectedSession.id)
+        -- Use id if available, fallback to hash as StorageManager accepts both
+        local sessionIdentifier = selectedSession.id or selectedSession.hash
+        if not sessionIdentifier then
+            addon:Error("Session has no valid identifier (missing both id and hash)")
+            return
+        end
+        
+        local deleted = addon.StorageManager:DeleteSession(sessionIdentifier)
         if deleted then
-            addon:Info("Session deleted: " .. selectedSession.id)
+            addon:Info("Session deleted: " .. sessionIdentifier)
             selectedSession = nil
             self:RefreshSessionList()
             if viewerFrame and viewerFrame:IsShown() then
                 viewerFrame:Hide()
             end
         else
-            addon:Error("Failed to delete session")
+            addon:Error("Failed to delete session: " .. sessionIdentifier)
         end
     end
 end

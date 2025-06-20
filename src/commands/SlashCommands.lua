@@ -325,8 +325,30 @@ function SlashCommands:InitializeSimpleCommands()
             end
         elseif command == "testlog" then
             if addon.MyLogger then
+                print("=== Testing Logger Integration ===")
+                
+                -- Check queue status
+                if addon.LogMessageQueue then
+                    local stats = addon.LogMessageQueue:GetStats()
+                    print(string.format("Message Queue: %d/%d messages", stats.size, stats.maxSize))
+                else
+                    print("WARNING: LogMessageQueue not found!")
+                end
+                
+                -- Send test messages
                 addon.MyLogger:Debug("Logger test - debug level check")
                 addon.MyLogger:Info("Logger test - info level check")
+                addon.MyLogger:Warn("Logger test - warning level check")
+                addon.MyLogger:Error("Logger test - error level check")
+                
+                -- Check queue after messages
+                if addon.LogMessageQueue then
+                    local stats = addon.LogMessageQueue:GetStats()
+                    print(string.format("Queue after test: %d/%d messages", stats.size, stats.maxSize))
+                else
+                    print("Queue still not found after messages")
+                end
+                
                 print("Test messages logged. Use /myui logs to open log viewer.")
             else
                 print("MyLogger not loaded")
@@ -342,6 +364,31 @@ function SlashCommands:InitializeSimpleCommands()
                 StaticPopup_Show("MYLOGGER_CLEAR_CONFIRM")
             else
                 print("MyLoggerWindow not loaded")
+            end
+        elseif command:match("^loglevel%s+(.+)$") then
+            local level = command:match("^loglevel%s+(.+)$"):upper()
+            if addon.MyLogger then
+                local success = addon.MyLogger:SetLevel(level)
+                if success then
+                    print(string.format("Log level set to: %s", level))
+                    -- Save to database
+                    addon.db.logLevel = level
+                else
+                    print(string.format("Invalid log level: %s", level))
+                    print("Valid levels: OFF, PANIC, ERROR, WARN, INFO, DEBUG, TRACE")
+                end
+            else
+                print("MyLogger not loaded")
+            end
+        elseif command == "loglevel" then
+            if addon.MyLogger then
+                local currentLevel = addon.MyLogger:GetLevel()
+                local levelNames = {"OFF", "PANIC", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"}
+                print(string.format("Current log level: %s (%d)", levelNames[currentLevel + 1] or "UNKNOWN", currentLevel))
+                print("Usage: /myui loglevel <level>")
+                print("Valid levels: OFF, PANIC, ERROR, WARN, INFO, DEBUG, TRACE")
+            else
+                print("MyLogger not loaded")
             end
         elseif command:match("^segments%s+(.+)$") then
             local sessionId = msg:match("^segments%s+(.+)$")  -- Use original msg, not lowercased command
@@ -474,6 +521,33 @@ function SlashCommands:InitializeSimpleCommands()
             end
             
             addon:Info("Use '/myui logs' to view detailed output")
+        elseif command == "storagestats" then
+            -- Show storage and memory analysis
+            if addon.StorageManager then
+                addon:Info("=== Storage Analysis ===")
+                addon:Info("Max Sessions: 25, Max Age: 7 days, Max Memory: 8 MB")
+                addon:Info("Priority Sessions: 10 (kept regardless of age)")
+                
+                local sessions = addon.StorageManager:GetAllSessions()
+                addon:Info("Current Sessions: %d", #sessions)
+                
+                if #sessions > 0 then
+                    local totalEvents = 0
+                    for _, session in ipairs(sessions) do
+                        totalEvents = totalEvents + (session.eventCount or 0)
+                    end
+                    addon:Info("Total Events: %d (avg %.0f per session)", totalEvents, totalEvents / #sessions)
+                end
+                
+                local poolStats = addon.StorageManager:GetPoolStats()
+                addon:Info("Table Pool: %d/%d (%.1f%% reuse)", 
+                    poolStats.currentPoolSize, poolStats.maxPoolSize, poolStats.reuseRatio * 100)
+                    
+                local memoryMB = collectgarbage("count") / 1024
+                addon:Info("Total Memory: %.2f MB", memoryMB)
+            else
+                addon:Error("StorageManager not loaded")
+            end
         elseif command == "poolconvert" then
             -- Force conversion of saved data to use table pool
             if addon.StorageManager then
@@ -693,6 +767,7 @@ function SlashCommands:InitializeSimpleCommands()
             print("")
             print("Memory & Performance:")
             print("  /myui memory - Show memory usage breakdown")
+            print("  /myui storagestats - Show storage limits and session analysis")
             print("  /myui addons - Show all addon memory usage")
             print("  /myui gc - Force garbage collection")
             print("  /myui tableleaks - Analyze table pool leaks")
@@ -701,6 +776,7 @@ function SlashCommands:InitializeSimpleCommands()
             print("")
             print("Logging Tools:")
             print("  /myui logs - Toggle log viewer window")
+            print("  /myui loglevel [level] - Show/set log level (OFF, PANIC, ERROR, WARN, INFO, DEBUG, TRACE)")
             print("  /myui dumplogs - Print recent logs to chat")
             print("  /myui copylogs - Copy recent logs to clipboard")
             print("  /myui exportlogs - Print persistent logs to chat")
