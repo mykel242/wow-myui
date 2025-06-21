@@ -149,10 +149,6 @@ function MyTimestampManager:GetTimestampData()
     }
 end
 
--- Debug mode is now handled by logger level - this method is deprecated
-function MyTimestampManager:SetDebugMode(enabled)
-    logger:Debug("SetDebugMode called with %s - now handled by logger level", tostring(enabled))
-end
 
 -- Reset all timestamp data
 function MyTimestampManager:Reset()

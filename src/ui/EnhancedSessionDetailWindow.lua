@@ -385,10 +385,7 @@ function EnhancedSessionDetailWindow:CreateEnhancedTimeline(chartArea, sessionDa
         addon:Debug("========================")
     end
 
-    -- TEST: Temporarily removed - test markers were working
-
-    -- Chart legend
-    self:CreateChartLegend(chartArea, maxDPS, maxHPS)
+    -- Chart legend removed per user feedback
 end
 
 
@@ -1053,10 +1050,6 @@ function EnhancedSessionDetailWindow:DrawTestMarkers(chartArea, duration, width,
     addon:Debug("Drew test markers at", testX, "and", testDeathX)
 end
 
--- Create chart legend (removed - was the light gray summary data)
-function EnhancedSessionDetailWindow:CreateChartLegend(chartArea, maxDPS, maxHPS)
-    -- Legend removed per user feedback - was the unwanted light gray summary data
-end
 
 -- Create chart controls and filters
 function EnhancedSessionDetailWindow:CreateChartControls(controlsFrame)

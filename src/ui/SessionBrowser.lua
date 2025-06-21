@@ -523,7 +523,7 @@ function SessionBrowser:ViewSelectedSession()
         self:CreateSessionViewer()
     end
     
-    -- Get full session data with decompressed events
+    -- Get full session data (compression disabled)
     local fullSession = addon.StorageManager:GetSession(selectedSession.id)
     if not fullSession then
         addon:Error("Could not load session data")
@@ -873,7 +873,21 @@ function SessionBrowser:GenerateRawDataLines(session)
             if type(event) == "table" then
                 local eventStr = ""
                 for k, v in pairs(event) do
-                    eventStr = eventStr .. string.format("%s=%s ", k, tostring(v))
+                    if k == "args" and type(v) == "table" then
+                        -- Display args array contents instead of table reference
+                        local argsStr = "["
+                        for i = 1, math.min(#v, 8) do -- Show first 8 args to keep it readable
+                            if i > 1 then argsStr = argsStr .. ", " end
+                            argsStr = argsStr .. tostring(v[i])
+                        end
+                        if #v > 8 then
+                            argsStr = argsStr .. ", ..."
+                        end
+                        argsStr = argsStr .. "]"
+                        eventStr = eventStr .. string.format("%s=%s ", k, argsStr)
+                    else
+                        eventStr = eventStr .. string.format("%s=%s ", k, tostring(v))
+                    end
                 end
                 table.insert(lines, string.format("Event %d: %s", i, eventStr))
             else
@@ -949,7 +963,7 @@ function SessionBrowser:FormatAsRaw(session)
     table.insert(lines, "End Time: " .. tostring(session.endTime))
     table.insert(lines, "Stored At: " .. tostring(session.storedAt))
     table.insert(lines, "Server Time: " .. tostring(session.serverTime))
-    table.insert(lines, "Compressed: " .. tostring(session.compressed))
+    table.insert(lines, "Compressed: DISABLED")
     table.insert(lines, "")
     
     -- Raw metadata

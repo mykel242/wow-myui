@@ -498,48 +498,31 @@ function MyLoggerWindow:IsWindowShown() return window and window:IsShown() end
 local messageQueue = nil
 local lastPullTime = 0
 
--- Pull messages from queue and update display
-local function PullFromQueue()
-    if not messageQueue or not isVisible then return end
-    
-    -- Pull recent messages (last 30)
-    local messages = messageQueue:Pull({
-        count = MAX_MESSAGES,
-        since = lastPullTime
-    })
-    
-    if #messages > 0 then
-        -- Process new messages
-        for _, msg in ipairs(messages) do
-            if msg.data and msg.data.levelName then
-                -- Use formattedMessage (with expanded placeholders) over raw message
-                AddMessage(msg.data.levelName, msg.data.formattedMessage or msg.data.message or "")
-            end
-        end
-        
-        lastPullTime = GetTime()
-    end
-end
+-- Pull functionality replaced by subscription-based approach
 
 -- Initialize the lightweight logger window
 function MyLoggerWindow:Initialize()
     -- Get the log message queue
-    messageQueue = addon.LogMessageQueue
+    messageQueue = addon.LogEventQueue
     
-    -- Subscribe to real-time updates (optional - for important messages)
+    -- Subscribe to all log messages (replaces pull-based approach)
     if messageQueue then
-        messageQueue:Subscribe("LoggerWindowLightweight", function(message)
-            if isVisible and message.data then
-                -- Only process high priority messages immediately
-                if message.data.level and message.data.level <= 2 then -- PANIC, ERROR
-                    AddMessage(message.data.levelName, message.data.formattedMessage or message.data.message or "")
+        messageQueue:Subscribe("LOG", function(message)
+            if message.data and message.data.levelName then
+                -- Add all log messages to ring buffer
+                AddMessage(message.data.levelName, message.data.formattedMessage or message.data.message or "")
+                
+                -- Mark for UI update (will refresh on next frame)
+                if isVisible then
+                    isDirty = true
                 end
             end
-        end)
+        end, "LoggerWindowLightweight")
     end
     
     -- Schedule periodic pulls for other messages
-    C_Timer.NewTicker(UPDATE_INTERVAL, PullFromQueue)
+    -- Timer no longer needed - using subscription-based updates
+    -- C_Timer.NewTicker(UPDATE_INTERVAL, PullFromQueue)
 end
 
 -- =============================================================================

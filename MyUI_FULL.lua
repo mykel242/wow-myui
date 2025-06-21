@@ -34,9 +34,6 @@ addon.defaults = {
     hpsWindowPosition = nil,
     showHPSWindow = false,
     showMainWindow = false,
-    -- Logger window state
-    loggerWindowPosition = nil,
-    showLoggerWindow = false,
     enhancedLogging = true,
     trackAllParticipants = true,
     trackDamageTaken = true,
@@ -414,21 +411,15 @@ function addon:OnInitialize()
         error(addonName .. ": MyLogger module not available - cannot continue")
     end
     
-    -- Initialize specialized event queues for transparent data flow
-    self.CombatEventQueue = self:CreateCombatEventQueue({
-        maxSize = 2500,
-        ttl = 300
-    })
-    
-    self.LogEventQueue = self:CreateLogEventQueue({
-        maxSize = 2000,
-        ttl = 600
-    })
-    
-    self.UIEventQueue = self:CreateUIEventQueue({
-        maxSize = 500,
-        ttl = 300
-    })
+    -- Initialize MyMessageQueue for decoupled communication
+    if self.MyMessageQueue then
+        self.MyMessageQueue = self.MyMessageQueue:New({
+            maxSize = 1000,
+            ttl = 300,
+            name = "MainEventQueue"
+        })
+        self:Debug("MyMessageQueue instance created")
+    end
     
     -- Extract version hash for unique channel naming
     local versionHash = self.VERSION:match("%-([^%-]+)$") or "dev"
@@ -582,14 +573,9 @@ function addon:OnInitialize()
         self:Debug("MyCombatMeterScaler initialized")
     end
     
-    if self.MyDPSMeterWindow then
-        self.MyDPSMeterWindow:Initialize()
-        self:Debug("MyDPSMeterWindow initialized")
-    end
-    
-    if self.MyHPSMeterWindow then
-        self.MyHPSMeterWindow:Initialize()
-        self:Debug("MyHPSMeterWindow initialized")
+    if self.MyCombatMeterWindow then
+        self.MyCombatMeterWindow:Initialize()
+        self:Debug("MyCombatMeterWindow initialized")
     end
     
     -- Initialize simplified slash commands
@@ -612,28 +598,18 @@ function addon:OnEnable()
             self:Debug("Not showing main window")
         end
 
-        -- Restore window states
-        if self.db.showDPSWindow and self.MyDPSMeterWindow then
-            self.MyDPSMeterWindow:Show()
-            if self.db.dpsWindowPosition then
-                self.MyDPSMeterWindow:RestorePosition(self.db.dpsWindowPosition)
-            end
+        --[[
+        DISABLED DURING MODULARIZATION - PRESERVE FOR RE-ENABLE
+        
+        -- Restore other windows...
+        if self.db.showDPSWindow and self.DPSWindow then
+            self.DPSWindow:Show()
         end
 
-        if self.db.showHPSWindow and self.MyHPSMeterWindow then
-            self.MyHPSMeterWindow:Show()
-            if self.db.hpsWindowPosition then
-                self.MyHPSMeterWindow:RestorePosition(self.db.hpsWindowPosition)
-            end
+        if self.db.showHPSWindow and self.HPSWindow then
+            self.HPSWindow:Show()
         end
-
-        -- Restore logger window state (only if previously shown)
-        if self.db.showLoggerWindow and self.MyLoggerWindow then
-            self.MyLoggerWindow:Show()
-            if self.db.loggerWindowPosition and self.MyLoggerWindow.RestorePosition then
-                self.MyLoggerWindow:RestorePosition(self.db.loggerWindowPosition)
-            end
-        end
+        --]]
 
         self:Info("%s is now active!", addonName)
     end
@@ -667,32 +643,18 @@ function addon:OnDisable()
     
     -- MyLogger cleanup not needed (no channels)
 
-    -- Save window states  
-    if self.MyDPSMeterWindow then
-        self.db.showDPSWindow = self.MyDPSMeterWindow:IsVisible()
-        if self.db.showDPSWindow then
-            self.db.dpsWindowPosition = self.MyDPSMeterWindow:GetPosition()
-        end
+    --[[
+    DISABLED DURING MODULARIZATION - PRESERVE FOR RE-ENABLE
+    
+    -- Save visibility states for all windows
+    if self.DPSWindow and self.DPSWindow.frame then
+        self.db.showDPSWindow = self.DPSWindow.frame:IsShown()
     end
 
-    if self.MyHPSMeterWindow then
-        self.db.showHPSWindow = self.MyHPSMeterWindow:IsVisible()
-        if self.db.showHPSWindow then
-            self.db.hpsWindowPosition = self.MyHPSMeterWindow:GetPosition()
-        end
+    if self.HPSWindow and self.HPSWindow.frame then
+        self.db.showHPSWindow = self.HPSWindow.frame:IsShown()
     end
-
-    if self.MyLoggerWindow then
-        if self.MyLoggerWindow.IsVisible then
-            self.db.showLoggerWindow = self.MyLoggerWindow:IsVisible()
-        else
-            self.db.showLoggerWindow = false
-        end
-        
-        if self.db.showLoggerWindow and self.MyLoggerWindow.GetPosition then
-            self.db.loggerWindowPosition = self.MyLoggerWindow:GetPosition()
-        end
-    end
+    --]]
 end
 
 -- Toggle main window function
@@ -723,7 +685,7 @@ function addon:CreateMainFrame()
 
     -- Use default Warcraft UI style as requested
     local frame = CreateFrame("Frame", addonName .. "MainFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(350, 230)
+    frame:SetSize(350, 200)
     frame:SetPoint("CENTER")
 
     -- Set title text
@@ -777,7 +739,7 @@ function addon:CreateMainFrame()
 
     -- === TOOL LAUNCHER PANEL ===
     local toolPanel = CreateFrame("Frame", nil, frame)
-    toolPanel:SetSize(310, 130)
+    toolPanel:SetSize(310, 100)
     toolPanel:SetPoint("TOP", statusPanel, "BOTTOM", 0, -10)
 
     local toolTitle = toolPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -812,36 +774,23 @@ function addon:CreateMainFrame()
         end
     end)
 
-    -- DPS Meter button (top right)
-    local dpsMeterBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
-    dpsMeterBtn:SetSize(140, 25)
-    dpsMeterBtn:SetPoint("TOPRIGHT", toolPanel, "TOPRIGHT", -10, -35)
-    dpsMeterBtn:SetText("DPS Meter")
-    dpsMeterBtn:SetScript("OnClick", function()
-        if addon.MyDPSMeterWindow then
-            addon.MyDPSMeterWindow:Toggle()
+    -- Combat Meter button (right side)
+    local meterBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
+    meterBtn:SetSize(140, 25)
+    meterBtn:SetPoint("TOPRIGHT", toolPanel, "TOPRIGHT", -10, -35)
+    meterBtn:SetText("Combat Meter")
+    meterBtn:SetScript("OnClick", function()
+        if addon.MyCombatMeterWindow then
+            addon.MyCombatMeterWindow:Toggle()
         else
-            print("DPS Meter not available")
-        end
-    end)
-
-    -- HPS Meter button (middle right)
-    local hpsMeterBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
-    hpsMeterBtn:SetSize(140, 25)
-    hpsMeterBtn:SetPoint("TOPRIGHT", toolPanel, "TOPRIGHT", -10, -62)
-    hpsMeterBtn:SetText("HPS Meter")
-    hpsMeterBtn:SetScript("OnClick", function()
-        if addon.MyHPSMeterWindow then
-            addon.MyHPSMeterWindow:Toggle()
-        else
-            print("HPS Meter not available")
+            print("Combat Meter not available")
         end
     end)
 
     -- Session Browser button (centered bottom row)
     local sessionBtn = CreateFrame("Button", nil, toolPanel, "GameMenuButtonTemplate")
     sessionBtn:SetSize(160, 25)
-    sessionBtn:SetPoint("TOP", toolPanel, "TOP", 0, -97)
+    sessionBtn:SetPoint("TOP", toolPanel, "TOP", 0, -70)
     sessionBtn:SetText("Session Browser")
     sessionBtn:SetScript("OnClick", function()
         if addon.SessionBrowser then

@@ -1,121 +1,18 @@
 -- SlashCommands.lua
--- Legacy slash command handlers (preserved for future re-enable)
+-- Slash command handlers for MyUI2
 
 local addonName, addon = ...
 
--- Legacy slash command module
+-- Slash command module
 addon.SlashCommands = {}
 local SlashCommands = addon.SlashCommands
 
--- DISABLED: All complex commands are disabled during modularization
--- These will be re-enabled as the new combat logging system is implemented
-
--- Main slash command handler (LEGACY - PRESERVED)
-function SlashCommands:InitializeLegacyCommands()
-    -- DISABLED: Complex slash commands preserved but not registered
-    -- Uncomment the SLASH_MYUI1 line and function below to re-enable
-    
-    --[[
+-- Main slash command handler
+function SlashCommands:Initialize()
     SLASH_MYUI1 = "/myui"
     
     function SlashCmdList.MYUI(msg, editBox)
         local command = string.lower(msg)
-
-        if command == "show" then
-            if not addon.mainFrame then
-                addon:CreateMainFrame()
-            end
-            addon.mainFrame:Show()
-            addon.db.showMainWindow = true
-            addon:Info("Main window toggled")
-        elseif command == "hide" then
-            if addon.mainFrame then
-                addon.mainFrame:Hide()
-                addon.db.showMainWindow = false
-                addon:Info("Main window hidden")
-            end
-        elseif command == "toggle" or command == "" then
-            addon:ToggleMainWindow()
-        elseif command == "dps" then
-            print("DPS meter disabled during modularization")
-        elseif command == "hps" then
-            print("HPS meter disabled during modularization")
-        elseif command == "debug" then
-            addon.DEBUG = not addon.DEBUG
-            addon.db.debugMode = addon.DEBUG
-            addon:Info("Debug mode: %s", addon.DEBUG and "ON" or "OFF")
-        elseif command:match("^hpsmax%s+(%d+)$") then
-            print("Meter commands disabled during modularization")
-        elseif command:match("^dpsmax%s+(%d+)$") then
-            print("Meter commands disabled during modularization")
-        elseif command == "hpsreset" then
-            print("Meter commands disabled during modularization")
-        elseif command == "dpsreset" then
-            print("Meter commands disabled during modularization")
-        elseif command == "meterinfo" then
-            print("Meter commands disabled during modularization")
-        elseif command == "resetmeters" then
-            print("Meter commands disabled during modularization")
-        elseif command == "resetcombat" then
-            print("Combat reset disabled during modularization")
-        elseif command == "sessions" then
-            print("Session commands disabled during modularization")
-        elseif command == "clear" then
-            print("Session commands disabled during modularization")
-        elseif command:match("^scaling%s+(.+)$") then
-            print("Scaling commands disabled during modularization")
-        elseif command:match("^mark%s+(%w+)%s+(.+)$") then
-            print("Session marking disabled during modularization")
-        elseif command:match("^list%s+(.+)$") then
-            print("Session listing disabled during modularization")
-        elseif command == "ids" then
-            print("Session commands disabled during modularization")
-        elseif command == "enhancedlog" then
-            print("Enhanced logging commands disabled during modularization")
-        elseif command:match("^enhancedconfig%s+(.+)$") then
-            print("Enhanced config disabled during modularization")
-        elseif command == "memory" then
-            print("Memory commands disabled during modularization")
-        elseif command == "timers" then
-            print("Timer commands disabled during modularization")
-        elseif command == "timestamps" then
-            if addon.MyTimestampManager then
-                addon:Info(addon.MyTimestampManager:GetDebugSummary())
-            else
-                addon:Warn("MyTimestampManager not loaded")
-            end
-        elseif command == "cleardata" then
-            print("Data clearing disabled during modularization")
-        elseif command:match("^calc") then
-            print("Calculation commands disabled during modularization")
-        elseif command == "logger" then
-            print("Combat Logger - Coming Soon!")
-        elseif command == "rawdata" then
-            print("Raw Data Viewer - Coming Soon!")
-        else
-            print("MyUI Commands (Simplified):")
-            print("  /myui [ show | hide | toggle ] - Main window")
-            print("  /myui debug - Toggle debug mode")
-            print("  /myui timestamps - Show MyTimestampManager debug info")
-            print("")
-            print("New Tools (Coming Soon):")
-            print("  /myui logger - Combat log viewer")
-            print("  /myui rawdata - Raw data viewer")
-            print("")
-            print("Note: Most features disabled during modularization.")
-            print("They will return with the new combat logging system.")
-        end
-    end
-    --]]
-end
-
--- Simple slash command handler (ACTIVE)
-function SlashCommands:InitializeSimpleCommands()
-    SLASH_MYUI1 = "/myui"
-    
-    function SlashCmdList.MYUI(msg, editBox)
-        local command = string.lower(msg)
-
 
         if command == "toggle" or command == "" then
             addon:ToggleMainWindow()
@@ -189,7 +86,7 @@ function SlashCommands:InitializeSimpleCommands()
             addon:Info("Build Date: %s", buildDate)
         elseif command == "sessions" then
             if addon.StorageManager then
-                local sessions = addon.StorageManager:GetRecentSessions(25)  -- Show all stored sessions
+                local sessions = addon.StorageManager:GetRecentSessions(25)
                 addon:Info("=== Recent Combat Sessions (%d shown) ===", #sessions)
                 for i, session in ipairs(sessions) do
                     local segments = session.isSegmented and session.segments and #session.segments or 1
@@ -225,11 +122,11 @@ function SlashCommands:InitializeSimpleCommands()
                 local success = addon.MyLogger:SetLevel(level)
                 if success then
                     print(string.format("Log level set to: %s", level))
-                    -- Save to database
                     addon.db.logLevel = level
                 else
                     print(string.format("Invalid log level: %s", level))
                     print("Valid levels: OFF, PANIC, ERROR, WARN, INFO, DEBUG, TRACE")
+                    print("Note: DEBUG shows combat detection, TRACE shows detailed scaler analysis")
                 end
             else
                 print("MyLogger not loaded")
@@ -241,6 +138,7 @@ function SlashCommands:InitializeSimpleCommands()
                 addon:Info("Current log level: %s (%d)", levelNames[currentLevel + 1] or "UNKNOWN", currentLevel)
                 addon:Info("Usage: /myui loglevel <level>")
                 addon:Info("Valid levels: OFF, PANIC, ERROR, WARN, INFO, DEBUG, TRACE")
+                addon:Info("Note: DEBUG shows combat detection, TRACE shows detailed scaler analysis")
             else
                 addon:Error("MyLogger not loaded")
             end
@@ -250,15 +148,250 @@ function SlashCommands:InitializeSimpleCommands()
             else
                 print("SessionBrowser not loaded")
             end
+        elseif command == "meter" then
+            if addon.MyDPSMeterWindow then
+                addon.MyDPSMeterWindow:Toggle()
+            else
+                print("DPS meter not loaded")
+            end
+        elseif command == "dps" then
+            if addon.MyDPSMeterWindow then
+                addon.MyDPSMeterWindow:Toggle()
+            else
+                print("DPS meter not loaded")
+            end
+        elseif command == "hps" then
+            if addon.MyHPSMeterWindow then
+                addon.MyHPSMeterWindow:Toggle()
+            else
+                print("HPS meter not loaded")
+            end
+        elseif command:match("^metermethod%s+(.+)$") then
+            local method = msg:match("^metermethod%s+(.+)$"):lower()
+            if addon.MyDPSMeterWindow then
+                if addon.MyDPSMeterWindow:SetCalculationMethod(method) then
+                    addon:Info("DPS meter calculation method set to: %s", method)
+                else
+                    addon:Error("Invalid method: %s. Valid: rolling, final, hybrid", method)
+                end
+            else
+                print("DPS meter not loaded")
+            end
+        elseif command:match("^hpsmethod%s+(.+)$") then
+            local method = msg:match("^hpsmethod%s+(.+)$"):lower()
+            if addon.MyHPSMeterWindow then
+                if addon.MyHPSMeterWindow:SetCalculationMethod(method) then
+                    addon:Info("HPS meter calculation method set to: %s", method)
+                else
+                    addon:Error("Invalid method: %s. Valid: rolling, final, hybrid", method)
+                end
+            else
+                print("HPS meter not loaded")
+            end
+        elseif command:match("^dpsscale%s+(.+)$") then
+            local scaleArg = msg:match("^dpsscale%s+(.+)$")
+            if addon.MyDPSMeterWindow then
+                if scaleArg:lower() == "auto" then
+                    addon.MyDPSMeterWindow:SetAutoScale(true)
+                    addon:Info("DPS meter switched to auto-scaling")
+                else
+                    local dpsScale = tonumber(scaleArg)
+                    if dpsScale and dpsScale > 0 then
+                        addon.MyDPSMeterWindow:SetManualScale(dpsScale)
+                        addon:Info("DPS meter manual scale set to: %.0f", dpsScale)
+                    else
+                        addon:Error("Invalid scale value. Use: /myui dpsscale <number> or /myui dpsscale auto")
+                    end
+                end
+            else
+                print("DPS meter not loaded")
+            end
+        elseif command:match("^hpsscale%s+(.+)$") then
+            local scaleArg = msg:match("^hpsscale%s+(.+)$")
+            if addon.MyHPSMeterWindow then
+                if scaleArg:lower() == "auto" then
+                    addon.MyHPSMeterWindow:SetAutoScale(true)
+                    addon:Info("HPS meter switched to auto-scaling")
+                else
+                    local hpsScale = tonumber(scaleArg)
+                    if hpsScale and hpsScale > 0 then
+                        addon.MyHPSMeterWindow:SetManualScale(hpsScale)
+                        addon:Info("HPS meter manual scale set to: %.0f", hpsScale)
+                    else
+                        addon:Error("Invalid scale value. Use: /myui hpsscale <number> or /myui hpsscale auto")
+                    end
+                end
+            else
+                print("HPS meter not loaded")
+            end
+        elseif command == "meteranalyze" then
+            if addon.MyCombatMeterScaler then
+                local analysis = addon.MyCombatMeterScaler:ForceScaleUpdate()
+                if analysis then
+                    addon:Info("=== Scale Analysis Complete ===")
+                    addon:Info("Analyzed %d sessions", analysis.sessionsAnalyzed)
+                    addon:Info("Recommended DPS Scale: %.0f", analysis.recommendedDPSScale)
+                    addon:Info("Recommended HPS Scale: %.0f", analysis.recommendedHPSScale)
+                    
+                    -- Force publish scale update for immediate UI refresh
+                    addon.MyCombatMeterScaler:PublishScaleUpdate(analysis.recommendedDPSScale, analysis.recommendedHPSScale)
+                    
+                    addon:Info("Use '/myui logs' to view detailed output")
+                else
+                    addon:Error("No sessions available for analysis")
+                end
+            else
+                print("Combat meter scaler not loaded")
+            end
+        elseif command == "queuesubscribers" or command == "subscribers" then
+            addon:Info("=== Event Queue Subscribers ===")
+            
+            if addon.CombatEventQueue then
+                local subscribers = addon.CombatEventQueue:GetSubscribers()
+                addon:Info("Combat Event Queue (%d subscribers):", #subscribers)
+                for _, sub in ipairs(subscribers) do
+                    addon:Info("  [%d] %s -> %s (%d msgs, %.1fs)", 
+                        sub.id, sub.name, sub.messageType, sub.messageCount, sub.duration)
+                end
+            else
+                addon:Warn("  Combat Event Queue: Not available")
+            end
+            
+            if addon.LogEventQueue then
+                local subscribers = addon.LogEventQueue:GetSubscribers()
+                addon:Info("Log Event Queue (%d subscribers):", #subscribers)
+                for _, sub in ipairs(subscribers) do
+                    addon:Info("  [%d] %s -> %s (%d msgs, %.1fs)", 
+                        sub.id, sub.name, sub.messageType, sub.messageCount, sub.duration)
+                end
+            else
+                addon:Warn("  Log Event Queue: Not available")
+            end
+        elseif command == "queuestats" then
+            addon:Info("=== Event Queue Statistics ===")
+            
+            if addon.CombatEventQueue then
+                local stats = addon.CombatEventQueue:GetStats()
+                addon:Info("Combat Event Queue:")
+                addon:Info("  Name: %s", stats.name)
+                local utilization = stats.maxSize > 0 and (stats.currentSize / stats.maxSize * 100) or 0
+                addon:Info("  Size: %d/%d (%.1f%% full)", 
+                    stats.currentSize, stats.maxSize, utilization)
+                addon:Info("  Messages: %d pushed, %d dropped (%.2f%% drop rate)", 
+                    stats.totalPushed, stats.totalDropped, stats.dropRate * 100)
+                addon:Info("  Subscribers: %d active", stats.subscriberCount)
+                addon:Info("  Performance: %.2f msg/sec over %.1fs", 
+                    stats.messagesPerSecond, stats.uptime)
+                
+                if next(stats.messageTypes) then
+                    addon:Info("  Message Types:")
+                    for msgType, count in pairs(stats.messageTypes) do
+                        addon:Info("    %s: %d", msgType, count)
+                    end
+                end
+            else
+                addon:Warn("  Combat Event Queue: Not available")
+            end
+            
+            if addon.LogEventQueue then
+                local stats = addon.LogEventQueue:GetStats()
+                addon:Info("")
+                addon:Info("Log Event Queue:")
+                addon:Info("  Name: %s", stats.name)
+                local utilization = stats.maxSize > 0 and (stats.currentSize / stats.maxSize * 100) or 0
+                addon:Info("  Size: %d/%d (%.1f%% full)", 
+                    stats.currentSize, stats.maxSize, utilization)
+                addon:Info("  Messages: %d pushed, %d dropped (%.2f%% drop rate)", 
+                    stats.totalPushed, stats.totalDropped, stats.dropRate * 100)
+                addon:Info("  Subscribers: %d active", stats.subscriberCount)
+                addon:Info("  Performance: %.2f msg/sec over %.1fs", 
+                    stats.messagesPerSecond, stats.uptime)
+            else
+                addon:Warn("  Log Event Queue: Not available")
+            end
+            
+            addon:Info("Use '/myui logs' to view detailed output")
+        elseif command == "queuedebug" then
+            addon:Info("=== Event Queue Debug Information ===")
+            
+            if addon.CombatEventQueue then
+                addon.CombatEventQueue:DebugState()
+            else
+                addon:Warn("Combat Event Queue: Not available")
+            end
+            
+            if addon.LogEventQueue then
+                addon.LogEventQueue:DebugState()
+            else
+                addon:Warn("Log Event Queue: Not available")
+            end
+            
+            addon:Info("Use '/myui logs' to view detailed output")
+        elseif command:match("^queuesubscribers?%s*(.*)$") then
+            local queueName = command:match("^queuesubscribers?%s*(.*)$")
+            
+            local queue = nil
+            if queueName == "combat" or queueName == "" then
+                queue = addon.CombatEventQueue
+                queueName = "Combat Event Queue"
+            elseif queueName == "log" then
+                queue = addon.LogEventQueue
+                queueName = "Log Event Queue"
+            end
+            
+            if queue then
+                local subscribers = queue:GetSubscribers()
+                addon:Info("=== %s Subscribers ===", queueName)
+                
+                if #subscribers == 0 then
+                    addon:Info("No active subscribers")
+                else
+                    for _, sub in ipairs(subscribers) do
+                        local runtime = GetTime() - sub.subscribeTime
+                        addon:Info("  %s -> %s", sub.id, sub.messageType)
+                        addon:Info("    Messages received: %d", sub.messagesReceived)
+                        addon:Info("    Runtime: %.1fs", runtime)
+                        addon:Info("    Has filter: %s", sub.hasFilter and "Yes" or "No")
+                        if next(sub.metadata) then
+                            addon:Info("    Metadata: %s", table.concat(addon:GetTableKeys(sub.metadata), ", "))
+                        end
+                    end
+                end
+            else
+                addon:Error("Unknown queue: %s. Use 'combat' or 'log'", queueName)
+            end
+            
+            addon:Info("Use '/myui logs' to view detailed output")
+        elseif command == "queueclear" then
+            local clearedCombat, clearedLog = 0, 0
+            
+            if addon.CombatEventQueue then
+                clearedCombat = addon.CombatEventQueue.size
+                addon.CombatEventQueue:Clear()
+                addon:Info("Combat Event Queue cleared (%d messages)", clearedCombat)
+            end
+            
+            if addon.LogEventQueue then
+                clearedLog = addon.LogEventQueue.size
+                addon.LogEventQueue:Clear()
+                addon:Info("Log Event Queue cleared (%d messages)", clearedLog)
+            end
+            
+            addon:Info("Total cleared: %d messages", clearedCombat + clearedLog)
+        elseif command == "clearall" then
+            if addon.StorageManager then
+                addon.StorageManager:ClearAllSessions()
+                addon:Info("All combat sessions cleared!")
+            else
+                addon:Info("StorageManager not available")
+            end
         elseif command == "memory" then
-            -- Display memory usage information via MyLogger
             local memoryKB = collectgarbage("count")
             local memoryMB = memoryKB / 1024
             
             addon:Info("=== MyUI2 Memory Usage ===")
             addon:Info("Total Lua Memory: %.2f MB (%.0f KB)", memoryMB, memoryKB)
             
-            -- Storage breakdown
             if addon.StorageManager then
                 local stats = addon.StorageManager:GetDebugSummary()
                 addon:Info("Storage Manager:")
@@ -272,7 +405,6 @@ function SlashCommands:InitializeSimpleCommands()
                     poolStats.created, poolStats.reused, poolStats.returned)
             end
             
-            -- GUID cache with proper reporting
             if addon.GUIDResolver then
                 local guidStats = addon.GUIDResolver:GetCacheStats()
                 if guidStats then
@@ -285,7 +417,6 @@ function SlashCommands:InitializeSimpleCommands()
                 end
             end
             
-            -- Logger buffer statistics
             if addon.MyLoggerWindow then
                 local bufferStats = addon.MyLoggerWindow:GetBufferStats()
                 addon:Info("  Logger Buffer: %d/%d entries (%.1f%% full)", 
@@ -303,21 +434,16 @@ function SlashCommands:InitializeSimpleCommands()
                 addon:Info("  Logger: ~100 recent messages in memory")
             end
             
-            -- Add component memory estimates
             addon:Info("")
             addon:Info("Component Memory Estimates:")
             
-            -- Enhanced Combat Logger analysis
             if addon.EnhancedCombatLogger then
-                addon:Info("  Enhanced Combat Logger: Active (no pooling)")
+                addon:Info("  Enhanced Combat Logger: Active")
             end
             
-            -- Timeline Tracker analysis  
             if addon.TimelineTracker then
-                addon:Info("  Timeline Tracker: Active (no pooling)")
+                addon:Info("  Timeline Tracker: Active")
             end
-            
-            -- Session data analysis
 
             if addon.StorageManager then
                 local stats = addon.StorageManager:GetDebugSummary()
@@ -327,10 +453,9 @@ function SlashCommands:InitializeSimpleCommands()
             
             addon:Info("")
             addon:Info("Memory Usage Gap: %.1f MB unaccounted", 
-                math.max(0, memoryMB - 10)) -- Rough estimate of expected usage
+                math.max(0, memoryMB - 10))
             addon:Info("Use '/myui logs' to view detailed output")
         elseif command == "storagestats" then
-            -- Show storage and memory analysis
             if addon.StorageManager then
                 addon:Info("=== Storage Analysis ===")
                 addon:Info("Storage Limits: 25 sessions max, 7 days retention, 8 MB memory limit")
@@ -367,14 +492,22 @@ function SlashCommands:InitializeSimpleCommands()
             print("  /myui memory - Show memory usage")
             print("  /myui storagestats - Show storage analysis")
             print("  /myui version - Show addon version")
+            print("")
+            print("Combat Meters:")
+            print("  /myui dps - Toggle DPS meter")
+            print("  /myui hps - Toggle HPS meter")
+            print("  /myui meter - Toggle DPS meter (alias)")
+            print("  /myui metermethod <method> - Set DPS calculation method")
+            print("  /myui hpsmethod <method> - Set HPS calculation method")
+            print("  /myui dpsscale <number|auto> - Set DPS scale or auto-scaling")
+            print("  /myui hpsscale <number|auto> - Set HPS scale or auto-scaling")
+            print("  /myui meteranalyze - Force scale analysis")
+            print("")
+            print("Event Queue Debugging:")
+            print("  /myui queuestats - Show queue statistics")
+            print("  /myui queuedebug - Show detailed queue debug info")
+            print("  /myui queuesubscribers [combat|log] - List queue subscribers")
+            print("  /myui queueclear - Clear all queues")
         end
     end
-end
-
--- Initialize the appropriate command set
-function SlashCommands:Initialize()
-    -- Use simple commands during modularization
-    self:InitializeSimpleCommands()
-    
-    -- SlashCommands initialized
 end
