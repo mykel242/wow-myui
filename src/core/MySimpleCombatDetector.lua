@@ -9,7 +9,7 @@ local MySimpleCombatDetector = {}
 addon.MySimpleCombatDetector = MySimpleCombatDetector
 
 -- Internal debug configuration
-local DEBUG_MODE = false
+local DEBUG_MODE = true  -- Enabled to debug aura filtering
 local logger = nil -- Injected logger instance
 
 -- Internal debug functions with logger fallback
@@ -39,11 +39,11 @@ end
 
 -- Simple configuration
 local CONFIG = {
-    ACTIVITY_TIMEOUT = 8.0,      -- Seconds after last activity to end combat
-    CHECK_INTERVAL = 5.0,        -- How often to check for timeout
-    MIN_DURATION = 10.0,         -- Minimum session duration
-    MIN_EVENTS = 5,              -- Minimum meaningful events
-    MIN_ACTIVITY_RATE = 0.3,     -- Minimum events per second
+    ACTIVITY_TIMEOUT = 4.0,      -- Seconds after last ACTIVE activity to end combat (reduced from 8.0)
+    CHECK_INTERVAL = 2.0,        -- How often to check for timeout (reduced for faster detection)
+    MIN_DURATION = 3.0,          -- Minimum session duration (reduced for testing)
+    MIN_EVENTS = 3,              -- Minimum meaningful events (reduced for testing)
+    MIN_ACTIVITY_RATE = 0.2,     -- Minimum events per second (reduced for testing)
     
     -- Session Segmentation Configuration (AGGRESSIVE TESTING SETTINGS)
     SEGMENT_MAX_EVENTS = 50,     -- Max events per segment (TESTING: was 10000)
@@ -144,6 +144,70 @@ local MEANINGFUL_EVENTS = {
     ["SPELL_STEAL"] = true,
     ["SPELL_AURA_APPLIED"] = true,  -- Only applied, not other aura noise
     ["SPELL_AURA_REMOVED"] = true,  -- Only removed, not other aura noise
+}
+
+-- Events that indicate ACTIVE combat (not passive HOTs/buffs)
+local ACTIVE_COMBAT_EVENTS = {
+    ["SPELL_DAMAGE"] = true,
+    ["SPELL_HEAL"] = true,           -- Direct heals (not periodic)
+    ["SWING_DAMAGE"] = true,
+    ["SWING_MISSED"] = true,
+    ["RANGE_DAMAGE"] = true,
+    ["RANGE_MISSED"] = true,
+    ["SPELL_MISSED"] = true,
+    ["SPELL_ABSORBED"] = true,
+    ["SPELL_REFLECT"] = true,
+    ["UNIT_DIED"] = true,
+    ["PARTY_KILL"] = true,
+    ["SPELL_INTERRUPT"] = true,
+    ["SPELL_DISPEL"] = true,
+    ["SPELL_STEAL"] = true,
+    -- Note: Excludes SPELL_PERIODIC_* and most aura events
+}
+
+-- Common HOT/DOT spells that shouldn't extend combat
+local PASSIVE_SPELL_PATTERNS = {
+    -- Druid HOTs
+    "Rejuvenation",
+    "Regrowth",
+    "Lifebloom", 
+    "Wild Growth",
+    "Tranquility",
+    
+    -- Priest HOTs
+    "Renew",
+    "Prayer of Mending",
+    "Circle of Healing",
+    "Guardian Spirit",
+    "Power Word: Shield",
+    
+    -- Paladin HOTs
+    "Beacon of Light",
+    "Flash of Light",
+    "Holy Light",
+    
+    -- Shaman HOTs
+    "Healing Stream",
+    "Riptide",
+    
+    -- Death Knight
+    "Death Pact",
+    "Vampiric Blood",
+    
+    -- Consumables and buffs
+    "Food",
+    "Flask",
+    "Elixir",
+    "Well Fed",
+    "Rested",
+    "Bandage",
+    "Potion",
+    
+    -- Common passive effects
+    "Regeneration",
+    "Health Funnel",
+    "Life Steal",
+    "Vampiric",
 }
 
 -- Combat log object flags for entity filtering (from Recount's approach)
@@ -247,6 +311,21 @@ function MySimpleCombatDetector:RefreshPlayerCache()
     
     debugPrint("Player cache refreshed: playerGUID=%s, %d group members, instance=%s", 
         playerGUID or "nil", self:TableSize(groupMemberGUIDs), currentInstanceType or "none")
+end
+
+-- Check if a spell is a passive HOT/buff that shouldn't extend combat
+function MySimpleCombatDetector:IsPassiveSpell(spellName)
+    if not spellName then
+        return false
+    end
+    
+    for _, pattern in ipairs(PASSIVE_SPELL_PATTERNS) do
+        if string.find(spellName, pattern) then
+            return true
+        end
+    end
+    
+    return false
 end
 
 -- Determine if an entity is relevant for combat tracking
@@ -604,11 +683,77 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     
     -- Removed: Per-event debug logging caused massive spam
     
-    -- Update activity time for relevant events (optimized with cached GUIDs)
+    -- Smart activity detection - only reset timer for ACTIVE combat events
+    local shouldResetActivityTimer = false
+    
     if sourceGUID == playerGUID then
+        -- Player is source - check if this is active combat
+        if ACTIVE_COMBAT_EVENTS[eventType] then
+            shouldResetActivityTimer = true
+        elseif eventType == "SPELL_PERIODIC_DAMAGE" or eventType == "SPELL_PERIODIC_HEAL" then
+            -- For periodic spells, check if it's a passive HOT/DOT
+            local spellName = select(13, ...) -- Spell name is parameter 13
+            if not self:IsPassiveSpell(spellName) then
+                shouldResetActivityTimer = true
+                debugPrint("Active periodic spell: %s", spellName or "unknown")
+            else
+                debugPrint("Passive spell ignored: %s", spellName or "unknown")
+            end
+        elseif eventType == "SPELL_AURA_APPLIED" then
+            -- For aura applied, only reset for combat-relevant auras (buffs/debuffs during combat)
+            local spellName = select(13, ...) -- Spell name is parameter 13
+            if not self:IsPassiveSpell(spellName) and not string.find(spellName or "", "Food") then
+                shouldResetActivityTimer = true
+                debugPrint("Active aura applied: %s", spellName or "unknown")
+            else
+                debugPrint("Passive aura applied ignored: %s", spellName or "unknown")
+            end
+        elseif eventType == "SPELL_AURA_REMOVED" then
+            -- For aura removed, be EXTREMELY restrictive - almost never reset timer
+            local spellName = select(13, ...) -- Spell name is parameter 13
+            -- Only reset timer for removal of critical combat control effects
+            -- Most buff/debuff removals should NOT extend combat
+            if spellName and (string.find(spellName, "Stun") or string.find(spellName, "Fear") or 
+                             string.find(spellName, "Root") or string.find(spellName, "Silence") or
+                             string.find(spellName, "Polymorph") or string.find(spellName, "Banish")) then
+                shouldResetActivityTimer = true
+                debugPrint("Critical CC aura removed: %s", spellName or "unknown")
+            else
+                -- Log all the buffs we're ignoring to see what's extending combat
+                debugPrint("Buff removal ignored: %s", spellName or "unknown")
+            end
+        end
+    elseif destGUID == playerGUID then
+        -- Player is target - be selective about what counts as activity
+        if eventType:find("DAMAGE") then
+            -- Incoming damage always counts as activity
+            shouldResetActivityTimer = true
+            debugPrint("Incoming damage activity: %s", eventType)
+        elseif eventType:find("HEAL") and eventType == "SPELL_HEAL" then
+            -- Only direct heals, not periodic heals
+            shouldResetActivityTimer = true
+            debugPrint("Incoming direct heal activity: %s", eventType)
+        elseif eventType == "SPELL_AURA_APPLIED" then
+            -- Debuffs applied to player could be combat activity
+            local spellName = select(13, ...)
+            if spellName and (string.find(spellName, "Stun") or string.find(spellName, "Fear") or 
+                             string.find(spellName, "Root") or string.find(spellName, "Silence") or
+                             string.find(spellName, "Polymorph") or string.find(spellName, "Curse") or
+                             string.find(spellName, "Poison") or string.find(spellName, "Disease")) then
+                shouldResetActivityTimer = true
+                debugPrint("Hostile debuff applied to player: %s", spellName or "unknown")
+            else
+                debugPrint("Buff applied to player ignored: %s", spellName or "unknown")
+            end
+        else
+            -- Don't reset timer for other events targeting player (like aura removals from creatures)
+            debugPrint("Player-targeted event ignored: %s", eventType)
+        end
+    end
+    
+    if shouldResetActivityTimer then
         lastActivityTime = GetTime()
-    elseif destGUID == playerGUID and (eventType:find("DAMAGE") or eventType:find("HEAL")) then
-        lastActivityTime = GetTime()
+        debugPrint("Activity timer reset: %s", eventType)
     end
     
     -- Calculate relative timestamp using TimestampManager
@@ -634,6 +779,13 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     eventData.sourceGUID = sourceGUID
     eventData.destGUID = destGUID
     -- Names are resolved from guidMap during export
+    
+    -- Store combat log args (parameters 12+ contain spell/damage data)
+    local args = {}
+    for i = 12, select('#', ...) do
+        args[i-11] = select(i, ...)
+    end
+    eventData.args = args
     
     -- Add event to current segment (primary storage)
     if currentSegment then
@@ -703,6 +855,7 @@ function MySimpleCombatDetector:PublishEventToMessageQueue(...)
                     amount = amount,
                     source = sourceGUID,
                     target = destGUID,
+                    sourceFlags = sourceFlags,
                     timestamp = timestamp
                 })
                 -- Trace level to reduce log noise during normal operation
@@ -743,6 +896,7 @@ function MySimpleCombatDetector:PublishEventToMessageQueue(...)
                     amount = amount,
                     source = sourceGUID,
                     target = destGUID,
+                    sourceFlags = sourceFlags,
                     timestamp = timestamp
                 })
                 -- Trace level to reduce log noise during normal operation  
@@ -839,6 +993,23 @@ function MySimpleCombatDetector:EndCombat()
        activityRate >= CONFIG.MIN_ACTIVITY_RATE then
         
         self:StoreSession(currentSessionData)
+        
+        -- Trigger auto-scaling update with fresh session data
+        if addon.MyCombatMeterScaler then
+            -- Create session data for scaler with calculated peak values
+            local sessionDataForScaler = {
+                duration = duration,
+                eventCount = eventCount,
+                peakDPS = self:CalculateSessionPeakDPS(currentSessionData),
+                peakHPS = self:CalculateSessionPeakHPS(currentSessionData),
+                id = currentSessionData.id
+            }
+            
+            debugPrint("Triggering auto-scale update with session data: Peak DPS: %.0f", sessionDataForScaler.peakDPS or 0)
+            addon.MyCombatMeterScaler:AutoUpdateAfterCombat(sessionDataForScaler)
+        else
+            debugPrint("MyCombatMeterScaler not available for auto-update")
+        end
         
         infoPrint("Session stored: %s", currentSessionData.id)
     else
@@ -952,6 +1123,78 @@ function MySimpleCombatDetector:GenerateSessionHash(sessionId)
     end
     
     return result
+end
+
+-- Calculate peak DPS from session events
+function MySimpleCombatDetector:CalculateSessionPeakDPS(sessionData)
+    if not sessionData or not sessionData.events or sessionData.duration <= 0 then
+        return 0
+    end
+    
+    local totalDamage = 0
+    local playerGUID = UnitGUID("player")
+    
+    -- Sum all damage events where player is the source
+    for _, event in ipairs(sessionData.events) do
+        if event.sourceGUID == playerGUID and event.subevent and event.subevent:find("DAMAGE") then
+            if event.args and #event.args > 0 then
+                local amount = 0
+                if event.subevent == "SWING_DAMAGE" then
+                    amount = event.args[1] or 0
+                elseif event.subevent == "SPELL_DAMAGE" or event.subevent == "RANGE_DAMAGE" or event.subevent == "SPELL_PERIODIC_DAMAGE" then
+                    amount = event.args[4] or 0
+                else
+                    amount = event.args[4] or event.args[1] or 0
+                end
+                
+                amount = tonumber(amount) or 0
+                if amount > 0 and amount < 10000000 then -- Sanity check
+                    totalDamage = totalDamage + amount
+                end
+            end
+        end
+    end
+    
+    -- Calculate average DPS and estimate peak as 150% of average
+    local avgDPS = totalDamage / sessionData.duration
+    local peakDPS = avgDPS * 1.5
+    
+    debugPrint("Session peak DPS calculation: %d total damage / %.1fs = %.0f avg DPS, %.0f peak DPS", 
+        totalDamage, sessionData.duration, avgDPS, peakDPS)
+    
+    return peakDPS
+end
+
+-- Calculate peak HPS from session events
+function MySimpleCombatDetector:CalculateSessionPeakHPS(sessionData)
+    if not sessionData or not sessionData.events or sessionData.duration <= 0 then
+        return 0
+    end
+    
+    local totalHealing = 0
+    local playerGUID = UnitGUID("player")
+    
+    -- Sum all healing events where player is the source
+    for _, event in ipairs(sessionData.events) do
+        if event.sourceGUID == playerGUID and event.subevent and event.subevent:find("HEAL") then
+            if event.args and #event.args > 0 then
+                local amount = event.args[4] or 0 -- Healing amount is typically at args[4]
+                amount = tonumber(amount) or 0
+                if amount > 0 and amount < 10000000 then -- Sanity check
+                    totalHealing = totalHealing + amount
+                end
+            end
+        end
+    end
+    
+    -- Calculate average HPS and estimate peak as 150% of average
+    local avgHPS = totalHealing / sessionData.duration
+    local peakHPS = avgHPS * 1.5
+    
+    debugPrint("Session peak HPS calculation: %d total healing / %.1fs = %.0f avg HPS, %.0f peak HPS", 
+        totalHealing, sessionData.duration, avgHPS, peakHPS)
+    
+    return peakHPS
 end
 
 -- Session ID validation helper

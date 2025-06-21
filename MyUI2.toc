@@ -40,22 +40,25 @@ src/core/MyCombatMeterScaler.lua
 # Step 10: MySimpleCombatDetector
 src/core/MySimpleCombatDetector.lua
 
-# Step 11: MyCombatMeterWindow
-src/core/MyCombatMeterWindow.lua
+# Step 11: MyDPSMeterWindow
+src/core/MyDPSMeterWindow.lua
 
-# Step 12: MyLoggerWindow_Lightweight
+# Step 12: MyHPSMeterWindow
+src/core/MyHPSMeterWindow.lua
+
+# Step 13: MyLoggerWindow_Lightweight
 src/core/MyLoggerWindow_Lightweight.lua
 
-# Step 13: SessionBrowser
+# Step 14: SessionBrowser
 src/ui/SessionBrowser.lua
 
-# Step 14: ExportDialog
+# Step 15: ExportDialog
 src/ui/ExportDialog.lua
 
-# Step 15: Main entry point
+# Step 16: Main entry point
 MyUI.lua
 
-# Step 16: SlashCommands (must load after MyUI)
+# Step 17: SlashCommands (must load after MyUI)
 src/commands/SlashCommands.lua
 
 # =============================================================================
@@ -71,7 +74,7 @@ src/commands/SlashCommands.lua
 ## src/core/MyCombatMeterScaler.lua
 ## src/core/MySimpleCombatDetector.lua
 ## src/core/MyLoggerWindow_Lightweight.lua
-## src/core/MyCombatMeterWindow.lua
+## src/core/MyDPSMeterWindow.lua
 ## src/ui/SessionBrowser.lua
 ## src/ui/ExportDialog.lua
 ## src/commands/SlashCommands.lua

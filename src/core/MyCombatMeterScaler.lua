@@ -106,20 +106,46 @@ end
 
 -- Analyze recent sessions and calculate optimal scales
 function MyCombatMeterScaler:AnalyzeSessionHistory()
+    addon:Info("=== MyCombatMeterScaler: Starting session history analysis ===")
+    
     if not addon.StorageManager then
         addon:Error("StorageManager not available for scale analysis")
         return nil
     end
     
-    local sessions = addon.StorageManager:GetRecentSessions(scaleData.globalSettings.historyCount)
-    if not sessions or #sessions == 0 then
-        addon:Debug("No sessions available for scale analysis")
+    local recentSessions = addon.StorageManager:GetRecentSessions(scaleData.globalSettings.historyCount)
+    addon:Info("MyCombatMeterScaler: Retrieved %d sessions from StorageManager", recentSessions and #recentSessions or 0)
+    
+    if not recentSessions or #recentSessions == 0 then
+        addon:Warn("MyCombatMeterScaler: No sessions available for scale analysis")
         return nil
     end
     
+    -- Load full session data (including events) for each session
+    local sessions = {}
+    for _, lightSession in ipairs(recentSessions) do
+        local fullSession = addon.StorageManager:GetSession(lightSession.id)
+        if fullSession then
+            table.insert(sessions, fullSession)
+            addon:Trace("MyCombatMeterScaler: Loaded full session %s with %d events", 
+                fullSession.id, fullSession.eventCount or 0)
+            addon:Trace("MyCombatMeterScaler: Full session has events field: %s, events type: %s", 
+                fullSession.events and "YES" or "NO", type(fullSession.events))
+            if fullSession.events then
+                addon:Trace("MyCombatMeterScaler: Events array length: %d", #fullSession.events)
+            end
+        else
+            addon:Warn("MyCombatMeterScaler: Failed to load full session for %s", lightSession.id)
+        end
+    end
+    
+    addon:Info("MyCombatMeterScaler: Loaded %d full sessions with event data", #sessions)
+    
     local validSessions = self:FilterValidSessions(sessions)
+    addon:Info("MyCombatMeterScaler: %d valid sessions after filtering (from %d total)", #validSessions, #sessions)
+    
     if #validSessions == 0 then
-        addon:Debug("No valid sessions found for scale analysis")
+        addon:Warn("MyCombatMeterScaler: No valid sessions found for scale analysis")
         return nil
     end
     
@@ -127,18 +153,33 @@ function MyCombatMeterScaler:AnalyzeSessionHistory()
     local hpsValues = {}
     
     -- Extract peak DPS/HPS values from each session
-    for _, session in ipairs(validSessions) do
+    addon:Info("MyCombatMeterScaler: Extracting DPS/HPS values from sessions...")
+    for i, session in ipairs(validSessions) do
+        addon:Trace("MyCombatMeterScaler: Processing session %d/%d - ID: %s, Duration: %.1fs, Events: %d", 
+            i, #validSessions, session.id or "unknown", session.duration or 0, session.eventCount or 0)
+        
+        -- Compression disabled - events are stored directly
+        addon:Trace("MyCombatMeterScaler: Session hasEvents=%s", tostring(session.events ~= nil))
+            
         local peakDPS, peakHPS = self:ExtractSessionPeaks(session)
         
         if peakDPS > 0 then
             table.insert(dpsValues, peakDPS)
+            addon:Trace("MyCombatMeterScaler: Session %d contributed DPS: %.0f", i, peakDPS)
+        else
+            addon:Trace("MyCombatMeterScaler: Session %d had no DPS data", i)
         end
+        
         if peakHPS > 0 then
             table.insert(hpsValues, peakHPS)
+            addon:Trace("MyCombatMeterScaler: Session %d contributed HPS: %.0f", i, peakHPS)
         end
     end
     
+    addon:Info("MyCombatMeterScaler: Collected %d DPS values and %d HPS values", #dpsValues, #hpsValues)
+    
     -- Calculate scales based on percentiles
+    addon:Info("MyCombatMeterScaler: Calculating recommended scales...")
     local dpsScale = self:CalculateScaleFromValues(dpsValues)
     local hpsScale = self:CalculateScaleFromValues(hpsValues)
     
@@ -155,8 +196,10 @@ function MyCombatMeterScaler:AnalyzeSessionHistory()
     scaleData.analysisCache = analysis
     scaleData.lastAnalysis = GetServerTime()
     
-    addon:Debug("Scale analysis complete: DPS=%.0f, HPS=%.0f (from %d sessions)", 
-        dpsScale, hpsScale, #validSessions)
+    addon:Info("=== MyCombatMeterScaler: Analysis complete ===")
+    addon:Info("  Recommended DPS Scale: %.0f", dpsScale)
+    addon:Info("  Recommended HPS Scale: %.0f", hpsScale)
+    addon:Info("  Based on %d sessions with %d DPS values", #validSessions, #dpsValues)
     
     return analysis
 end
@@ -166,57 +209,206 @@ function MyCombatMeterScaler:FilterValidSessions(sessions)
     local validSessions = {}
     local cutoffTime = GetServerTime() - (DEFAULT_CONFIG.SCALE_DECAY_DAYS * 24 * 60 * 60)
     
-    for _, session in ipairs(sessions) do
+    addon:Trace("MyCombatMeterScaler: Filtering sessions with criteria:")
+    addon:Trace("  Minimum duration: %.1fs", DEFAULT_CONFIG.MINIMUM_COMBAT_DURATION)
+    addon:Trace("  Maximum age: %d days", DEFAULT_CONFIG.SCALE_DECAY_DAYS)
+    addon:Trace("  Cutoff timestamp: %d", cutoffTime)
+    
+    for i, session in ipairs(sessions) do
         -- Filter criteria
-        local isValidDuration = (session.duration or 0) >= DEFAULT_CONFIG.MINIMUM_COMBAT_DURATION
-        local isRecentEnough = (session.serverTime or 0) >= cutoffTime
-        local hasEvents = (session.eventCount or 0) > 0
+        local duration = session.duration or 0
+        local serverTime = session.serverTime or 0
+        local eventCount = session.eventCount or 0
+        
+        local isValidDuration = duration >= DEFAULT_CONFIG.MINIMUM_COMBAT_DURATION
+        local isRecentEnough = serverTime >= cutoffTime
+        local hasEvents = eventCount > 0
+        
+        addon:Trace("MyCombatMeterScaler: Session %d - Duration: %.1fs (%s), Age: %s (%s), Events: %d (%s)", 
+            i, duration, isValidDuration and "PASS" or "FAIL",
+            serverTime > 0 and string.format("%.1f days old", (GetServerTime() - serverTime) / (24 * 60 * 60)) or "unknown",
+            isRecentEnough and "PASS" or "FAIL",
+            eventCount, hasEvents and "PASS" or "FAIL")
         
         if isValidDuration and isRecentEnough and hasEvents then
             table.insert(validSessions, session)
+            addon:Trace("MyCombatMeterScaler: Session %d ACCEPTED", i)
+        else
+            addon:Trace("MyCombatMeterScaler: Session %d REJECTED", i)
         end
     end
     
+    addon:Debug("MyCombatMeterScaler: Filtering complete - %d/%d sessions passed", #validSessions, #sessions)
     return validSessions
 end
 
 -- Extract peak DPS/HPS values from a session
 function MyCombatMeterScaler:ExtractSessionPeaks(session)
-    -- For now, estimate peaks based on total damage/healing and duration
-    -- TODO: Integrate with actual peak calculation from combat events
-    
     local duration = session.duration or 1
     local totalDamage = 0
     local totalHealing = 0
+    local eventCount = 0
+    local damageEvents = 0
+    local playerGUID = UnitGUID("player")
+    local uniqueSourceGUIDs = {}
+    
+    addon:Trace("MyCombatMeterScaler: Looking for events from player GUID: %s", tostring(playerGUID))
+    
+    addon:Trace("MyCombatMeterScaler: ExtractSessionPeaks - Session ID: %s", tostring(session.id))
+    addon:Trace("MyCombatMeterScaler: Session has events field: %s", session.events and "YES" or "NO")
     
     -- Try to get actual damage/healing totals if available
     if session.events then
-        for _, event in ipairs(session.events) do
-            if event.type == "DAMAGE" and event.amount then
-                totalDamage = totalDamage + event.amount
-            elseif event.type == "HEAL" and event.amount then
-                totalHealing = totalHealing + event.amount
+        eventCount = #session.events
+        addon:Trace("MyCombatMeterScaler: Session contains %d events", eventCount)
+        
+        if eventCount == 0 then
+            addon:Trace("MyCombatMeterScaler: Session has events table but it's empty")
+        else
+            -- Show structure of first few events
+            for i = 1, math.min(3, eventCount) do
+                local event = session.events[i]
+                addon:Debug("MyCombatMeterScaler: Event #%d structure:", i)
+                if type(event) == "table" then
+                    for k, v in pairs(event) do
+                        addon:Debug("  %s: %s (%s)", tostring(k), tostring(v), type(v))
+                    end
+                else
+                    addon:Debug("  Event is not a table, type: %s, value: %s", type(event), tostring(event))
+                end
+            end
+            
+            -- Try to parse events
+            for i, event in ipairs(session.events) do
+                if type(event) == "table" then
+                    -- WoW Combat Log event structure
+                    local subevent = event.subevent
+                    local sourceGUID = event.sourceGUID
+                    local args = event.args
+                    
+                    -- Track unique source GUIDs for debugging
+                    if sourceGUID and not uniqueSourceGUIDs[sourceGUID] then
+                        uniqueSourceGUIDs[sourceGUID] = true
+                    end
+                    
+                    if i <= 5 then -- Debug first few events
+                        addon:Debug("MyCombatMeterScaler: Event %d - subevent: %s, sourceGUID: %s, hasArgs: %s", 
+                            i, tostring(subevent), tostring(sourceGUID), args and "YES" or "NO")
+                        addon:Debug("MyCombatMeterScaler: Event %d - GUID match: %s (player: %s)", 
+                            i, sourceGUID == playerGUID and "YES" or "NO", tostring(playerGUID))
+                    end
+                    
+                    if subevent and sourceGUID == playerGUID and args then
+                        -- Extract amount from args table based on event type
+                        local amount = nil
+                        
+                        if subevent:find("_DAMAGE") then
+                            -- Extract damage amount based on specific event type
+                            if subevent == "SWING_DAMAGE" then
+                                -- For swing damage: args[1] is damage amount (parameter 12 in original)
+                                amount = args[1]
+                            elseif subevent == "SPELL_DAMAGE" or subevent == "RANGE_DAMAGE" or subevent == "SPELL_PERIODIC_DAMAGE" then
+                                -- For spell damage: args[4] is damage amount (parameter 15 in original)
+                                -- args[1]=spellId, args[2]=spellName, args[3]=spellSchool, args[4]=amount
+                                amount = args[4]
+                            else
+                                -- For other damage types, try args[4] first, then fallback to search
+                                amount = args[4] or args[1]
+                                if not amount then
+                                    for j = 1, 6 do
+                                        if args[j] and type(args[j]) == "number" and args[j] > 0 then
+                                            amount = args[j]
+                                            break
+                                        end
+                                    end
+                                end
+                            end
+                        elseif subevent:find("_HEAL") then
+                            -- For heal events, damage amount pattern usually applies
+                            if subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_HEAL" then
+                                -- Similar to spell damage structure
+                                amount = args[4]
+                            else
+                                -- Fallback search for heal events
+                                for j = 1, 6 do
+                                    if args[j] and type(args[j]) == "number" and args[j] > 0 then
+                                        amount = args[j]
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                        
+                        if amount and amount > 0 then
+                            if subevent:find("_DAMAGE") then
+                                totalDamage = totalDamage + amount
+                                damageEvents = damageEvents + 1
+                                if damageEvents <= 5 then -- Debug first few
+                                    addon:Trace("MyCombatMeterScaler: Found damage event: %.0f (%s)", amount, subevent)
+                                end
+                            elseif subevent:find("_HEAL") then
+                                totalHealing = totalHealing + amount
+                                addon:Trace("MyCombatMeterScaler: Found healing event: %.0f (%s)", amount, subevent)
+                            end
+                        end
+                    end
+                end
             end
         end
+    else
+        addon:Trace("MyCombatMeterScaler: Session has no events field")
     end
     
-    -- Estimate peak as 150% of average (burst factor)
-    local avgDPS = totalDamage / duration
-    local avgHPS = totalHealing / duration
-    local peakDPS = avgDPS * 1.5
-    local peakHPS = avgHPS * 1.5
+    -- Debug logging
+    addon:Trace("MyCombatMeterScaler: Session analysis - Duration: %.1fs, Events: %d, Damage events: %d, Total damage: %.0f", 
+        duration, eventCount, damageEvents, totalDamage)
     
-    return peakDPS, peakHPS
+    -- Show sample of source GUIDs encountered for debugging
+    if next(uniqueSourceGUIDs) then
+        local guidCount = 0
+        addon:Trace("MyCombatMeterScaler: Sample source GUIDs encountered:")
+        for guid, _ in pairs(uniqueSourceGUIDs) do
+            guidCount = guidCount + 1
+            if guidCount <= 5 then
+                addon:Trace("  %s", tostring(guid))
+            end
+        end
+        addon:Trace("MyCombatMeterScaler: Total unique source GUIDs: %d", guidCount)
+    end
+    
+    -- If we found damage data, calculate peak
+    if damageEvents > 0 then
+        local avgDPS = totalDamage / duration
+        local peakDPS = avgDPS * 1.5  -- Estimate peak as 150% of average
+        local avgHPS = totalHealing / duration
+        local peakHPS = avgHPS * 1.5
+        
+        addon:Trace("MyCombatMeterScaler: Calculated from events - Avg DPS: %.0f, Peak DPS: %.0f", avgDPS, peakDPS)
+        return peakDPS, peakHPS
+    else
+        -- If no event data found, return 0 (will use default scale)
+        addon:Trace("MyCombatMeterScaler: No damage events found in session")
+        return 0, 0
+    end
 end
 
 -- Calculate scale from a set of values using percentile + buffer
 function MyCombatMeterScaler:CalculateScaleFromValues(values)
     if not values or #values == 0 then
+        addon:Debug("MyCombatMeterScaler: No values for scale calculation, using default: %d", DEFAULT_CONFIG.DEFAULT_SCALE)
         return DEFAULT_CONFIG.DEFAULT_SCALE
     end
     
     -- Sort values
     table.sort(values)
+    
+    -- Debug: Show the values being used
+    addon:Trace("MyCombatMeterScaler: Scale calculation from %d values", #values)
+    if #values <= 10 then
+        addon:Trace("MyCombatMeterScaler: Values: %s", table.concat(values, ", "))
+    else
+        addon:Trace("MyCombatMeterScaler: Values range: %.0f - %.0f", values[1], values[#values])
+    end
     
     -- Calculate percentile index
     local percentileIndex = math.ceil(#values * DEFAULT_CONFIG.PERCENTILE_THRESHOLD)
@@ -228,10 +420,53 @@ function MyCombatMeterScaler:CalculateScaleFromValues(values)
     local bufferMultiplier = 1 + (scaleData.globalSettings.scaleBuffer / 100)
     local scale = percentileValue * bufferMultiplier
     
+    addon:Trace("MyCombatMeterScaler: Percentile value (95th): %.0f, Buffer: %.1f%%, Raw scale: %.0f", 
+        percentileValue, scaleData.globalSettings.scaleBuffer, scale)
+    
     -- Apply bounds
     scale = math.max(DEFAULT_CONFIG.MIN_SCALE, math.min(DEFAULT_CONFIG.MAX_SCALE, scale))
     
-    return math.floor(scale)
+    -- Round to clean values for better UX
+    scale = self:RoundToCleanScale(scale)
+    
+    addon:Trace("MyCombatMeterScaler: Final scale after bounds and rounding: %.0f", scale)
+    
+    return scale
+end
+
+-- Round scale to clean, user-friendly values
+function MyCombatMeterScaler:RoundToCleanScale(rawScale)
+    -- Define clean scale steps for different ranges
+    local cleanSteps = {
+        -- Under 10K: round to nearest 1K
+        {threshold = 10000, step = 1000},
+        -- 10K-100K: round to nearest 5K  
+        {threshold = 100000, step = 5000},
+        -- 100K-500K: round to nearest 25K
+        {threshold = 500000, step = 25000},
+        -- 500K-1M: round to nearest 50K
+        {threshold = 1000000, step = 50000},
+        -- 1M-5M: round to nearest 100K
+        {threshold = 5000000, step = 100000},
+        -- Above 5M: round to nearest 250K
+        {threshold = math.huge, step = 250000}
+    }
+    
+    -- Find appropriate step size
+    local step = 1000 -- default
+    for _, range in ipairs(cleanSteps) do
+        if rawScale <= range.threshold then
+            step = range.step
+            break
+        end
+    end
+    
+    -- Round to nearest step
+    local rounded = math.floor((rawScale + step/2) / step) * step
+    
+    addon:Trace("MyCombatMeterScaler: Rounded %.0f to clean value %.0f (step: %.0f)", rawScale, rounded, step)
+    
+    return rounded
 end
 
 -- =============================================================================
@@ -244,8 +479,11 @@ function MyCombatMeterScaler:GetCurrentScales()
         self:UpdateCharacterInfo()
     end
     
+    addon:Debug("MyCombatMeterScaler: Getting scales for key: %s", currentCharacterKey or "nil")
+    
     local characterData = scaleData.characterScales[currentCharacterKey]
     if not characterData then
+        addon:Debug("MyCombatMeterScaler: No character data found, returning default scale: %d", DEFAULT_CONFIG.DEFAULT_SCALE)
         return DEFAULT_CONFIG.DEFAULT_SCALE, DEFAULT_CONFIG.DEFAULT_SCALE
     end
     
@@ -257,6 +495,8 @@ function MyCombatMeterScaler:GetCurrentScales()
         return manualOverride.dpsScale, manualOverride.hpsScale
     end
     
+    addon:Debug("MyCombatMeterScaler: GetCurrentScales returning DPS=%.0f, HPS=%.0f", 
+        characterData.dpsScale, characterData.hpsScale)
     return characterData.dpsScale, characterData.hpsScale
 end
 
@@ -266,12 +506,21 @@ function MyCombatMeterScaler:UpdateScales(analysis)
         return false
     end
     
+    -- Ensure character data exists - create if needed
     local characterData = scaleData.characterScales[currentCharacterKey]
     if not characterData then
-        return false
+        addon:Debug("MyCombatMeterScaler: Creating character data for %s", currentCharacterKey)
+        self:UpdateCharacterInfo() -- This creates the character data
+        characterData = scaleData.characterScales[currentCharacterKey]
+        if not characterData then
+            addon:Error("MyCombatMeterScaler: Failed to create character data for %s", currentCharacterKey)
+            return false
+        end
     end
     
     -- Update scales
+    addon:Debug("MyCombatMeterScaler: UpdateScales - Setting DPS scale to %.0f (was %.0f)", 
+        analysis.recommendedDPSScale, characterData.dpsScale)
     characterData.dpsScale = analysis.recommendedDPSScale
     characterData.hpsScale = analysis.recommendedHPSScale
     characterData.lastUpdated = GetServerTime()
@@ -291,6 +540,9 @@ function MyCombatMeterScaler:UpdateScales(analysis)
     
     addon:Debug("Scales updated for %s: DPS=%.0f, HPS=%.0f", 
         currentCharacterKey, characterData.dpsScale, characterData.hpsScale)
+    
+    -- Publish scale update to UI event queue
+    self:PublishScaleUpdate(characterData.dpsScale, characterData.hpsScale)
     
     return true
 end
@@ -339,13 +591,36 @@ function MyCombatMeterScaler:AutoUpdateAfterCombat(sessionData)
         return false
     end
     
-    -- Only update occasionally to avoid constant recalculation
-    local timeSinceLastAnalysis = GetServerTime() - scaleData.lastAnalysis
-    if timeSinceLastAnalysis < 300 then -- 5 minutes
-        return false
+    addon:Info("MyCombatMeterScaler: AutoUpdateAfterCombat - Fresh session data: Peak DPS: %.0f", sessionData.peakDPS or 0)
+    
+    -- Try historical analysis first
+    local analysis = self:AnalyzeSessionHistory()
+    
+    -- If historical analysis fails or returns poor data, use fresh session data
+    if not analysis or analysis.recommendedDPSScale <= DEFAULT_CONFIG.DEFAULT_SCALE then
+        addon:Info("MyCombatMeterScaler: Historical analysis failed/inadequate, using fresh session data")
+        
+        if sessionData.peakDPS and sessionData.peakDPS > 0 then
+            -- Create artificial analysis using current session
+            local sessionScale = sessionData.peakDPS * 1.3  -- 30% buffer
+            
+            analysis = {
+                sessionsAnalyzed = 1,
+                dpsValues = {sessionData.peakDPS},
+                hpsValues = {},
+                recommendedDPSScale = sessionScale,
+                recommendedHPSScale = DEFAULT_CONFIG.DEFAULT_SCALE,
+                timestamp = GetServerTime(),
+                source = "fresh_session"  -- Mark as coming from fresh data
+            }
+            
+            addon:Info("MyCombatMeterScaler: Created analysis from fresh session - Peak: %.0f, Scale: %.0f", 
+                sessionData.peakDPS, sessionScale)
+        end
+    else
+        addon:Info("MyCombatMeterScaler: Using historical analysis - Scale: %.0f", analysis.recommendedDPSScale)
     end
     
-    local analysis = self:AnalyzeSessionHistory()
     if analysis then
         return self:UpdateScales(analysis)
     end
@@ -412,6 +687,49 @@ function MyCombatMeterScaler:LoadScaleData()
     else
         addon:Debug("No saved scale data found, using defaults")
     end
+end
+
+-- =============================================================================
+-- UI EVENT PUBLISHING
+-- =============================================================================
+
+-- Publish scale update to UI subscribers
+function MyCombatMeterScaler:PublishScaleUpdate(dpsScale, hpsScale)
+    if addon.UIEventQueue then
+        addon.UIEventQueue:Push("SCALE_UPDATE", {
+            dpsScale = dpsScale,
+            hpsScale = hpsScale,
+            character = currentCharacterKey,
+            timestamp = GetServerTime()
+        })
+        addon:Debug("MyCombatMeterScaler: Published scale update - DPS: %.0f, HPS: %.0f", dpsScale, hpsScale)
+    else
+        addon:Debug("MyCombatMeterScaler: UIEventQueue not available for scale update")
+    end
+end
+
+-- Request current scale for new subscribers
+function MyCombatMeterScaler:RequestCurrentScale()
+    -- Ensure we're initialized first
+    if not currentCharacterKey then
+        self:UpdateCharacterInfo()
+    end
+    
+    local dpsScale, hpsScale = self:GetCurrentScales()
+    addon:Debug("MyCombatMeterScaler: RequestCurrentScale returning DPS=%.0f, HPS=%.0f", dpsScale, hpsScale)
+    
+    -- If we only have default values, try to run an analysis to get real values
+    if dpsScale == DEFAULT_CONFIG.DEFAULT_SCALE then
+        addon:Debug("MyCombatMeterScaler: Default scale detected, attempting analysis...")
+        local analysis = self:AnalyzeSessionHistory()
+        if analysis then
+            self:UpdateScales(analysis)
+            dpsScale, hpsScale = self:GetCurrentScales()
+            addon:Debug("MyCombatMeterScaler: After analysis - DPS=%.0f, HPS=%.0f", dpsScale, hpsScale)
+        end
+    end
+    
+    self:PublishScaleUpdate(dpsScale, hpsScale)
 end
 
 -- =============================================================================

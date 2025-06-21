@@ -24,7 +24,7 @@ local DEFAULT_SETTINGS = {
     maxSessions = 50,              -- Maximum stored sessions
     sessionAgeDays = 7,            -- Auto-cleanup after days
     maxMemoryMB = 10,              -- Memory limit in MB
-    compressionEnabled = true,     -- Enable session compression
+    compressionEnabled = false,    -- Session compression disabled
     
     -- Debug Settings
     debugMode = false,             -- Enable debug output
@@ -545,14 +545,13 @@ function SettingsWindow:CreateStoragePanel(parent)
     
     yOffset = yOffset - 70
     
-    -- Compression checkbox
+    -- Compression checkbox (disabled for debugging)
     local compressionCheck = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
     compressionCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, yOffset)
-    compressionCheck:SetChecked(currentSettings.compressionEnabled)
-    compressionCheck:SetScript("OnClick", function(self)
-        currentSettings.compressionEnabled = self:GetChecked()
-    end)
-    compressionCheck.Text:SetText("Enable Session Compression")
+    compressionCheck:SetChecked(false)  -- Always false
+    compressionCheck:SetEnabled(false)  -- Disabled
+    compressionCheck.Text:SetText("Session Compression (DISABLED for debugging)")
+    compressionCheck.Text:SetTextColor(0.5, 0.5, 0.5)  -- Gray out text
     
     panels[3] = panel
 end

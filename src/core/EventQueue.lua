@@ -354,6 +354,10 @@ function addon:CreateLogEventQueue(config)
     return EventQueue:New("LOG", config)
 end
 
+function addon:CreateUIEventQueue(config)
+    return EventQueue:New("UI", config)
+end
+
 -- Expose the base class for custom queue types
 addon.EventQueue = EventQueue
 addon.STATE_EVENTS = STATE_EVENTS

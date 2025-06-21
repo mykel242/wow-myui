@@ -498,31 +498,7 @@ function MyLoggerWindow:IsWindowShown() return window and window:IsShown() end
 local messageQueue = nil
 local lastPullTime = 0
 
--- Pull messages from queue and update display
---[[
--- DISABLED: Pull functionality removed - using subscription-based approach
-local function PullFromQueue()
-    if not messageQueue or not isVisible then return end
-    
-    -- Pull recent messages (last 30)
-    local messages = messageQueue:Pull({
-        count = MAX_MESSAGES,
-        since = lastPullTime
-    })
-    
-    if #messages > 0 then
-        -- Process new messages
-        for _, msg in ipairs(messages) do
-            if msg.data and msg.data.levelName then
-                -- Use formattedMessage (with expanded placeholders) over raw message
-                AddMessage(msg.data.levelName, msg.data.formattedMessage or msg.data.message or "")
-            end
-        end
-        
-        lastPullTime = GetTime()
-    end
-end
---]]
+-- Pull functionality replaced by subscription-based approach
 
 -- Initialize the lightweight logger window
 function MyLoggerWindow:Initialize()
