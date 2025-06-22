@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "bugfix-table-pool-corruption-and-filtering-9913cb2"
-addon.BUILD_DATE = "2025-06-22-07:18"
+addon.VERSION = "d4d9e7b"
+addon.BUILD_DATE = "2025-06-22-07:20"
 
 -- Legacy debug flags removed - now using MyLogger system
 

@@ -22,3 +22,4 @@ Thumbs.db
 # But do track our hook templates
 !hooks/
 # Trigger version update
+# Shorter version names
