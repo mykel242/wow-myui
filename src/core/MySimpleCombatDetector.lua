@@ -818,6 +818,12 @@ function MySimpleCombatDetector:PublishEventToMessageQueue(...)
     local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
           destGUID, destName, destFlags, destRaidFlags = ...
           
+    -- DEBUG: Log what sourceName we're actually getting from WoW combat log
+    if eventType and eventType:find("DAMAGE") or eventType:find("HEAL") then
+        debugPrint("Combat Log Raw Data: eventType='%s', sourceName='%s', sourceGUID='%s', sourceFlags=0x%08X", 
+            tostring(eventType), tostring(sourceName), tostring(sourceGUID), tonumber(sourceFlags) or 0)
+    end
+          
     local amount = 0
     
     -- Parse damage events with proper combat log structure
@@ -854,6 +860,7 @@ function MySimpleCombatDetector:PublishEventToMessageQueue(...)
                     eventType = eventType,
                     amount = amount,
                     source = sourceGUID,
+                    sourceName = sourceName,
                     target = destGUID,
                     sourceFlags = sourceFlags,
                     timestamp = timestamp
@@ -895,6 +902,7 @@ function MySimpleCombatDetector:PublishEventToMessageQueue(...)
                     eventType = eventType,
                     amount = amount,
                     source = sourceGUID,
+                    sourceName = sourceName,
                     target = destGUID,
                     sourceFlags = sourceFlags,
                     timestamp = timestamp

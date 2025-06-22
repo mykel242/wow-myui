@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "d4d9e7b"
-addon.BUILD_DATE = "2025-06-22-07:20"
+addon.VERSION = "18afb0a"
+addon.BUILD_DATE = "2025-06-22-10:12"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -439,10 +439,10 @@ function addon:OnInitialize()
         savedVariables = self.db -- Pass reference for persistent logging
     })
     
-    -- Initialize MyLoggerWindow (now uses message queue)
-    if self.MyLoggerWindow then
-        self.MyLoggerWindow:Initialize()
-        self:Debug("MyLoggerWindow initialized with message queue")
+    -- Initialize MySimpleLogWindow (user-friendly log viewer)
+    if self.MySimpleLogWindow then
+        self.MySimpleLogWindow:Initialize()
+        self:Debug("MySimpleLogWindow initialized for easy copy/paste")
     end
 
     -- Initialize core modules with logger injection
@@ -476,6 +476,12 @@ function addon:OnInitialize()
     -- 2.5. Initialize GUIDResolver (name resolution and caching)
     if self.GUIDResolver then
         self.GUIDResolver:Initialize()
+    end
+    
+    -- 2.7. Initialize MyPetOwnershipTracker (Phase 2 pet detection)
+    if self.MyPetOwnershipTracker then
+        self.MyPetOwnershipTracker:Initialize()
+        self:Debug("MyPetOwnershipTracker initialized with multi-layer pet detection")
     end
     
     -- 3. Initialize StorageManager (memory-efficient storage)

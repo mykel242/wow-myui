@@ -304,11 +304,13 @@ function MyHPSMeterWindow:ProcessCombatEvent(eventData)
         return
     end
     
-    -- PHASE 1: STRICT PLAYER-ONLY FILTERING (will undercount, but be accurate)
+    -- PHASE 2: ENHANCED PET OWNERSHIP DETECTION
     local playerGUID = UnitGUID("player")
+    local playerName = UnitName("player")
     local isPlayerHealing = eventData.source == playerGUID
+    local petOwnership = nil
     
-    -- Ownership decoration for debugging
+    -- Enhanced ownership decoration for debugging
     local ownershipInfo = "UNKNOWN"
     if eventData.sourceFlags then
         local COMBATLOG_OBJECT_AFFILIATION_MINE = 0x00000001
@@ -332,35 +334,50 @@ function MyHPSMeterWindow:ProcessCombatEvent(eventData)
         end
     end
     
-    -- Debug log with ownership decoration
-    addon:Debug("MyHPSMeterWindow: Event analysis - Source: %s, Player: %s, Ownership: %s, Flags: 0x%08X, Amount: %s", 
-        tostring(eventData.source), tostring(playerGUID), ownershipInfo, eventData.sourceFlags or 0, tostring(eventData.amount))
+    -- Phase 2: Pet ownership detection using MyPetOwnershipTracker
+    if not isPlayerHealing and addon.MyPetOwnershipTracker then
+        local sourceName = eventData.sourceName or "Unknown"
+        
+        -- DEBUG: Log what sourceName we're actually getting from combat
+        addon:Debug("MyHPSMeterWindow: Phase 2 pet detection - sourceName='%s', sourceGUID='%s'", 
+            tostring(sourceName), tostring(eventData.source))
+        
+        local petName, owner, ownerGUID = addon.MyPetOwnershipTracker:DetectPetOwnership(
+            sourceName, eventData.source, eventData.sourceFlags
+        )
+        
+        if owner and owner == playerName then
+            petOwnership = {
+                petName = petName,
+                owner = owner,
+                ownerGUID = ownerGUID,
+                originalName = sourceName
+            }
+            isPlayerHealing = true -- Include this pet healing
+            ownershipInfo = ownershipInfo .. "_OWNED"
+        end
+    end
     
-    -- PHASE 1: Only accept direct player healing (strict filtering)
+    -- Debug log with enhanced ownership decoration
+    addon:Debug("MyHPSMeterWindow: Event analysis - Source: %s, Player: %s, Ownership: %s, Pet: %s, Flags: 0x%08X, Amount: %s", 
+        tostring(eventData.source), tostring(playerGUID), ownershipInfo, 
+        petOwnership and petOwnership.petName or "NO", eventData.sourceFlags or 0, tostring(eventData.amount))
+    
+    -- Final filtering decision
     if not isPlayerHealing then
-        addon:Debug("MyHPSMeterWindow: FILTERED OUT - Phase 1 strict player-only mode (source: %s, ownership: %s)", 
+        addon:Debug("MyHPSMeterWindow: FILTERED OUT - not from player or player's pets (source: %s, ownership: %s)", 
             tostring(eventData.source), ownershipInfo)
         return
     end
     
-    -- PHASE 2: Pet/Guardian ownership detection (disabled for now)
-    -- TODO: Uncomment this section for Phase 2 to include player-owned pets/guardians
-    --[[
-    local isPlayerOwnedUnit = false
-    if not isPlayerHealing and eventData.sourceFlags then
-        local COMBATLOG_OBJECT_AFFILIATION_MINE = 0x00000001
-        isPlayerOwnedUnit = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0
+    -- Log accepted events with pet information
+    if petOwnership then
+        addon:Debug("MyHPSMeterWindow: ACCEPTED pet healing - %s (%s) -> %s, amount: %s", 
+            petOwnership.petName, petOwnership.originalName, petOwnership.owner, tostring(eventData.amount))
+    else
+        addon:Debug("MyHPSMeterWindow: ACCEPTED player healing - amount=%s, ownership=%s", 
+            tostring(eventData.amount), ownershipInfo)
     end
-    
-    if not (isPlayerHealing or isPlayerOwnedUnit) then
-        addon:Debug("MyHPSMeterWindow: FILTERED OUT - not from player or player's units (source: %s, ownership: %s)", 
-            tostring(eventData.source), ownershipInfo)
-        return
-    end
-    --]]
-    
-    addon:Debug("MyHPSMeterWindow:ProcessCombatEvent - ACCEPTED player healing: amount=%s, ownership=%s", 
-        tostring(eventData.amount), ownershipInfo)
     
     local currentTime = GetTime()
     

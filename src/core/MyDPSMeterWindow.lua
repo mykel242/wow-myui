@@ -267,11 +267,13 @@ function MyDPSMeterWindow:ProcessCombatEvent(eventData)
         return
     end
     
-    -- PHASE 1: STRICT PLAYER-ONLY FILTERING (will undercount, but be accurate)
+    -- PHASE 2: ENHANCED PET OWNERSHIP DETECTION
     local playerGUID = UnitGUID("player")
+    local playerName = UnitName("player")
     local isPlayerDamage = eventData.source == playerGUID
+    local petOwnership = nil
     
-    -- Ownership decoration for debugging
+    -- Enhanced ownership decoration for debugging
     local ownershipInfo = "UNKNOWN"
     if eventData.sourceFlags then
         local COMBATLOG_OBJECT_AFFILIATION_MINE = 0x00000001
@@ -295,35 +297,50 @@ function MyDPSMeterWindow:ProcessCombatEvent(eventData)
         end
     end
     
-    -- Debug log with ownership decoration
-    addon:Debug("MyDPSMeterWindow: Event analysis - Source: %s, Player: %s, Ownership: %s, Flags: 0x%08X, Amount: %s", 
-        tostring(eventData.source), tostring(playerGUID), ownershipInfo, eventData.sourceFlags or 0, tostring(eventData.amount))
+    -- Phase 2: Pet ownership detection using MyPetOwnershipTracker
+    if not isPlayerDamage and addon.MyPetOwnershipTracker then
+        local sourceName = eventData.sourceName or "Unknown"
+        
+        -- DEBUG: Log what sourceName we're actually getting from combat
+        addon:Debug("MyDPSMeterWindow: Phase 2 pet detection - sourceName='%s', sourceGUID='%s'", 
+            tostring(sourceName), tostring(eventData.source))
+        
+        local petName, owner, ownerGUID = addon.MyPetOwnershipTracker:DetectPetOwnership(
+            sourceName, eventData.source, eventData.sourceFlags
+        )
+        
+        if owner and owner == playerName then
+            petOwnership = {
+                petName = petName,
+                owner = owner,
+                ownerGUID = ownerGUID,
+                originalName = sourceName
+            }
+            isPlayerDamage = true -- Include this pet damage
+            ownershipInfo = ownershipInfo .. "_OWNED"
+        end
+    end
     
-    -- PHASE 1: Only accept direct player damage (strict filtering)
+    -- Debug log with enhanced ownership decoration
+    addon:Debug("MyDPSMeterWindow: Event analysis - Source: %s, Player: %s, Ownership: %s, Pet: %s, Flags: 0x%08X, Amount: %s", 
+        tostring(eventData.source), tostring(playerGUID), ownershipInfo, 
+        petOwnership and petOwnership.petName or "NO", eventData.sourceFlags or 0, tostring(eventData.amount))
+    
+    -- Final filtering decision
     if not isPlayerDamage then
-        addon:Debug("MyDPSMeterWindow: FILTERED OUT - Phase 1 strict player-only mode (source: %s, ownership: %s)", 
+        addon:Debug("MyDPSMeterWindow: FILTERED OUT - not from player or player's pets (source: %s, ownership: %s)", 
             tostring(eventData.source), ownershipInfo)
         return
     end
     
-    -- PHASE 2: Pet/Guardian ownership detection (disabled for now)
-    -- TODO: Uncomment this section for Phase 2 to include player-owned pets/guardians
-    --[[
-    local isPlayerOwnedUnit = false
-    if not isPlayerDamage and eventData.sourceFlags then
-        local COMBATLOG_OBJECT_AFFILIATION_MINE = 0x00000001
-        isPlayerOwnedUnit = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0
+    -- Log accepted events with pet information
+    if petOwnership then
+        addon:Debug("MyDPSMeterWindow: ACCEPTED pet damage - %s (%s) -> %s, amount: %s", 
+            petOwnership.petName, petOwnership.originalName, petOwnership.owner, tostring(eventData.amount))
+    else
+        addon:Debug("MyDPSMeterWindow: ACCEPTED player damage - type=%s, amount=%s, ownership=%s", 
+            eventData.type or "nil", tostring(eventData.amount), ownershipInfo)
     end
-    
-    if not (isPlayerDamage or isPlayerOwnedUnit) then
-        addon:Debug("MyDPSMeterWindow: FILTERED OUT - not from player or player's units (source: %s, ownership: %s)", 
-            tostring(eventData.source), ownershipInfo)
-        return
-    end
-    --]]
-    
-    addon:Debug("MyDPSMeterWindow:ProcessCombatEvent - ACCEPTED player damage: type=%s, amount=%s, ownership=%s", 
-        eventData.type or "nil", tostring(eventData.amount), ownershipInfo)
     
     -- Track event timing for performance monitoring
     local currentTime = GetTime()

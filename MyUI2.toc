@@ -37,6 +37,9 @@ src/core/MyCombatMeterCalculator.lua
 # Step 9: MyCombatMeterScaler
 src/core/MyCombatMeterScaler.lua
 
+# Step 9.5: MyPetOwnershipTracker (Phase 2 pet detection)
+src/core/MyPetOwnershipTracker.lua
+
 # Step 10: MySimpleCombatDetector
 src/core/MySimpleCombatDetector.lua
 
@@ -46,8 +49,8 @@ src/core/MyDPSMeterWindow.lua
 # Step 12: MyHPSMeterWindow
 src/core/MyHPSMeterWindow.lua
 
-# Step 13: MyLoggerWindow_Lightweight
-src/core/MyLoggerWindow_Lightweight.lua
+# Step 13: MySimpleLogWindow (user-friendly log viewer)
+src/core/MySimpleLogWindow.lua
 
 # Step 14: SessionBrowser
 src/ui/SessionBrowser.lua
