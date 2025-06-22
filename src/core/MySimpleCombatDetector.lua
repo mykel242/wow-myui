@@ -417,14 +417,14 @@ function MySimpleCombatDetector:CreateNewSegment()
     segmentCounter = segmentCounter + 1
     local currentTime = GetTime()
     
-    -- Create segment using table pool
-    local segment = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Create segment using specialized factory method
+    local segment = addon.StorageManager and addon.StorageManager:GetSegmentTable() or {}
     segment.id = string.format("%s-seg%d", currentSessionData.id, segmentCounter)
     segment.segmentIndex = segmentCounter
     segment.startTime = lastSegmentTime or combatStartTime
     segment.endTime = nil  -- Will be set when segment is finalized
     segment.events = addon.StorageManager and addon.StorageManager:GetTable() or {}
-    segment.eventCount = 0
+    segment.eventCount = 0  -- Already initialized to 0 by factory, but explicit for clarity
     segment.isActive = true
     
     debugPrint("Created new segment: %s", segment.id)
@@ -772,8 +772,8 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
         -- Segment creation already logged in CreateNewSegment() function
     end
     
-    -- Store event data using table pool for efficiency
-    local eventData = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Store event data using specialized factory for efficiency
+    local eventData = addon.StorageManager and addon.StorageManager:GetEventTable() or {}
     eventData.time = relativeTime           -- Relative time from combat start
     eventData.subevent = eventType
     eventData.sourceGUID = sourceGUID

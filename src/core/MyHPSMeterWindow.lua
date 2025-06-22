@@ -304,27 +304,63 @@ function MyHPSMeterWindow:ProcessCombatEvent(eventData)
         return
     end
     
-    -- CRITICAL: Only process player and player-owned unit healing events
+    -- PHASE 1: STRICT PLAYER-ONLY FILTERING (will undercount, but be accurate)
     local playerGUID = UnitGUID("player")
     local isPlayerHealing = eventData.source == playerGUID
-    local isPlayerOwnedUnit = false
     
-    -- Check if source is a player-owned pet/guardian using combat log flags
+    -- Ownership decoration for debugging
+    local ownershipInfo = "UNKNOWN"
+    if eventData.sourceFlags then
+        local COMBATLOG_OBJECT_AFFILIATION_MINE = 0x00000001
+        local COMBATLOG_OBJECT_TYPE_PLAYER = 0x00000400
+        local COMBATLOG_OBJECT_TYPE_PET = 0x00001000
+        local COMBATLOG_OBJECT_TYPE_GUARDIAN = 0x00002000
+        
+        local isMine = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0
+        local isPlayer = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_TYPE_PLAYER) ~= 0
+        local isPet = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_TYPE_PET) ~= 0
+        local isGuardian = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_TYPE_GUARDIAN) ~= 0
+        
+        if isPlayer then
+            ownershipInfo = isMine and "MY_PLAYER" or "OTHER_PLAYER"
+        elseif isPet then
+            ownershipInfo = isMine and "MY_PET" or "OTHER_PET"
+        elseif isGuardian then
+            ownershipInfo = isMine and "MY_GUARDIAN" or "OTHER_GUARDIAN"
+        else
+            ownershipInfo = isMine and "MY_OTHER" or "OTHER_ENTITY"
+        end
+    end
+    
+    -- Debug log with ownership decoration
+    addon:Debug("MyHPSMeterWindow: Event analysis - Source: %s, Player: %s, Ownership: %s, Flags: 0x%08X, Amount: %s", 
+        tostring(eventData.source), tostring(playerGUID), ownershipInfo, eventData.sourceFlags or 0, tostring(eventData.amount))
+    
+    -- PHASE 1: Only accept direct player healing (strict filtering)
+    if not isPlayerHealing then
+        addon:Debug("MyHPSMeterWindow: FILTERED OUT - Phase 1 strict player-only mode (source: %s, ownership: %s)", 
+            tostring(eventData.source), ownershipInfo)
+        return
+    end
+    
+    -- PHASE 2: Pet/Guardian ownership detection (disabled for now)
+    -- TODO: Uncomment this section for Phase 2 to include player-owned pets/guardians
+    --[[
+    local isPlayerOwnedUnit = false
     if not isPlayerHealing and eventData.sourceFlags then
-        -- Check for COMBATLOG_OBJECT_AFFILIATION_MINE (owned by player)
         local COMBATLOG_OBJECT_AFFILIATION_MINE = 0x00000001
         isPlayerOwnedUnit = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0
     end
     
     if not (isPlayerHealing or isPlayerOwnedUnit) then
-        addon:Trace("MyHPSMeterWindow: Event filtered out - not from player or player's units (source: %s, player: %s, flags: %s)", 
-            tostring(eventData.source), tostring(playerGUID), tostring(eventData.sourceFlags))
+        addon:Debug("MyHPSMeterWindow: FILTERED OUT - not from player or player's units (source: %s, ownership: %s)", 
+            tostring(eventData.source), ownershipInfo)
         return
     end
+    --]]
     
-    local sourceType = isPlayerHealing and "player" or "pet/guardian"
-    addon:Debug("MyHPSMeterWindow:ProcessCombatEvent - %s healing: amount=%s", 
-        sourceType, tostring(eventData.amount))
+    addon:Debug("MyHPSMeterWindow:ProcessCombatEvent - ACCEPTED player healing: amount=%s, ownership=%s", 
+        tostring(eventData.amount), ownershipInfo)
     
     local currentTime = GetTime()
     

@@ -19,7 +19,7 @@ local poolStats = {
     reused = 0,         -- Tables reused from pool
     returned = 0,       -- Tables returned to pool
     currentPoolSize = 0, -- Current pool size
-    maxPoolSize = 500,   -- Increased for better reuse during intensive combat
+    maxPoolSize = 1000,  -- Doubled from 500 for extra safety during intensive combat
     warnings = 0        -- Pool-related warnings
 }
 
@@ -140,6 +140,53 @@ function StorageManager:ClearTablePool()
     if addon.MyLogger then
         addon.MyLogger:Info("Table pool cleared")
     end
+end
+
+-- ============================================================================
+-- SPECIALIZED TABLE FACTORIES
+-- ============================================================================
+
+-- Factory method for combat event tables
+function StorageManager:GetEventTable()
+    local t = self:GetTable()
+    -- Pre-initialize expected fields to prevent nil access errors
+    t.time = 0
+    t.subevent = nil
+    t.sourceGUID = nil
+    t.destGUID = nil
+    t.args = nil
+    return t
+end
+
+-- Factory method for segment tables
+function StorageManager:GetSegmentTable()
+    local t = self:GetTable()
+    -- Pre-initialize all segment fields to prevent corruption
+    t.id = nil
+    t.segmentIndex = 0
+    t.startTime = 0
+    t.endTime = nil
+    t.events = nil  -- Will be set to a new table when needed
+    t.eventCount = 0
+    t.isActive = false
+    t.duration = 0
+    return t
+end
+
+-- Factory method for session tables
+function StorageManager:GetSessionTable()
+    local t = self:GetTable()
+    -- Pre-initialize session fields
+    t.id = nil
+    t.hash = nil
+    t.startTime = 0
+    t.endTime = nil
+    t.duration = 0
+    t.eventCount = 0
+    t.events = nil
+    t.guidMap = nil
+    t.segments = nil
+    return t
 end
 
 -- Helper function to clean up pooled tables in a session before removal
