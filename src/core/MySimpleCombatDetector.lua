@@ -9,7 +9,7 @@ local MySimpleCombatDetector = {}
 addon.MySimpleCombatDetector = MySimpleCombatDetector
 
 -- Internal debug configuration
-local DEBUG_MODE = true  -- Enabled to debug aura filtering
+local DEBUG_MODE = false  -- Disabled to reduce log spam
 local logger = nil -- Injected logger instance
 
 -- Internal debug functions with logger fallback
@@ -70,6 +70,11 @@ local playerGUID = nil
 local playerName = nil
 local groupMemberGUIDs = {} -- Cache of group member GUIDs for fast lookup
 local currentInstanceType = nil -- Cache current instance type for filtering
+
+-- Pet detection state
+local activePetGUIDs = {}  -- GUID -> { name, detectedAt, owner } mapping
+local lastPetScan = 0
+local PET_SCAN_INTERVAL = 2.0  -- Scan every 2 seconds during combat
 
 -- Quick exit pattern - events we NEVER care about (immediate return)
 -- Based on Recount's QuickExitEvents approach for maximum performance
@@ -405,6 +410,131 @@ function MySimpleCombatDetector:IsInstanceWorthTracking()
 end
 
 -- ============================================================================
+-- PET DETECTION SYSTEM
+-- ============================================================================
+
+-- Scan for active pets (called frequently during combat)  
+function MySimpleCombatDetector:ScanActivePets()
+    local currentTime = GetTime()
+    if currentTime - lastPetScan < PET_SCAN_INTERVAL then
+        return false  -- Don't scan too frequently
+    end
+    lastPetScan = currentTime
+    
+    local foundNewPets = false
+    
+    -- Ensure we have current player info
+    if not playerName then
+        playerName = UnitName("player")
+    end
+    
+    -- Method 1: Scan player's main pet using UnitGUID (traditional pets)
+    local playerPetGUID = UnitGUID("pet")
+    if playerPetGUID and not activePetGUIDs[playerPetGUID] then
+        local petName = UnitName("pet") or "Unknown Pet"
+        activePetGUIDs[playerPetGUID] = {
+            name = petName,
+            detectedAt = currentTime,
+            owner = playerName
+        }
+        foundNewPets = true
+        
+        -- Pet detection notification
+        print(string.format("|cFF00FF00[PET DETECTED]|r %s summoned: %s", playerName, petName))
+        if addon.MyLogger then
+            addon.MyLogger:Info("[PET DETECTED] %s summoned: %s (GUID: %s)", playerName, petName, playerPetGUID)
+        end
+    end
+    
+    -- Method 2: Combat log flag-based detection happens in ProcessCombatLogEvent
+    -- This catches ephemeral pets/guardians that don't show up via UnitGUID("pet")
+    
+    return foundNewPets
+end
+
+-- Check for pets via combat log flags (Method 2 - catches ephemeral pets/guardians)
+function MySimpleCombatDetector:CheckForPetViaFlags(sourceGUID, sourceName, sourceFlags)
+    if not sourceGUID or not sourceName or not sourceFlags then
+        return
+    end
+    
+    -- Skip if already tracking this pet
+    if activePetGUIDs[sourceGUID] then
+        return
+    end
+    
+    -- Ensure we have current player info
+    if not playerName then
+        playerName = UnitName("player")
+    end
+    
+    
+    -- Check for player-owned pets/guardians using combat log flags
+    local isMyPet = bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0 and
+                    (bit.band(sourceFlags, COMBATLOG_OBJECT_TYPE_PET) ~= 0 or
+                     bit.band(sourceFlags, COMBATLOG_OBJECT_TYPE_GUARDIAN) ~= 0)
+    
+    if isMyPet then
+        local currentTime = GetTime()
+        activePetGUIDs[sourceGUID] = {
+            name = sourceName,
+            detectedAt = currentTime,
+            owner = playerName,
+            type = bit.band(sourceFlags, COMBATLOG_OBJECT_TYPE_PET) ~= 0 and "Pet" or "Guardian"
+        }
+        
+        -- Pet detection notification (moved to trace)
+        if logger and logger.Trace then
+            logger:Trace("[PET DETECTED] %s summoned: %s (%s) via combat log flags (GUID: %s, flags: 0x%08X)", 
+                playerName, sourceName, activePetGUIDs[sourceGUID].type, sourceGUID, sourceFlags)
+        end
+    end
+end
+
+-- REMOVED: Pet spell ID mappings - we don't need spell tables!
+-- The generalized solution uses GUID-based detection instead
+
+-- Check if a GUID belongs to a known pet
+function MySimpleCombatDetector:IsKnownPet(sourceGUID)
+    if not sourceGUID then
+        return nil
+    end
+    
+    local petInfo = activePetGUIDs[sourceGUID]
+    return petInfo and petInfo.owner or nil
+end
+
+-- GENERALIZED: Check if damage event is from a known pet GUID
+-- No spell tables needed - just GUID-based detection!
+function MySimpleCombatDetector:IsPetDamage(sourceGUID, spellId, spellName)
+    -- Simple and generalized: Is this GUID a known pet?
+    if sourceGUID and activePetGUIDs[sourceGUID] then
+        return true, activePetGUIDs[sourceGUID].name
+    end
+    
+    -- That's it! No spell tables, no complex logic
+    -- If the sourceGUID is a pet, it's pet damage
+    return false, nil
+end
+
+-- Get active pets for debugging
+function MySimpleCombatDetector:GetActivePets()
+    return activePetGUIDs
+end
+
+-- Public method to force a pet scan (for testing)
+function MySimpleCombatDetector:ForcePetScan()
+    lastPetScan = 0  -- Reset timer to force scan
+    return self:ScanActivePets()
+end
+
+-- Clear pet tracking (called on combat start)
+function MySimpleCombatDetector:ClearPetTracking()
+    wipe(activePetGUIDs)
+    lastPetScan = 0
+end
+
+-- ============================================================================
 -- SESSION SEGMENTATION SYSTEM
 -- ============================================================================
 
@@ -417,14 +547,14 @@ function MySimpleCombatDetector:CreateNewSegment()
     segmentCounter = segmentCounter + 1
     local currentTime = GetTime()
     
-    -- Create segment using table pool
-    local segment = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Create segment using specialized factory method
+    local segment = addon.StorageManager and addon.StorageManager:GetSegmentTable() or {}
     segment.id = string.format("%s-seg%d", currentSessionData.id, segmentCounter)
     segment.segmentIndex = segmentCounter
     segment.startTime = lastSegmentTime or combatStartTime
     segment.endTime = nil  -- Will be set when segment is finalized
     segment.events = addon.StorageManager and addon.StorageManager:GetTable() or {}
-    segment.eventCount = 0
+    segment.eventCount = 0  -- Already initialized to 0 by factory, but explicit for clarity
     segment.isActive = true
     
     debugPrint("Created new segment: %s", segment.id)
@@ -614,6 +744,10 @@ function MySimpleCombatDetector:StartCombat()
     -- Create initial segment
     currentSegment = self:CreateNewSegment()
     
+    -- Initialize pet tracking
+    self:ClearPetTracking()
+    self:ScanActivePets()  -- Initial pet scan
+    
     debugPrint("Combat started: %s [%s] (cached %d group members, segmentation enabled)", sessionId, sessionHash, self:TableSize(groupMemberGUIDs))
 end
 
@@ -644,6 +778,9 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
         return
     end
     
+    -- PHASE 2.5: Scan for new pets during combat (frequent rescanning)  
+    self:ScanActivePets()
+    
     -- PHASE 3: Filter for meaningful combat events only
     if not MEANINGFUL_EVENTS[eventType] then
         return
@@ -656,12 +793,26 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
         return
     end
     
+    -- PHASE 4.5: Check for new pets BEFORE GUID filtering (critical for detection)
+    if sourceGUID and sourceName and sourceFlags then
+        self:CheckForPetViaFlags(sourceGUID, sourceName, sourceFlags)
+    end
+    if destGUID and destName and destFlags then
+        self:CheckForPetViaFlags(destGUID, destName, destFlags)
+    end
+    
     -- PHASE 5: Fast player/group member check using cached GUIDs
     local isPlayerEvent = (sourceGUID == playerGUID) or (destGUID == playerGUID)
     
     -- For group play, check cached group member GUIDs (much faster than UnitExists loop)
     if not isPlayerEvent and next(groupMemberGUIDs) then
         isPlayerEvent = groupMemberGUIDs[sourceGUID] or groupMemberGUIDs[destGUID]
+    end
+    
+    -- Also include events from known player pets/guardians
+    if not isPlayerEvent and sourceGUID and activePetGUIDs[sourceGUID] then
+        isPlayerEvent = true
+        debugPrint("Accepting event from known pet: %s (%s)", activePetGUIDs[sourceGUID].name, sourceGUID)
     end
     
     if not isPlayerEvent then
@@ -772,8 +923,8 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
         -- Segment creation already logged in CreateNewSegment() function
     end
     
-    -- Store event data using table pool for efficiency
-    local eventData = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Store event data using specialized factory for efficiency
+    local eventData = addon.StorageManager and addon.StorageManager:GetEventTable() or {}
     eventData.time = relativeTime           -- Relative time from combat start
     eventData.subevent = eventType
     eventData.sourceGUID = sourceGUID
@@ -802,6 +953,9 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     -- Publish events to message queue for real-time components (like combat meter)
     -- Pass all parameters from the combat log event
     self:PublishEventToMessageQueue(...)
+    
+    -- Publish RAW events for EntityMapWindow debugging
+    self:PublishRawEventToMessageQueue(...)
 end
 
 -- =============================================================================
@@ -817,6 +971,13 @@ function MySimpleCombatDetector:PublishEventToMessageQueue(...)
     -- Extract all combat log parameters
     local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
           destGUID, destName, destFlags, destRaidFlags = ...
+          
+    -- Pet detection via combat log flags (Method 2 - catches ephemeral pets/guardians)
+    if sourceGUID and sourceName and sourceFlags and inCombat then
+        self:CheckForPetViaFlags(sourceGUID, sourceName, sourceFlags)
+    end
+    
+    -- Removed debug spam that was too verbose
           
     local amount = 0
     
@@ -849,14 +1010,32 @@ function MySimpleCombatDetector:PublishEventToMessageQueue(...)
         end
         
         if amount > 0 then
+            -- Extract spell information for damage events
+            local spellId, spellName = nil, nil
+            if eventType ~= "SWING_DAMAGE" then
+                spellId = select(12, ...)
+                spellName = select(13, ...)
+            end
+            
             if addon.CombatEventQueue and addon.CombatEventQueue.Push then
+                -- Pet damage tracking (moved to trace)
+                if activePetGUIDs[sourceGUID] and logger and logger.Trace then
+                    logger:Trace("Publishing pet damage: %s (%d) from %s", 
+                        tostring(spellName), amount, activePetGUIDs[sourceGUID].name)
+                end
+                
+                -- Debug moved to trace level
+                
                 addon.CombatEventQueue:Push("DAMAGE_EVENT", {
                     eventType = eventType,
                     amount = amount,
                     source = sourceGUID,
+                    sourceName = sourceName,
                     target = destGUID,
                     sourceFlags = sourceFlags,
-                    timestamp = timestamp
+                    timestamp = timestamp,
+                    spellId = spellId,
+                    spellName = spellName
                 })
                 -- Trace level to reduce log noise during normal operation
                 if logger and logger.Trace then
@@ -890,14 +1069,19 @@ function MySimpleCombatDetector:PublishEventToMessageQueue(...)
         end
         
         if amount > 0 then
+            -- Debug moved to trace level
+            
             if addon.CombatEventQueue and addon.CombatEventQueue.Push then
                 addon.CombatEventQueue:Push("HEAL_EVENT", {
                     eventType = eventType,
                     amount = amount,
                     source = sourceGUID,
+                    sourceName = sourceName,
                     target = destGUID,
                     sourceFlags = sourceFlags,
-                    timestamp = timestamp
+                    timestamp = timestamp,
+                    spellId = spellId,
+                    spellName = spellName
                 })
                 -- Trace level to reduce log noise during normal operation  
                 if logger and logger.Trace then
@@ -910,6 +1094,32 @@ function MySimpleCombatDetector:PublishEventToMessageQueue(...)
             -- Debug log when no heal amount found
             debugPrint("No heal amount found for event: %s", eventType)
         end
+    end
+end
+
+-- Publish raw combat events for EntityMapWindow debugging
+function MySimpleCombatDetector:PublishRawEventToMessageQueue(...)
+    if not addon.CombatEventQueue then
+        return -- Combat event queue not available
+    end
+    
+    -- Extract all combat log parameters
+    local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
+          destGUID, destName, destFlags, destRaidFlags = ...
+    
+    
+    -- Publish ALL events (unfiltered) for EntityMapWindow debugging
+    if addon.CombatEventQueue and addon.CombatEventQueue.Push then
+        addon.CombatEventQueue:Push("RAW_COMBAT_EVENT", {
+            timestamp = timestamp,
+            eventType = eventType,
+            sourceGUID = sourceGUID,
+            sourceName = sourceName,
+            sourceFlags = sourceFlags,
+            destGUID = destGUID,
+            destName = destName,
+            destFlags = destFlags
+        })
     end
 end
 

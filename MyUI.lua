@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "main-8e624be"
-addon.BUILD_DATE = "2025-06-18-18:03"
+addon.VERSION = "56b673a"
+addon.BUILD_DATE = "2025-06-22-20:09"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -439,10 +439,10 @@ function addon:OnInitialize()
         savedVariables = self.db -- Pass reference for persistent logging
     })
     
-    -- Initialize MyLoggerWindow (now uses message queue)
-    if self.MyLoggerWindow then
-        self.MyLoggerWindow:Initialize()
-        self:Debug("MyLoggerWindow initialized with message queue")
+    -- Initialize MySimpleLogWindow (user-friendly log viewer)
+    if self.MySimpleLogWindow then
+        self.MySimpleLogWindow:Initialize()
+        self:Debug("MySimpleLogWindow initialized for easy copy/paste")
     end
 
     -- Initialize core modules with logger injection
@@ -477,6 +477,7 @@ function addon:OnInitialize()
     if self.GUIDResolver then
         self.GUIDResolver:Initialize()
     end
+    
     
     -- 3. Initialize StorageManager (memory-efficient storage)
     if self.StorageManager then
@@ -592,10 +593,16 @@ function addon:OnInitialize()
         self:Debug("MyHPSMeterWindow initialized")
     end
     
+    if self.MyCombatEntityMapWindow then
+        self.MyCombatEntityMapWindow:Initialize()
+        self:Debug("MyCombatEntityMapWindow initialized")
+    end
+    
     -- Initialize simplified slash commands
     if self.SlashCommands then
         self.SlashCommands:Initialize()
     end
+    
 end
 
 function addon:OnEnable()
