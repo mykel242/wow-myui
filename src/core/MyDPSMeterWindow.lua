@@ -1,4 +1,4 @@
--- MyDPSMeterWindow.lua  
+-- MyDPSMeterWindow.lua
 -- Real-time DPS meter with decoupled message queue architecture
 --
 -- PERFORMANCE DESIGN:
@@ -21,24 +21,24 @@ addon.MyDPSMeterWindow = MyDPSMeterWindow
 -- CONSTANTS AND CONFIGURATION
 -- =============================================================================
 
-local WINDOW_WIDTH = 300  -- Compact horizontal layout  
-local WINDOW_HEIGHT = 85  -- Minimal height for DPS-focused display
+local WINDOW_WIDTH = 300  -- Compact horizontal layout
+local WINDOW_HEIGHT = 100 -- Height increased to accommodate pet damage line
 local SEGMENT_HEIGHT = 16
 local MAX_SEGMENTS = 20
 
 -- Performance configuration for meter updates
 local PERFORMANCE_CONFIG = {
-    REFRESH_THROTTLE_MS = 250,    -- 4 FPS max during combat
-    COMBAT_THROTTLE_MS = 500,     -- 2 FPS during intensive combat
-    RING_BUFFER_SIZE = 1000,      -- Combat events for calculations
-    CALCULATION_WINDOW = 30,      -- Seconds of data for rolling calculations
-    BUSY_THRESHOLD = 10,          -- Events per second to consider "busy"
+    REFRESH_THROTTLE_MS = 250, -- 4 FPS max during combat
+    COMBAT_THROTTLE_MS = 500,  -- 2 FPS during intensive combat
+    RING_BUFFER_SIZE = 1000,   -- Combat events for calculations
+    CALCULATION_WINDOW = 30,   -- Seconds of data for rolling calculations
+    BUSY_THRESHOLD = 10,       -- Events per second to consider "busy"
 }
 
 -- Calculation methods
 local CALCULATION_METHODS = {
     ROLLING = "rolling",
-    FINAL = "final", 
+    FINAL = "final",
     HYBRID = "hybrid"
 }
 
@@ -67,10 +67,12 @@ local meterState = {
     combatStartTime = 0,
     inCombat = false,
     totalDamage = 0,
-    scale = 1800000,  -- Current scale value
-    autoScale = 1800000,  -- Auto-calculated scale
-    manualScale = 1800000,  -- User-specified scale
-    useAutoScale = true,  -- Toggle between auto/manual
+    petDamage = 0,         -- Track pet damage separately
+    currentPetDPS = 0,     -- Current pet DPS for display
+    scale = 1800000,       -- Current scale value
+    autoScale = 1800000,   -- Auto-calculated scale
+    manualScale = 1800000, -- User-specified scale
+    useAutoScale = true,   -- Toggle between auto/manual
     isPaused = false,
     lastUpdateTime = 0,
     refreshTimer = nil
@@ -97,48 +99,49 @@ end
 function MyDPSMeterWindow:SetupSubscriptions()
     -- This is called after the window is created to ensure the message queue instance is ready
     addon:Debug("MyDPSMeterWindow:SetupSubscriptions - setting up message queue subscriptions")
-    
+
     -- Debug: Check if CombatEventQueue exists
     if not addon.CombatEventQueue then
         addon:Warn("MyDPSMeterWindow: CombatEventQueue is nil!")
         return
     end
-    
+
     if not addon.CombatEventQueue.Subscribe then
         addon:Warn("MyDPSMeterWindow: CombatEventQueue.Subscribe method not found!")
         return
     end
-    
+
     addon:Debug("MyDPSMeterWindow: CombatEventQueue found, setting up subscriptions...")
-    
+
     if addon.CombatEventQueue and addon.CombatEventQueue.Subscribe then
         -- Subscribe to combat state changes
         self.combatStateSubscriberId = addon.CombatEventQueue:Subscribe(
-            "COMBAT_STATE_CHANGED", 
+            "COMBAT_STATE_CHANGED",
             function(message)
                 self:UpdateCombatState(message.data)
             end,
             "DPSMeterWindow_StateTracker"
         )
-        
+
         -- Subscribe to damage events
         self.damageSubscriberId = addon.CombatEventQueue:Subscribe(
-            "DAMAGE_EVENT", 
+            "DAMAGE_EVENT",
             function(message)
                 local eventData = message.data
-                
+
                 -- Validate event data to prevent integer overflow
                 if not eventData or not eventData.amount then
                     addon:Trace("MyDPSMeterWindow: Invalid damage event data")
                     return
                 end
-                
+
                 local amount = eventData.amount
                 if type(amount) ~= "number" or amount < 0 or amount > 2147483647 then -- Max 32-bit int
                     addon:Warn("MyDPSMeterWindow: Invalid damage amount: %s (type: %s)", tostring(amount), type(amount))
                     return
                 end
-                
+
+
                 addon:Trace("MyDPSMeterWindow: Received DAMAGE_EVENT, amount: %d", amount)
                 self:ProcessCombatEvent({
                     type = "DAMAGE",
@@ -146,16 +149,18 @@ function MyDPSMeterWindow:SetupSubscriptions()
                     timestamp = eventData.timestamp or GetTime(),
                     source = eventData.source,
                     target = eventData.target,
-                    sourceFlags = eventData.sourceFlags
+                    sourceFlags = eventData.sourceFlags,
+                    spellId = eventData.spellId,
+                    spellName = eventData.spellName
                 })
             end,
             "DPSMeterWindow_DamageTracker"
         )
-        
+
         -- DPS meter focuses only on damage events (no healing subscription)
-        
+
         addon:Info("MyDPSMeterWindow: Combat event queue subscriptions established")
-        addon:Debug("Subscriber IDs: State=%d, Damage=%d", 
+        addon:Debug("Subscriber IDs: State=%d, Damage=%d",
             self.combatStateSubscriberId, self.damageSubscriberId)
     else
         addon:Warn("MyDPSMeterWindow: CombatEventQueue not available - meter will not receive events")
@@ -171,11 +176,11 @@ end
 local function AddEventToBuffer(eventData)
     eventRingBuffer.events[eventRingBuffer.writeIndex] = eventData
     eventRingBuffer.totalWritten = eventRingBuffer.totalWritten + 1
-    
+
     if eventRingBuffer.size < eventRingBuffer.capacity then
         eventRingBuffer.size = eventRingBuffer.size + 1
     end
-    
+
     eventRingBuffer.writeIndex = eventRingBuffer.writeIndex + 1
     if eventRingBuffer.writeIndex > eventRingBuffer.capacity then
         eventRingBuffer.writeIndex = 1
@@ -186,13 +191,13 @@ end
 local function GetRecentEvents(secondsBack)
     local cutoffTime = GetTime() - secondsBack
     local recentEvents = {}
-    
+
     for i = 1, eventRingBuffer.size do
         local index = eventRingBuffer.writeIndex - i
         if index <= 0 then
             index = index + eventRingBuffer.capacity
         end
-        
+
         local event = eventRingBuffer.events[index]
         if event and event.timestamp >= cutoffTime then
             table.insert(recentEvents, event)
@@ -200,7 +205,7 @@ local function GetRecentEvents(secondsBack)
             break -- Events are ordered by time, so we can stop here
         end
     end
-    
+
     return recentEvents
 end
 
@@ -212,7 +217,7 @@ end
 local function IsBusyPeriod()
     local currentTime = GetTime()
     local recentCount = 0
-    
+
     -- Count events in the last second
     for i = #performanceState.recentEventTimes, 1, -1 do
         local eventTime = performanceState.recentEventTimes[i]
@@ -223,7 +228,7 @@ local function IsBusyPeriod()
             table.remove(performanceState.recentEventTimes, i)
         end
     end
-    
+
     return recentCount >= PERFORMANCE_CONFIG.BUSY_THRESHOLD
 end
 
@@ -260,114 +265,88 @@ function MyDPSMeterWindow:ProcessCombatEvent(eventData)
         addon:Debug("MyDPSMeterWindow: Ignoring event - window not created yet")
         return
     end
-    
+
     if not eventData or meterState.isPaused then
-        addon:Debug("MyDPSMeterWindow: Event rejected - eventData: %s, isPaused: %s", 
+        addon:Debug("MyDPSMeterWindow: Event rejected - eventData: %s, isPaused: %s",
             tostring(eventData ~= nil), tostring(meterState.isPaused))
         return
     end
-    
-    -- PHASE 2: ENHANCED PET OWNERSHIP DETECTION
+
+    -- Enhanced pet-aware damage detection
     local playerGUID = UnitGUID("player")
     local playerName = UnitName("player")
-    local isPlayerDamage = eventData.source == playerGUID
-    local petOwnership = nil
-    
-    -- Enhanced ownership decoration for debugging
-    local ownershipInfo = "UNKNOWN"
-    if eventData.sourceFlags then
-        local COMBATLOG_OBJECT_AFFILIATION_MINE = 0x00000001
-        local COMBATLOG_OBJECT_TYPE_PLAYER = 0x00000400
-        local COMBATLOG_OBJECT_TYPE_PET = 0x00001000
-        local COMBATLOG_OBJECT_TYPE_GUARDIAN = 0x00002000
-        
-        local isMine = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0
-        local isPlayer = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_TYPE_PLAYER) ~= 0
-        local isPet = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_TYPE_PET) ~= 0
-        local isGuardian = bit.band(eventData.sourceFlags, COMBATLOG_OBJECT_TYPE_GUARDIAN) ~= 0
-        
-        if isPlayer then
-            ownershipInfo = isMine and "MY_PLAYER" or "OTHER_PLAYER"
-        elseif isPet then
-            ownershipInfo = isMine and "MY_PET" or "OTHER_PET"
-        elseif isGuardian then
-            ownershipInfo = isMine and "MY_GUARDIAN" or "OTHER_GUARDIAN"
-        else
-            ownershipInfo = isMine and "MY_OTHER" or "OTHER_ENTITY"
-        end
-    end
-    
-    -- Phase 2: Pet ownership detection using MyPetOwnershipTracker
-    if not isPlayerDamage and addon.MyPetOwnershipTracker then
-        local sourceName = eventData.sourceName or "Unknown"
-        
-        -- DEBUG: Log what sourceName we're actually getting from combat
-        addon:Debug("MyDPSMeterWindow: Phase 2 pet detection - sourceName='%s', sourceGUID='%s'", 
-            tostring(sourceName), tostring(eventData.source))
-        
-        local petName, owner, ownerGUID = addon.MyPetOwnershipTracker:DetectPetOwnership(
-            sourceName, eventData.source, eventData.sourceFlags
+    local isPlayerDamage = false
+    local damageSource = "Unknown"
+    local isPetDamage = false
+
+    -- Check if this is player or pet damage
+    if addon.MySimpleCombatDetector then
+        local petName
+        isPetDamage, petName = addon.MySimpleCombatDetector:IsPetDamage(
+            eventData.source,
+            eventData.spellId,
+            eventData.spellName
         )
-        
-        if owner and owner == playerName then
-            petOwnership = {
-                petName = petName,
-                owner = owner,
-                ownerGUID = ownerGUID,
-                originalName = sourceName
-            }
-            isPlayerDamage = true -- Include this pet damage
-            ownershipInfo = ownershipInfo .. "_OWNED"
+
+        if isPetDamage then
+            isPlayerDamage = true
+            damageSource = petName or "Pet"
+            addon:Debug("MyDPSMeterWindow: Including pet damage from %s", damageSource)
+        elseif eventData.source == playerGUID then
+            isPlayerDamage = true
+            damageSource = "Player"
         end
+    else
+        -- Fallback: just check player GUID
+        isPlayerDamage = eventData.source == playerGUID
+        damageSource = "Player"
     end
-    
-    -- Debug log with enhanced ownership decoration
-    addon:Debug("MyDPSMeterWindow: Event analysis - Source: %s, Player: %s, Ownership: %s, Pet: %s, Flags: 0x%08X, Amount: %s", 
-        tostring(eventData.source), tostring(playerGUID), ownershipInfo, 
-        petOwnership and petOwnership.petName or "NO", eventData.sourceFlags or 0, tostring(eventData.amount))
-    
-    -- Final filtering decision
+
     if not isPlayerDamage then
-        addon:Debug("MyDPSMeterWindow: FILTERED OUT - not from player or player's pets (source: %s, ownership: %s)", 
-            tostring(eventData.source), ownershipInfo)
+        addon:Debug("MyDPSMeterWindow: FILTERED OUT - not from player or pets (source: %s)",
+            tostring(eventData.source))
         return
     end
-    
-    -- Log accepted events with pet information
-    if petOwnership then
-        addon:Debug("MyDPSMeterWindow: ACCEPTED pet damage - %s (%s) -> %s, amount: %s", 
-            petOwnership.petName, petOwnership.originalName, petOwnership.owner, tostring(eventData.amount))
-    else
-        addon:Debug("MyDPSMeterWindow: ACCEPTED player damage - type=%s, amount=%s, ownership=%s", 
-            eventData.type or "nil", tostring(eventData.amount), ownershipInfo)
-    end
-    
+
+
+    addon:Debug("MyDPSMeterWindow: ACCEPTED damage - type=%s, amount=%s",
+        eventData.type or "nil", tostring(eventData.amount))
+
     -- Track event timing for performance monitoring
     local currentTime = GetTime()
     table.insert(performanceState.recentEventTimes, currentTime)
-    
-    -- Add to ring buffer
+
+    -- Add to ring buffer with pet information
     eventData.timestamp = currentTime
+    eventData.isPetDamage = isPetDamage
     AddEventToBuffer(eventData)
-    
+
     -- Process damage events only (HPS removed)
     if eventData.type == "DAMAGE" and eventData.amount then
         local damage = eventData.amount
-        
+
         -- Sanity check for reasonable damage values (prevent overflow)
         if damage > 10000000 then -- 10M damage seems unreasonable for a single hit
             addon:Warn("MyDPSMeterWindow: Suspicious damage amount: %d, capping at 10M", damage)
             damage = 10000000
         end
-        
+
         meterState.totalDamage = meterState.totalDamage + damage
-        addon:Debug("MyDPSMeterWindow: Added player damage %d, total now: %d", damage, meterState.totalDamage)
+
+        -- Track pet damage separately for display
+        if isPetDamage then
+            meterState.petDamage = meterState.petDamage + damage
+            addon:Debug("MyDPSMeterWindow: Added pet damage %d, pet total now: %d", damage, meterState.petDamage)
+        end
+
+        addon:Debug("MyDPSMeterWindow: Added damage %d (from %s), total now: %d", damage, damageSource,
+            meterState.totalDamage)
     else
-        addon:Debug("MyDPSMeterWindow: Event not processed - type: %s, amount: %s", 
+        addon:Debug("MyDPSMeterWindow: Event not processed - type: %s, amount: %s",
             eventData.type or "nil", tostring(eventData.amount))
         return -- Don't schedule updates for non-damage events
     end
-    
+
     -- Schedule rate-limited calculation update
     self:ScheduleCalculationUpdate()
 end
@@ -377,15 +356,15 @@ function MyDPSMeterWindow:ScheduleCalculationUpdate()
     if performanceState.pendingCalculation then
         return -- Already scheduled
     end
-    
+
     UpdateThrottleMode()
     local delay = GetRefreshInterval() / 1000
-    
+
     performanceState.pendingCalculation = true
     meterState.refreshTimer = C_Timer.After(delay, function()
         performanceState.pendingCalculation = false
         meterState.refreshTimer = nil
-        
+
         if meterWindow and meterWindow:IsVisible() and meterState.inCombat then
             MyDPSMeterWindow:CalculateAndUpdate()
         end
@@ -397,16 +376,16 @@ function MyDPSMeterWindow:CalculateAndUpdate()
     if not meterState.inCombat then
         return
     end
-    
+
     local currentTime = GetTime()
     local combatElapsed = currentTime - meterState.combatStartTime
-    
+
     if combatElapsed <= 0 then
         return
     end
-    
+
     local newDPS = 0
-    
+
     if currentCalculationMethod == CALCULATION_METHODS.ROLLING then
         -- Rolling average over last 5 seconds
         newDPS = self:CalculateRollingAverage(5)
@@ -417,35 +396,45 @@ function MyDPSMeterWindow:CalculateAndUpdate()
         -- 70% rolling + 30% final
         local rollingDPS = self:CalculateRollingAverage(5)
         local finalDPS = meterState.totalDamage / combatElapsed
-        
+
         newDPS = (rollingDPS * 0.7) + (finalDPS * 0.3)
     end
-    
+
+    -- Calculate pet DPS using total/duration (persistent for infrequent pet events)
+    local newPetDPS = 0
+    if combatElapsed > 0 then
+        newPetDPS = meterState.petDamage / combatElapsed
+    end
+
     -- Update meter state
     meterState.currentDPS = newDPS
+    meterState.currentPetDPS = newPetDPS
     meterState.peakDPS = math.max(meterState.peakDPS, newDPS)
     meterState.lastUpdateTime = currentTime
-    
+
     -- Update visual display
     self:UpdateMeterDisplay()
 end
 
 -- Calculate rolling average DPS (HPS removed)
-function MyDPSMeterWindow:CalculateRollingAverage(windowSeconds)
+function MyDPSMeterWindow:CalculateRollingAverage(windowSeconds, petOnly)
     local recentEvents = GetRecentEvents(windowSeconds)
     local totalDamage = 0
-    
+
     for _, event in ipairs(recentEvents) do
         if event.type == "DAMAGE" and event.amount then
-            totalDamage = totalDamage + event.amount
+            -- If petOnly is true, only count pet damage; otherwise count all damage
+            if not petOnly or event.isPetDamage then
+                totalDamage = totalDamage + event.amount
+            end
         end
     end
-    
+
     local actualWindow = math.min(windowSeconds, GetTime() - meterState.combatStartTime)
     if actualWindow <= 0 then
         return 0
     end
-    
+
     return totalDamage / actualWindow
 end
 
@@ -455,9 +444,9 @@ end
 
 -- Handle combat state changes
 function MyDPSMeterWindow:UpdateCombatState(stateData)
-    addon:Debug("MyDPSMeterWindow:UpdateCombatState - inCombat: %s, meterState.inCombat: %s", 
+    addon:Debug("MyDPSMeterWindow:UpdateCombatState - inCombat: %s, meterState.inCombat: %s",
         tostring(stateData.inCombat), tostring(meterState.inCombat))
-    
+
     if stateData.inCombat and not meterState.inCombat then
         -- Combat started
         addon:Debug("MyDPSMeterWindow: Starting combat")
@@ -474,51 +463,55 @@ function MyDPSMeterWindow:StartCombat()
     meterState.inCombat = true
     meterState.combatStartTime = GetTime()
     meterState.totalDamage = 0
+    meterState.petDamage = 0
     meterState.currentDPS = 0
+    meterState.currentPetDPS = 0
     meterState.peakDPS = 0
-    
+
+
     -- Clear ring buffer for new combat
     eventRingBuffer.size = 0
     eventRingBuffer.writeIndex = 1
-    
+
     -- Reset performance state
     performanceState.recentEventTimes = {}
     performanceState.isBusyPeriod = false
     performanceState.throttleMode = "combat"
-    
+
     if meterWindow and meterWindow:IsVisible() then
         self:UpdateMeterDisplay()
     end
-    
+
     addon:Debug("Combat meter: Combat started")
 end
 
 -- End combat tracking
 function MyDPSMeterWindow:EndCombat()
     meterState.inCombat = false
-    
+
+
     -- Clean up refresh timer
     if meterState.refreshTimer then
         meterState.refreshTimer:Cancel()
         meterState.refreshTimer = nil
     end
-    
+
     performanceState.pendingCalculation = false
     performanceState.throttleMode = "normal"
-    
+
     -- Final calculation for end-of-combat display
     if meterState.combatStartTime > 0 then
         local combatDuration = meterState.lastUpdateTime - meterState.combatStartTime
         if combatDuration > 0 then
             local finalDPS = meterState.totalDamage / combatDuration
-            
+
             meterState.currentDPS = finalDPS
-            
+
             -- Delegate scaling to MyCombatMeterScaler
             if meterState.useAutoScale and addon.MyCombatMeterScaler then
-                addon:Info("DPS meter: Combat ended - Peak: %.0f, Final: %.0f, Duration: %.1fs", 
+                addon:Info("DPS meter: Combat ended - Peak: %.0f, Final: %.0f, Duration: %.1fs",
                     meterState.peakDPS, finalDPS, combatDuration)
-                
+
                 -- Let MyCombatMeterScaler handle all scaling logic
                 -- Scale updates will come via UI event subscription
                 addon.MyCombatMeterScaler:AutoUpdateAfterCombat({
@@ -527,12 +520,12 @@ function MyDPSMeterWindow:EndCombat()
                     totalDamage = meterState.totalDamage
                 })
             end
-            
+
             -- Always update display after combat
             if meterWindow and meterWindow:IsVisible() then
                 self:UpdateMeterDisplay()
             end
-            
+
             addon:Debug("DPS meter: Combat ended - Final DPS: %.0f", finalDPS)
         end
     end
@@ -550,17 +543,17 @@ function MyDPSMeterWindow:SubscribeToScaleUpdates()
             if message.data then
                 local dpsScale = message.data.dpsScale
                 local hpsScale = message.data.hpsScale
-                
+
                 addon:Info("MyDPSMeterWindow: Scale event data - DPS: %.0f, HPS: %.0f", dpsScale or 0, hpsScale or 0)
-                
+
                 if dpsScale and dpsScale > 0 then
                     meterState.autoScale = dpsScale
-                    
+
                     if meterState.useAutoScale then
                         local oldScale = meterState.scale
                         meterState.scale = dpsScale
                         addon:Info("MyDPSMeterWindow: Scale updated via event from %.0f to %.0f", oldScale, dpsScale)
-                        
+
                         -- Update display if window is visible
                         if meterWindow and meterWindow:IsVisible() then
                             self:UpdateMeterDisplay()
@@ -578,7 +571,7 @@ function MyDPSMeterWindow:SubscribeToScaleUpdates()
                 addon:Info("MyDPSMeterWindow: Scale event missing data")
             end
         end, "DPSMeterWindow")
-        
+
         addon:Debug("MyDPSMeterWindow: Subscribed to SCALE_UPDATE events")
     else
         addon:Debug("MyDPSMeterWindow: UIEventQueue not available for scale subscription")
@@ -591,12 +584,12 @@ end
 
 function MyDPSMeterWindow:CreateWindow()
     if meterWindow then return end
-    
+
     addon:Debug("Starting DPS meter window creation...")
-    
+
     -- Subscribe to scale updates from the scaler
     self:SubscribeToScaleUpdates()
-    
+
     -- Request initial scale from scaler (delayed to ensure scaler is fully initialized)
     C_Timer.After(0.5, function()
         if addon.MyCombatMeterScaler then
@@ -607,11 +600,12 @@ function MyDPSMeterWindow:CreateWindow()
             addon:Warn("MyDPSMeterWindow: MyCombatMeterScaler not available for initial scale request")
         end
     end)
-    
+
     -- Create custom frame without default WoW template
-    meterWindow = CreateFrame("Frame", addonName .. "DPSMeterWindow", UIParent, BackdropTemplateMixin and "BackdropTemplate")
+    meterWindow = CreateFrame("Frame", addonName .. "DPSMeterWindow", UIParent,
+        BackdropTemplateMixin and "BackdropTemplate")
     addon:Debug("Base frame created")
-    
+
     meterWindow:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
     meterWindow:SetPoint("CENTER", UIParent, "CENTER", 300, 0)
     meterWindow:SetMovable(true)
@@ -620,13 +614,13 @@ function MyDPSMeterWindow:CreateWindow()
     meterWindow:SetScript("OnDragStart", meterWindow.StartMoving)
     meterWindow:SetScript("OnDragStop", meterWindow.StopMovingOrSizing)
     meterWindow:Hide()
-    
+
     -- Create a solid black background texture
     local bg = meterWindow:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(meterWindow)
     bg:SetColorTexture(0, 0, 0, 0.85) -- Solid black, 85% opacity
     meterWindow.bg = bg
-    
+
     -- Add subtle border frame
     meterWindow:SetBackdrop({
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -634,17 +628,17 @@ function MyDPSMeterWindow:CreateWindow()
         insets = { left = 3, right = 3, top = 3, bottom = 3 }
     })
     meterWindow:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
-    
+
     -- Register with FocusManager
     if addon.FocusManager then
         addon.FocusManager:RegisterWindow(meterWindow, nil, "MEDIUM")
         addon:Debug("Registered with FocusManager")
     end
-    
+
     -- Create minimal meter display (no control buttons for now)
     self:CreateMeterDisplay()
     -- self:CreateControlButtons() -- Disabled for minimal design
-    
+
     addon:Debug("Combat meter window created successfully")
     return meterWindow
 end
@@ -653,10 +647,10 @@ end
 function MyDPSMeterWindow:CreateMeterDisplay()
     -- Create progress bar at top
     self:CreateProgressBar(meterWindow)
-    
+
     -- Create info display directly on window (no inner frame needed)
     self:CreateInfoDisplay(meterWindow)
-    
+
     -- Initial display update to show correct scale
     self:UpdateMeterDisplay()
 end
@@ -669,47 +663,47 @@ function MyDPSMeterWindow:CreateProgressBar(parent)
     barFrame:SetHeight(barHeight)
     barFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 5, -5)
     barFrame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -5, -5)
-    
+
     -- Store segments for updating
     meterWindow.progressSegments = {}
-    
+
     local segmentWidth = (WINDOW_WIDTH - 10) / segmentCount
     for i = 1, segmentCount do
         local segment = barFrame:CreateTexture(nil, "ARTWORK")
         segment:SetHeight(barHeight)
         segment:SetWidth(segmentWidth - 2) -- 2px gap between segments
-        segment:SetPoint("LEFT", barFrame, "LEFT", (i-1) * segmentWidth + 1, 0)
+        segment:SetPoint("LEFT", barFrame, "LEFT", (i - 1) * segmentWidth + 1, 0)
         segment:SetTexture("Interface\\Buttons\\WHITE8X8")
         segment:SetVertexColor(0.2, 0.2, 0.2, 1) -- Dark gray when empty
-        
+
         meterWindow.progressSegments[i] = segment
     end
-    
+
     meterWindow.progressBar = barFrame
 end
 
 -- Create the 20-segment meter display
 function MyDPSMeterWindow:CreateMeterSegments(parent)
     meterSegments = {}
-    
+
     local segmentWidth = (WINDOW_WIDTH - 40) / 2 -- Two columns: DPS and HPS
     local startY = -20
-    
+
     -- DPS column
     for i = 1, MAX_SEGMENTS do
         local segment = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         segment:SetSize(segmentWidth - 10, SEGMENT_HEIGHT)
         segment:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, startY - (i - 1) * SEGMENT_HEIGHT)
         segment:SetJustifyH("LEFT")
-        segment:SetText("") -- Start empty
+        segment:SetText("")               -- Start empty
         segment:SetTextColor(1, 0.8, 0.8) -- Light red for DPS
-        
+
         meterSegments[i] = {
             dps = segment,
             level = i / MAX_SEGMENTS -- Normalized level (0-1)
         }
     end
-    
+
     -- DPS-only meter (no HPS column)
 end
 
@@ -718,43 +712,49 @@ function MyDPSMeterWindow:CreateInfoDisplay(parent)
     -- Create custom font object for main DPS value
     local customFont = CreateFont("MyDPSMeterFont")
     customFont:SetFont("Interface\\AddOns\\myui2\\assets\\SCP-SB.ttf", 28, "OUTLINE")
-    
+
     -- Main DPS value (large, custom font, left side)
     local dpsLabel = parent:CreateFontString(nil, "OVERLAY")
     dpsLabel:SetFontObject(customFont)
     dpsLabel:SetPoint("LEFT", parent, "LEFT", 10, 5)
     dpsLabel:SetTextColor(1, 1, 1) -- Pure white
     dpsLabel:SetText("0")
-    
-    -- "DPS" label (right side of main value, red)
+
+    -- "DPS" label (top right corner)
     local dpsText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    dpsText:SetPoint("RIGHT", parent, "RIGHT", -10, 15)
+    dpsText:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -15)
     dpsText:SetTextColor(1, 0.4, 0.4) -- Red
     dpsText:SetText("DPS")
-    
-    -- Peak DPS (smaller, bottom left)
+
+    -- Pet DPS line (smaller, below main DPS)
+    local petLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    petLabel:SetPoint("LEFT", parent, "LEFT", 10, -15)
+    petLabel:SetTextColor(0.9, 0.9, 0.6) -- Light yellow for pet
+    petLabel:SetText("0 Pet")
+
+    -- Peak DPS (smaller, right side of main number)
     local peakDPSLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    peakDPSLabel:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 10, 8)
+    peakDPSLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 5)
     peakDPSLabel:SetTextColor(0.8, 0.8, 0.8)
-    peakDPSLabel:SetText("0 peak")
-    
-    -- Scale info (clickable, bottom left after peak)
+    peakDPSLabel:SetText("peak")
+
+    -- Scale info (clickable, bottom left)
     local scaleButton = CreateFrame("Button", nil, parent)
     scaleButton:SetSize(100, 20)
-    scaleButton:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 10, 22)
-    
+    scaleButton:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 10, 8)
+
     local scaleLabel = scaleButton:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     scaleLabel:SetAllPoints(scaleButton)
     scaleLabel:SetJustifyH("LEFT")
     scaleLabel:SetTextColor(0.4, 0.8, 0.8) -- Cyan
     -- Initial text will be updated by UpdateMeterDisplay
     scaleLabel:SetText("...")
-    
+
     -- Toggle between auto/manual on click
     scaleButton:SetScript("OnClick", function()
         self:ToggleAutoScale()
     end)
-    
+
     -- Hover effect
     scaleButton:SetScript("OnEnter", function()
         scaleLabel:SetTextColor(0.6, 1, 1)
@@ -762,22 +762,22 @@ function MyDPSMeterWindow:CreateInfoDisplay(parent)
     scaleButton:SetScript("OnLeave", function()
         scaleLabel:SetTextColor(0.4, 0.8, 0.8)
     end)
-    
+
     -- Method label (clickable, bottom right)
     local methodButton = CreateFrame("Button", nil, parent)
     methodButton:SetSize(60, 20)
     methodButton:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -10, 8)
-    
+
     local methodLabel = methodButton:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     methodLabel:SetAllPoints(methodButton)
     methodLabel:SetTextColor(0.7, 0.7, 0.7)
     methodLabel:SetText("Rolling")
-    
+
     -- Method cycling on click
     methodButton:SetScript("OnClick", function()
         self:CycleMethod()
     end)
-    
+
     -- Hover effect
     methodButton:SetScript("OnEnter", function()
         methodLabel:SetTextColor(1, 1, 1)
@@ -789,10 +789,11 @@ function MyDPSMeterWindow:CreateInfoDisplay(parent)
             methodLabel:SetTextColor(0.7, 0.7, 0.7)
         end
     end)
-    
+
     -- Store references
     meterWindow.dpsLabel = dpsLabel
     meterWindow.dpsText = dpsText
+    meterWindow.petLabel = petLabel
     meterWindow.peakDPSLabel = peakDPSLabel
     meterWindow.methodLabel = methodLabel
     meterWindow.methodButton = methodButton
@@ -804,7 +805,7 @@ function MyDPSMeterWindow:CreateControlButtons()
     local buttonFrame = CreateFrame("Frame", nil, meterWindow)
     buttonFrame:SetSize(WINDOW_WIDTH - 30, 30)
     buttonFrame:SetPoint("BOTTOM", meterWindow, "BOTTOM", 0, 10)
-    
+
     -- Pause/Resume button
     local pauseButton = CreateFrame("Button", nil, buttonFrame, "GameMenuButtonTemplate")
     pauseButton:SetSize(60, 22)
@@ -813,7 +814,7 @@ function MyDPSMeterWindow:CreateControlButtons()
     pauseButton:SetScript("OnClick", function()
         MyDPSMeterWindow:TogglePause()
     end)
-    
+
     -- Reset button
     local resetButton = CreateFrame("Button", nil, buttonFrame, "GameMenuButtonTemplate")
     resetButton:SetSize(60, 22)
@@ -822,20 +823,20 @@ function MyDPSMeterWindow:CreateControlButtons()
     resetButton:SetScript("OnClick", function()
         MyDPSMeterWindow:ResetMeter()
     end)
-    
+
     -- Method dropdown
     local methodDropdown = CreateFrame("Frame", nil, buttonFrame, "UIDropDownMenuTemplate")
     methodDropdown:SetPoint("RIGHT", buttonFrame, "RIGHT", -10, 0)
     UIDropDownMenu_SetWidth(methodDropdown, 80)
     UIDropDownMenu_SetText(methodDropdown, "Rolling")
-    
+
     UIDropDownMenu_Initialize(methodDropdown, function(self, level)
         local methods = {
-            {id = CALCULATION_METHODS.ROLLING, name = "Rolling"},
-            {id = CALCULATION_METHODS.FINAL, name = "Final"},
-            {id = CALCULATION_METHODS.HYBRID, name = "Hybrid"}
+            { id = CALCULATION_METHODS.ROLLING, name = "Rolling" },
+            { id = CALCULATION_METHODS.FINAL,   name = "Final" },
+            { id = CALCULATION_METHODS.HYBRID,  name = "Hybrid" }
         }
-        
+
         for _, method in ipairs(methods) do
             local info = UIDropDownMenu_CreateInfo()
             info.text = method.name
@@ -849,7 +850,7 @@ function MyDPSMeterWindow:CreateControlButtons()
             UIDropDownMenu_AddButton(info, level)
         end
     end)
-    
+
     -- Store references
     meterWindow.pauseButton = pauseButton
     meterWindow.resetButton = resetButton
@@ -865,7 +866,7 @@ function MyDPSMeterWindow:UpdateMeterDisplay()
     if not meterWindow or not meterWindow:IsVisible() then
         return
     end
-    
+
     -- Update DPS value (hide units when zero)
     if meterState.currentDPS < 1 then
         meterWindow.dpsLabel:SetText("0")
@@ -876,7 +877,18 @@ function MyDPSMeterWindow:UpdateMeterDisplay()
     else
         meterWindow.dpsLabel:SetText(string.format("%.1fM", meterState.currentDPS / 1000000))
     end
-    
+
+    -- Update pet DPS
+    if meterState.currentPetDPS < 1 then
+        meterWindow.petLabel:SetText("0 Pet")
+    elseif meterState.currentPetDPS < 1000 then
+        meterWindow.petLabel:SetText(string.format("%.0f Pet", meterState.currentPetDPS))
+    elseif meterState.currentPetDPS < 1000000 then
+        meterWindow.petLabel:SetText(string.format("%.1fK Pet", meterState.currentPetDPS / 1000))
+    else
+        meterWindow.petLabel:SetText(string.format("%.1fM Pet", meterState.currentPetDPS / 1000000))
+    end
+
     -- Update peak
     if meterState.peakDPS < 1000 then
         meterWindow.peakDPSLabel:SetText(string.format("%.0f peak", meterState.peakDPS))
@@ -885,7 +897,7 @@ function MyDPSMeterWindow:UpdateMeterDisplay()
     else
         meterWindow.peakDPSLabel:SetText(string.format("%.1fM peak", meterState.peakDPS / 1000000))
     end
-    
+
     -- Update scale with auto/manual indicator
     local scaleText = ""
     if meterState.scale < 1000000 then
@@ -893,28 +905,28 @@ function MyDPSMeterWindow:UpdateMeterDisplay()
     else
         scaleText = string.format("%.1fM", meterState.scale / 1000000)
     end
-    
+
     if meterState.useAutoScale then
         meterWindow.scaleLabel:SetText(scaleText .. " (auto)")
     else
         meterWindow.scaleLabel:SetText(scaleText .. " (manual)")
     end
-    
+
     -- Combat indicator: change method text color when in combat
     if meterState.inCombat then
         meterWindow.methodLabel:SetTextColor(1, 0.6, 0.6) -- Reddish when in combat
     else
-        meterWindow.methodLabel:SetTextColor(1, 1, 0.6) -- Yellow when out of combat
+        meterWindow.methodLabel:SetTextColor(1, 1, 0.6)   -- Yellow when out of combat
     end
-    
+
     -- Update method display
     local methodNames = {
         [CALCULATION_METHODS.ROLLING] = "Rolling",
-        [CALCULATION_METHODS.FINAL] = "Final", 
+        [CALCULATION_METHODS.FINAL] = "Final",
         [CALCULATION_METHODS.HYBRID] = "Hybrid"
     }
     meterWindow.methodLabel:SetText(methodNames[currentCalculationMethod] or "Unknown")
-    
+
     -- Update progress bar
     self:UpdateProgressBar()
 end
@@ -922,22 +934,22 @@ end
 -- Update the progress bar
 function MyDPSMeterWindow:UpdateProgressBar()
     if not meterWindow.progressSegments then return end
-    
+
     local fillRatio = 0
     if meterState.scale > 0 then
         fillRatio = math.min(1, meterState.currentDPS / meterState.scale)
     end
-    
+
     local segmentCount = #meterWindow.progressSegments
     local filledSegments = math.floor(fillRatio * segmentCount)
-    
+
     for i = 1, segmentCount do
         local segment = meterWindow.progressSegments[i]
         if i <= filledSegments then
             -- Color gradient: green -> yellow -> orange -> red
             local segmentRatio = i / segmentCount
             local r, g, b = 0, 1, 0 -- Start green
-            
+
             if segmentRatio > 0.75 then
                 -- Red zone
                 r, g, b = 1, 0.2, 0.2
@@ -948,7 +960,7 @@ function MyDPSMeterWindow:UpdateProgressBar()
                 -- Yellow zone
                 r, g, b = 1, 1, 0.2
             end
-            
+
             segment:SetVertexColor(r, g, b, 1)
         else
             -- Empty segment
@@ -966,7 +978,7 @@ function MyDPSMeterWindow:CycleMethod()
     else
         currentCalculationMethod = CALCULATION_METHODS.ROLLING
     end
-    
+
     -- Recalculate with new method if we have combat data
     if meterState.totalDamage > 0 and meterState.combatStartTime > 0 then
         -- If in combat, trigger immediate recalculation
@@ -990,12 +1002,12 @@ function MyDPSMeterWindow:CycleMethod()
             end
         end
     end
-    
+
     -- Update display immediately
     if meterWindow and meterWindow:IsVisible() then
         self:UpdateMeterDisplay()
     end
-    
+
     addon:Debug("DPS meter: Method cycled to %s", currentCalculationMethod)
 end
 
@@ -1009,19 +1021,19 @@ function MyDPSMeterWindow:Show()
         -- Set up message queue subscriptions after window creation
         self:SetupSubscriptions()
     end
-    
+
     meterWindow:Show()
     isVisible = true
-    
+
     -- Start listening for combat events (this is now a no-op since we use message queue)
     self:RegisterForCombatEvents()
-    
+
     -- Update smart scale from combat history when showing the window
     self:UpdateSmartScale()
-    
+
     -- Initial display update
     self:UpdateMeterDisplay()
-    
+
     addon:Debug("DPS meter window shown")
 end
 
@@ -1029,18 +1041,18 @@ function MyDPSMeterWindow:Hide()
     if meterWindow then
         meterWindow:Hide()
     end
-    
+
     isVisible = false
-    
+
     -- Stop listening for combat events
     self:UnregisterFromCombatEvents()
-    
+
     -- Clean up any pending timers
     if meterState.refreshTimer then
         meterState.refreshTimer:Cancel()
         meterState.refreshTimer = nil
     end
-    
+
     addon:Debug("Combat meter window hidden")
 end
 
@@ -1064,14 +1076,14 @@ function MyDPSMeterWindow:SetCalculationMethod(method)
     if CALCULATION_METHODS[method:upper()] then
         currentCalculationMethod = CALCULATION_METHODS[method:upper()]
         addon:Debug("Combat meter: Calculation method set to %s", method)
-        
+
         if meterWindow and meterWindow:IsVisible() then
             self:UpdateMeterDisplay()
         end
-        
+
         return true
     end
-    
+
     return false
 end
 
@@ -1081,11 +1093,11 @@ end
 
 function MyDPSMeterWindow:TogglePause()
     meterState.isPaused = not meterState.isPaused
-    
+
     if meterWindow and meterWindow.pauseButton then
         meterWindow.pauseButton:SetText(meterState.isPaused and "Resume" or "Pause")
     end
-    
+
     addon:Debug("Combat meter: %s", meterState.isPaused and "Paused" or "Resumed")
 end
 
@@ -1093,35 +1105,35 @@ function MyDPSMeterWindow:ResetMeter()
     meterState.currentDPS = 0
     meterState.peakDPS = 0
     meterState.totalDamage = 0
-    
+
     -- Clear ring buffer
     eventRingBuffer.size = 0
     eventRingBuffer.writeIndex = 1
-    
+
     if meterWindow and meterWindow:IsVisible() then
         self:UpdateMeterDisplay()
     end
-    
+
     addon:Debug("Combat meter: Reset")
 end
 
 function MyDPSMeterWindow:SetScale(newScale)
     -- Setting manual scale
     meterState.manualScale = math.max(100, newScale) -- Minimum scale of 100
-    meterState.useAutoScale = false -- Switch to manual mode
+    meterState.useAutoScale = false                  -- Switch to manual mode
     meterState.scale = meterState.manualScale
-    
+
     if meterWindow and meterWindow:IsVisible() then
         self:UpdateMeterDisplay()
     end
-    
+
     addon:Debug("DPS meter: Manual scale set to %.0f", meterState.scale)
 end
 
 -- Toggle between auto and manual scale
 function MyDPSMeterWindow:ToggleAutoScale()
     meterState.useAutoScale = not meterState.useAutoScale
-    
+
     if meterState.useAutoScale then
         meterState.scale = meterState.autoScale
         addon:Debug("DPS meter: Switched to auto scale (%.0f)", meterState.scale)
@@ -1129,7 +1141,7 @@ function MyDPSMeterWindow:ToggleAutoScale()
         meterState.scale = meterState.manualScale
         addon:Debug("DPS meter: Switched to manual scale (%.0f)", meterState.scale)
     end
-    
+
     if meterWindow and meterWindow:IsVisible() then
         self:UpdateMeterDisplay()
     end
@@ -1141,25 +1153,25 @@ end
 
 -- Sync scale from MyCombatMeterScaler
 function MyDPSMeterWindow:UpdateSmartScale()
-    if not addon.MyCombatMeterScaler then 
+    if not addon.MyCombatMeterScaler then
         addon:Warn("DPS meter: MyCombatMeterScaler not available for scale sync")
-        return 
+        return
     end
-    
+
     -- Get current scale from the scaler (it handles all the analysis)
     local dpsScale, _ = addon.MyCombatMeterScaler:GetCurrentScales()
-    
+
     if dpsScale and dpsScale > 0 then
         local oldScale = meterState.autoScale
         meterState.autoScale = dpsScale
-        
+
         if meterState.useAutoScale then
             meterState.scale = dpsScale
         end
-        
-        addon:Debug("DPS meter: Scale synced from MyCombatMeterScaler - Old: %.0f, New: %.0f", 
+
+        addon:Debug("DPS meter: Scale synced from MyCombatMeterScaler - Old: %.0f, New: %.0f",
             oldScale, dpsScale)
-        
+
         if meterWindow and meterWindow:IsVisible() then
             self:UpdateMeterDisplay()
         end
@@ -1171,7 +1183,7 @@ end
 -- Set auto scaling mode
 function MyDPSMeterWindow:SetAutoScale(enabled)
     meterState.useAutoScale = enabled
-    
+
     if enabled then
         -- Switch to auto scale and sync from MyCombatMeterScaler
         self:UpdateSmartScale()
@@ -1181,7 +1193,7 @@ function MyDPSMeterWindow:SetAutoScale(enabled)
         meterState.scale = meterState.manualScale
         addon:Info("DPS meter: Auto-scaling disabled (manual scale: %.0f)", meterState.manualScale)
     end
-    
+
     if meterWindow and meterWindow:IsVisible() then
         self:UpdateMeterDisplay()
     end
@@ -1193,13 +1205,13 @@ function MyDPSMeterWindow:SetManualScale(scale)
     if addon.MyCombatMeterScaler then
         addon.MyCombatMeterScaler:SetManualScale(scale, scale) -- Same scale for DPS and HPS
     end
-    
+
     meterState.manualScale = scale
     meterState.useAutoScale = false
     meterState.scale = scale
-    
+
     addon:Info("DPS meter: Manual scale set to %.0f (also set in MyCombatMeterScaler)", scale)
-    
+
     if meterWindow and meterWindow:IsVisible() then
         self:UpdateMeterDisplay()
     end
@@ -1234,19 +1246,19 @@ function MyDPSMeterWindow:GetMeterStats()
         currentHPS = meterState.currentHPS,
         peakDPS = meterState.peakDPS,
         peakHPS = meterState.peakHPS,
-        
+
         -- Configuration
         calculationMethod = currentCalculationMethod,
         scale = meterState.scale,
         segmentCount = MAX_SEGMENTS,
-        
+
         -- Performance
         throttleMode = performanceState.throttleMode,
         refreshInterval = GetRefreshInterval(),
         bufferSize = eventRingBuffer.size,
         bufferCapacity = eventRingBuffer.capacity,
         pendingCalculation = performanceState.pendingCalculation,
-        
+
         -- Combat tracking
         combatDuration = meterState.inCombat and (GetTime() - meterState.combatStartTime) or 0,
         totalDamage = meterState.totalDamage,
@@ -1257,7 +1269,7 @@ end
 -- Get window position for saving
 function MyDPSMeterWindow:GetPosition()
     if not meterWindow then return nil end
-    
+
     local point, relativeTo, relativePoint, xOfs, yOfs = meterWindow:GetPoint()
     return {
         point = point,
@@ -1270,7 +1282,7 @@ end
 -- Restore window position
 function MyDPSMeterWindow:RestorePosition(position)
     if not meterWindow or not position then return end
-    
+
     meterWindow:ClearAllPoints()
     meterWindow:SetPoint(
         position.point or "CENTER",

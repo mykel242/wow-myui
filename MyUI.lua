@@ -16,8 +16,8 @@ end
 addon.frame = CreateFrame("Frame")
 
 -- Development version tracking
-addon.VERSION = "18afb0a"
-addon.BUILD_DATE = "2025-06-22-10:12"
+addon.VERSION = "56b673a"
+addon.BUILD_DATE = "2025-06-22-20:09"
 
 -- Legacy debug flags removed - now using MyLogger system
 
@@ -478,11 +478,6 @@ function addon:OnInitialize()
         self.GUIDResolver:Initialize()
     end
     
-    -- 2.7. Initialize MyPetOwnershipTracker (Phase 2 pet detection)
-    if self.MyPetOwnershipTracker then
-        self.MyPetOwnershipTracker:Initialize()
-        self:Debug("MyPetOwnershipTracker initialized with multi-layer pet detection")
-    end
     
     -- 3. Initialize StorageManager (memory-efficient storage)
     if self.StorageManager then
@@ -598,10 +593,16 @@ function addon:OnInitialize()
         self:Debug("MyHPSMeterWindow initialized")
     end
     
+    if self.MyCombatEntityMapWindow then
+        self.MyCombatEntityMapWindow:Initialize()
+        self:Debug("MyCombatEntityMapWindow initialized")
+    end
+    
     -- Initialize simplified slash commands
     if self.SlashCommands then
         self.SlashCommands:Initialize()
     end
+    
 end
 
 function addon:OnEnable()

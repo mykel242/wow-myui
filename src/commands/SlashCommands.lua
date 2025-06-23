@@ -482,85 +482,69 @@ function SlashCommands:Initialize()
             else
                 addon:Error("StorageManager not loaded")
             end
-        elseif command == "petstats" then
-            if addon.MyPetOwnershipTracker then
-                local stats = addon.MyPetOwnershipTracker:GetStats()
-                local config = addon.MyPetOwnershipTracker:GetConfig()
+        elseif command == "petdebug" then
+            if addon.MySimpleCombatDetector and addon.MySimpleCombatDetector.GetActivePets then
+                local pets = addon.MySimpleCombatDetector:GetActivePets()
+                local petCount = 0
                 
-                addon:Info("=== Pet Ownership Tracker Stats ===")
-                addon:Info("Cache Performance:")
-                addon:Info("  Cache Size: %d entries", stats.cacheSize)
-                addon:Info("  Guardian Count: %d", stats.guardianCount)
-                addon:Info("  Hit Rate: %.1f%% (%d/%d)", stats.hitRate * 100, stats.hits, stats.totalLookups)
-                addon:Info("  Unit Scans: %d", stats.unitScans)
-                addon:Info("  Flag Detections: %d", stats.flagDetections)
-                addon:Info("")
-                addon:Info("Configuration:")
-                addon:Info("  Include Pets: %s", config.includePets and "Yes" or "No")
-                addon:Info("  Include Guardians: %s", config.includeGuardians and "Yes" or "No")
-                addon:Info("  Include Group Pets: %s", config.includeGroupPets and "Yes" or "No")
-                addon:Info("  Max Guardians/Owner: %d", config.maxGuardiansPerOwner)
-                addon:Info("  Unit Scan Interval: %.1fs", config.unitScanInterval)
-            else
-                addon:Error("MyPetOwnershipTracker not loaded")
-            end
-        elseif command == "petcheck" then
-            -- Immediate pet detection check
-            local playerName = UnitName("player")
-            addon:Info("=== Current Pet Status ===")
-            addon:Info("Player: %s", playerName)
-            
-            -- Check player's own pet
-            local petGUID = UnitGUID("pet")
-            if petGUID then
-                local petName = UnitName("pet")
-                addon:Info("Player Pet: %s (%s)", petName or "Unknown", petGUID)
-            else
-                addon:Info("Player Pet: None active")
-            end
-            
-            -- Check group pets
-            local groupPets = 0
-            local numGroupMembers = GetNumGroupMembers()
-            if numGroupMembers > 0 then
-                for i = 1, numGroupMembers do
-                    local unitPrefix = IsInRaid() and "raid" or "party"
-                    local petUnit = unitPrefix.."pet"..i
-                    local ownerUnit = unitPrefix..i
+                addon:Info("=== Active Pet Debug ===")
+                for guid, petInfo in pairs(pets) do
+                    petCount = petCount + 1
+                    local timeSince = GetTime() - petInfo.detectedAt
+                    addon:Info("Pet %d: %s (Owner: %s, Age: %.1fs)", 
+                        petCount, petInfo.name, petInfo.owner, timeSince)
+                    addon:Info("  GUID: %s", guid)
+                end
+                
+                if petCount == 0 then
+                    addon:Info("No active pets detected")
                     
-                    if UnitExists(petUnit) then
-                        local petName = UnitName(petUnit)
-                        local petGUID = UnitGUID(petUnit)
-                        local ownerName = UnitName(ownerUnit)
-                        addon:Info("Group Pet %d: %s (%s) owned by %s", 
-                            i, petName or "Unknown", petGUID or "nil", ownerName or "Unknown")
-                        groupPets = groupPets + 1
+                    -- Also check current pet status for debugging
+                    local currentPetGUID = UnitGUID("pet")
+                    if currentPetGUID then
+                        local petName = UnitName("pet") or "Unknown"
+                        addon:Info("Current pet exists but not tracked: %s (%s)", petName, currentPetGUID)
+                    else
+                        addon:Info("No current pet active")
                     end
                 end
-            end
-            
-            if groupPets == 0 then
-                addon:Info("Group Pets: None found")
-            end
-            
-            addon:Info("Total Active Pets: %d", (petGUID and 1 or 0) + groupPets)
-        elseif command:match("^pettest%s+(.+)$") then
-            -- Test pet detection on a specific name
-            local testName = command:match("^pettest%s+(.+)$")
-            if addon.MyPetOwnershipTracker then
-                addon:Info("=== Pet Detection Test ===")
-                addon:Info("Testing name: '%s'", testName)
-                
-                -- Test the CouldBePlayerPet function directly
-                local couldBePet = addon.MyPetOwnershipTracker:CouldBePlayerPet(testName, "test-guid")
-                addon:Info("CouldBePlayerPet result: %s", tostring(couldBePet))
-                
-                -- Test full detection
-                local petName, owner, ownerGUID = addon.MyPetOwnershipTracker:DetectPetOwnership(testName, "test-guid", 0x00000511)
-                addon:Info("Full detection result: petName='%s', owner='%s', ownerGUID='%s'", 
-                    tostring(petName), tostring(owner), tostring(ownerGUID))
             else
-                addon:Error("MyPetOwnershipTracker not loaded")
+                addon:Error("Pet detection not available")
+            end
+        elseif command == "petscan" then
+            -- Manual pet scan for testing
+            if addon.MySimpleCombatDetector and addon.MySimpleCombatDetector.ForcePetScan then
+                addon:Info("=== Manual Pet Scan ===")
+                
+                -- Check current pet status
+                local currentPetGUID = UnitGUID("pet")
+                local currentPetName = UnitName("pet")
+                addon:Info("Current UnitGUID('pet'): %s", tostring(currentPetGUID))
+                addon:Info("Current UnitName('pet'): %s", tostring(currentPetName))
+                
+                -- Force a pet scan
+                local foundNew = addon.MySimpleCombatDetector:ForcePetScan()
+                addon:Info("Scan completed, found new pets: %s", tostring(foundNew))
+                
+                -- Show current tracked pets
+                local pets = addon.MySimpleCombatDetector:GetActivePets()
+                local petCount = 0
+                for guid, petInfo in pairs(pets) do
+                    petCount = petCount + 1
+                    addon:Info("Tracked Pet %d: %s (%s)", petCount, petInfo.name, guid)
+                end
+                
+                if petCount == 0 then
+                    addon:Info("No pets are currently tracked")
+                end
+            else
+                addon:Error("Pet detection not available")
+            end
+        elseif command == "entitymap" then
+            if addon.MyCombatEntityMapWindow then
+                addon.MyCombatEntityMapWindow:Toggle()
+            else
+                print("Combat entity map not loaded")
             end
         else
             print("MyUI Essential Commands:")
@@ -572,9 +556,9 @@ function SlashCommands:Initialize()
             print("  /myui session <hash> - Show session details")
             print("  /myui memory - Show memory usage")
             print("  /myui storagestats - Show storage analysis")
-            print("  /myui petstats - Show pet ownership tracker stats")
-            print("  /myui petcheck - Check current active pets")
-            print("  /myui pettest <name> - Test pet detection on specific name")
+            print("  /myui petdebug - Show currently detected pets")
+            print("  /myui petscan - Manual pet scan for testing")
+            print("  /myui entitymap - Toggle combat entity map window")
             print("  /myui version - Show addon version")
             print("")
             print("Combat Meters:")

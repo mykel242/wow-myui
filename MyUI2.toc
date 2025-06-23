@@ -37,8 +37,6 @@ src/core/MyCombatMeterCalculator.lua
 # Step 9: MyCombatMeterScaler
 src/core/MyCombatMeterScaler.lua
 
-# Step 9.5: MyPetOwnershipTracker (Phase 2 pet detection)
-src/core/MyPetOwnershipTracker.lua
 
 # Step 10: MySimpleCombatDetector
 src/core/MySimpleCombatDetector.lua
@@ -55,14 +53,18 @@ src/core/MySimpleLogWindow.lua
 # Step 14: SessionBrowser
 src/ui/SessionBrowser.lua
 
-# Step 15: ExportDialog
+# Step 15: MyCombatEntityMapWindow
+src/ui/MyCombatEntityMapWindow.lua
+
+# Step 16: ExportDialog
 src/ui/ExportDialog.lua
 
-# Step 16: Main entry point
+# Step 17: Main entry point
 MyUI.lua
 
-# Step 17: SlashCommands (must load after MyUI)
+# Step 18: SlashCommands (must load after MyUI)
 src/commands/SlashCommands.lua
+
 
 # =============================================================================
 # FULLY LOADED - ALL COMPONENTS ACTIVE
