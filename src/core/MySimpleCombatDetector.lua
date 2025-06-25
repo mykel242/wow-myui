@@ -573,7 +573,7 @@ function MySimpleCombatDetector:FinalizeCurrentSegment()
     currentSegment.isActive = false
     
     -- Only store segments that meet minimum criteria
-    if currentSegment.eventCount >= CONFIG.SEGMENT_MIN_EVENTS then
+    if currentSegment.eventCount and currentSegment.eventCount >= CONFIG.SEGMENT_MIN_EVENTS then
         -- Add segment to session's segment list
         if not currentSessionData.segments then
             currentSessionData.segments = addon.StorageManager and addon.StorageManager:GetTable() or {}
@@ -591,7 +591,7 @@ function MySimpleCombatDetector:FinalizeCurrentSegment()
             addon.StorageManager:ReleaseTable(currentSegment)
         end
         debugPrint("Discarded segment %s: insufficient events (%d < %d)", 
-            currentSegment.id, currentSegment.eventCount, CONFIG.SEGMENT_MIN_EVENTS)
+            currentSegment.id, currentSegment.eventCount or 0, CONFIG.SEGMENT_MIN_EVENTS)
     end
     
     lastSegmentTime = currentTime
@@ -607,7 +607,7 @@ function MySimpleCombatDetector:ShouldCreateNewSegment()
     local currentTime = GetTime()
     
     -- Check event count limit
-    if currentSegment.eventCount >= CONFIG.SEGMENT_MAX_EVENTS then
+    if currentSegment.eventCount and currentSegment.eventCount >= CONFIG.SEGMENT_MAX_EVENTS then
         debugPrint("Segment event limit reached: %d >= %d", 
             currentSegment.eventCount, CONFIG.SEGMENT_MAX_EVENTS)
         return true
@@ -622,7 +622,7 @@ function MySimpleCombatDetector:ShouldCreateNewSegment()
     end
     
     -- Check activity gap (if there was a long pause in combat)
-    if lastActivityTime and currentSegment.eventCount > 0 then
+    if lastActivityTime and currentSegment.eventCount and currentSegment.eventCount > 0 then
         local timeSinceLastActivity = currentTime - lastActivityTime
         if timeSinceLastActivity >= CONFIG.SEGMENT_ACTIVITY_GAP then
             debugPrint("Activity gap detected: %.1fs >= %.1fs", 
@@ -941,7 +941,7 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     -- Add event to current segment (primary storage)
     if currentSegment then
         table.insert(currentSegment.events, eventData)
-        currentSegment.eventCount = currentSegment.eventCount + 1
+        currentSegment.eventCount = (currentSegment.eventCount or 0) + 1
         
         -- Removed: Even throttled segment counting caused spam during intense combat
     end
