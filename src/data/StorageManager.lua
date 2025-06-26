@@ -101,8 +101,20 @@ function StorageManager:GetTable(purpose)
             if count > 0 or mt then
                 poolStats.warnings = poolStats.warnings + 1
                 if addon.MyLogger then
-                    addon.MyLogger:Warn("Table pool warning: reused table has %d entries and %s metatable", 
-                        count, mt and "a" or "no")
+                    -- Log the table contents for debugging
+                    local contents = {}
+                    local i = 1
+                    for k, v in pairs(table) do
+                        if i <= 5 then  -- Only log first 5 entries
+                            contents[i] = string.format("%s=%s", tostring(k), tostring(v))
+                            i = i + 1
+                        else
+                            contents[i] = "...(more)"
+                            break
+                        end
+                    end
+                    addon.MyLogger:Warn("Table pool warning: reused table has %d entries and %s metatable. Contents: [%s]. Purpose: %s", 
+                        count, mt and "a" or "no", table.concat(contents, ", "), tostring(purpose))
                 end
                 -- Clear the table and metatable to prevent data corruption
                 setmetatable(table, nil)

@@ -553,6 +553,8 @@ function MySimpleCombatDetector:CreateNewSegment()
             tostring(currentSessionData.zone), 
             tostring(currentSessionData.player))
         errorPrint(sessionInfo)
+        -- Don't create segment if session ID is invalid
+        return nil
     end
     
     segmentCounter = segmentCounter + 1
@@ -560,7 +562,7 @@ function MySimpleCombatDetector:CreateNewSegment()
     
     -- Create segment using specialized factory method
     local segment = addon.StorageManager and addon.StorageManager:GetSegmentTable() or {}
-    segment.id = string.format("%s-seg%d", currentSessionData.id or "unknown", segmentCounter)
+    segment.id = string.format("%s-seg%d", currentSessionData.id, segmentCounter)
     segment.segmentIndex = segmentCounter
     segment.startTime = lastSegmentTime or combatStartTime
     segment.endTime = nil  -- Will be set when segment is finalized
@@ -957,6 +959,11 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     if self:ShouldCreateNewSegment() then
         self:FinalizeCurrentSegment()
         currentSegment = self:CreateNewSegment()
+        -- Check if segment creation failed
+        if not currentSegment then
+            errorPrint("Failed to create new segment, skipping event")
+            return
+        end
         -- Segment creation already logged in CreateNewSegment() function
     end
     
