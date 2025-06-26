@@ -91,7 +91,8 @@ end
 function MetadataCollector:GetPlayerSpecialization()
     local specIndex = GetSpecialization()
     if not specIndex then
-        local specInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+        -- Use regular table since this is returned to caller
+        local specInfo = {}
         specInfo.name = "None"
         specInfo.role = "NONE"
         specInfo.id = 0
@@ -99,7 +100,8 @@ function MetadataCollector:GetPlayerSpecialization()
     end
     
     local id, name, description, icon, role = GetSpecializationInfo(specIndex)
-    local specInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Use regular table since this is returned to caller
+    local specInfo = {}
     specInfo.name = name
     specInfo.role = role
     specInfo.id = id
@@ -135,7 +137,8 @@ function MetadataCollector:GetInstanceInfo()
           dynamicDifficulty, isDynamic, instanceID, instanceGroupSize, 
           LfgDungeonID = GetInstanceInfo()
     
-    local instanceInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Use regular table since this is returned to caller
+    local instanceInfo = {}
     instanceInfo.name = name
     instanceInfo.type = instanceType
     instanceInfo.difficultyID = difficultyID
@@ -151,7 +154,8 @@ end
 function MetadataCollector:GetGroupComposition()
     local groupType = "solo"
     local size = 1
-    local members = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Use regular table since this is returned to caller
+    local members = {}
     
     if IsInRaid() then
         groupType = "raid"
@@ -182,7 +186,8 @@ function MetadataCollector:GetGroupComposition()
         table.insert(members, self:GetUnitInfo("player"))
     end
     
-    local groupInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Use regular table since this is returned to caller
+    local groupInfo = {}
     groupInfo.type = groupType
     groupInfo.size = size
     groupInfo.members = members
@@ -198,7 +203,8 @@ function MetadataCollector:GetUnitInfo(unit)
     local level = UnitLevel(unit)
     local role = UnitGroupRolesAssigned(unit)
     
-    local unitInfo = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Use regular table since this is returned to caller
+    local unitInfo = {}
     unitInfo.name = name
     unitInfo.class = class
     unitInfo.level = level
@@ -210,7 +216,8 @@ end
 
 -- Analyze role distribution in group
 function MetadataCollector:GetRoleDistribution(members)
-    local roles = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Use regular table since this is returned to caller
+    local roles = {}
     roles.TANK = 0
     roles.HEALER = 0
     roles.DAMAGER = 0

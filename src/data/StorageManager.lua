@@ -900,8 +900,8 @@ end
 
 -- Public API methods
 function StorageManager:GetAllSessions()
-    -- Return copy to prevent modification using table pool
-    local sessions = self:GetTable() or {}
+    -- Return copy to prevent modification - use regular table since returned to caller
+    local sessions = {}
     for i, session in ipairs(sessionStorage) do
         sessions[i] = session
     end
@@ -921,7 +921,8 @@ end
 
 function StorageManager:GetRecentSessions(count)
     count = count or 10
-    local recent = self:GetTable() or {}
+    -- Use regular table since this is returned to caller
+    local recent = {}
     local startIndex = math.max(1, #sessionStorage - count + 1)
     
     for i = startIndex, #sessionStorage do
@@ -1106,10 +1107,10 @@ function StorageManager:ReleaseSessionCopy(sessionCopy)
 end
 
 -- Release session list returned by GetAllSessions or GetRecentSessions
+-- NOTE: No longer needed since GetAllSessions/GetRecentSessions use regular tables
 function StorageManager:ReleaseSessionList(sessionList)
-    if sessionList then
-        self:ReleaseTable(sessionList)
-    end
+    -- This function is deprecated since GetAllSessions/GetRecentSessions 
+    -- now return regular tables that don't need to be released
 end
 
 function StorageManager:GetStatus()
