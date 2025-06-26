@@ -114,7 +114,7 @@ function StorageManager:GetTable(purpose)
                         end
                     end
                     addon.MyLogger:Warn("Table pool warning: reused table has %d entries and %s metatable. Contents: [%s]. Purpose: %s", 
-                        count, mt and "a" or "no", table.concat(contents, ", "), tostring(purpose))
+                        count, mt and "a" or "no", strjoin(", ", unpack(contents)), tostring(purpose))
                 end
                 -- Clear the table and metatable to prevent data corruption
                 setmetatable(table, nil)
