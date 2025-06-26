@@ -28,6 +28,10 @@ local poolStats = {
 -- Debug mode for table lineage tracking
 local DEBUG_TABLE_LINEAGE = false
 
+-- Leak tracking system
+local leakTracker = {}
+local leakCounter = 0
+
 -- Export debug state for slash commands
 function StorageManager:GetDebugTableLineage()
     return DEBUG_TABLE_LINEAGE
@@ -35,6 +39,29 @@ end
 
 function StorageManager:SetDebugTableLineage(enabled)
     DEBUG_TABLE_LINEAGE = enabled
+end
+
+-- Get current leaked tables for debugging
+function StorageManager:GetLeakedTables()
+    local leaks = {}
+    local now = GetTime()
+    
+    for leakId, info in pairs(leakTracker) do
+        -- Only report tables older than 10 seconds as potential leaks
+        if (now - info.created) > 10 then
+            table.insert(leaks, {
+                id = leakId,
+                purpose = info.purpose,
+                age = now - info.created,
+                stack = info.stack
+            })
+        end
+    end
+    
+    -- Sort by age (oldest first)
+    table.sort(leaks, function(a, b) return a.age > b.age end)
+    
+    return leaks, #leakTracker
 end
 
 -- Weak reference overflow pool for emergency situations
@@ -129,7 +156,7 @@ function StorageManager:GetTable(purpose)
         poolStats.created = poolStats.created + 1
     end
     
-    -- Track lineage in debug mode
+    -- Track lineage in debug mode or for leak detection
     if DEBUG_TABLE_LINEAGE and purpose then
         rawset(table, "_lineage", {
             created = GetTime(),
@@ -138,6 +165,17 @@ function StorageManager:GetTable(purpose)
             recycleCount = 0
         })
     end
+    
+    -- Always track for leak detection
+    leakCounter = leakCounter + 1
+    local leakId = leakCounter
+    leakTracker[leakId] = {
+        purpose = purpose or "unknown",
+        created = GetTime(),
+        stack = debugstack(2, 1, 0),
+        table = table
+    }
+    rawset(table, "_leakId", leakId)
     
     return table
 end
@@ -191,6 +229,13 @@ function StorageManager:ReleaseTable(table, seen, depth)
         lineage.recycled = GetTime()
         rawset(table, "_lineage", nil)  -- Remove before clearing
     end
+    
+    -- Remove from leak tracker when properly released
+    local leakId = rawget(table, "_leakId")
+    if leakId and leakTracker[leakId] then
+        leakTracker[leakId] = nil
+    end
+    rawset(table, "_leakId", nil)
     
     -- Clear metatable first
     setmetatable(table, nil)

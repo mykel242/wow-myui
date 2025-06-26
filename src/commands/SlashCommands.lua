@@ -608,6 +608,31 @@ function SlashCommands:Initialize()
             else
                 addon:Error("StorageManager not available")
             end
+        elseif command == "poolleaks" then
+            -- Show current table leaks
+            if addon.StorageManager then
+                local leaks, totalTracked = addon.StorageManager:GetLeakedTables()
+                addon:Info("=== Table Pool Leak Analysis ===")
+                addon:Info("Total tracked tables: %d", totalTracked)
+                addon:Info("Potential leaks (>10s old): %d", #leaks)
+                
+                if #leaks > 0 then
+                    addon:Info("Top 10 oldest leaks:")
+                    for i = 1, math.min(10, #leaks) do
+                        local leak = leaks[i]
+                        addon:Info("  %d. Age: %.1fs, Purpose: %s", i, leak.age, leak.purpose)
+                        -- Show first line of stack trace
+                        local firstLine = leak.stack:match("([^\n]*)")
+                        if firstLine then
+                            addon:Info("     Stack: %s", firstLine)
+                        end
+                    end
+                else
+                    addon:Info("No leaks detected! All tables properly released.")
+                end
+            else
+                addon:Error("StorageManager not available")
+            end
         else
             print("MyUI Essential Commands:")
             print("  /myui - Toggle main window")
@@ -644,6 +669,7 @@ function SlashCommands:Initialize()
             print("  /myui poolhealth - Run pool health check")
             print("  /myui poolflush - Emergency flush all pooled tables")
             print("  /myui pooldebug - Toggle table lineage debugging")
+            print("  /myui poolleaks - Show current table leaks")
         end
     end
 end
