@@ -20,7 +20,55 @@ local poolStats = {
     returned = 0,       -- Tables returned to pool
     currentPoolSize = 0, -- Current pool size
     maxPoolSize = 1000,  -- Doubled from 500 for extra safety during intensive combat
-    warnings = 0        -- Pool-related warnings
+    warnings = 0,       -- Pool-related warnings
+    corrupted = 0,      -- Corrupted tables rejected
+    healthChecks = 0    -- Pool health check count
+}
+
+-- Debug mode for table lineage tracking
+local DEBUG_TABLE_LINEAGE = false
+
+-- Leak tracking system
+local leakTracker = {}
+local leakCounter = 0
+
+-- Export debug state for slash commands
+function StorageManager:GetDebugTableLineage()
+    return DEBUG_TABLE_LINEAGE
+end
+
+function StorageManager:SetDebugTableLineage(enabled)
+    DEBUG_TABLE_LINEAGE = enabled
+end
+
+-- Get current leaked tables for debugging
+function StorageManager:GetLeakedTables()
+    local leaks = {}
+    local now = GetTime()
+    
+    for leakId, info in pairs(leakTracker) do
+        -- Only report tables older than 10 seconds as potential leaks
+        if (now - info.created) > 10 then
+            table.insert(leaks, {
+                id = leakId,
+                purpose = info.purpose,
+                age = now - info.created,
+                stack = info.stack
+            })
+        end
+    end
+    
+    -- Sort by age (oldest first)
+    table.sort(leaks, function(a, b) return a.age > b.age end)
+    
+    return leaks, #leakTracker
+end
+
+-- Weak reference overflow pool for emergency situations
+local overflowPool = setmetatable({}, {__mode = "v"})
+local overflowStats = {
+    created = 0,
+    collected = 0
 }
 
 -- Get current storage configuration (hardcoded defaults since SettingsWindow is disabled)
@@ -49,30 +97,57 @@ local STORAGE_KEY = "MyUI_CombatSessions"
 -- ============================================================================
 
 -- Get a table from the pool (reuse existing or create new)
-function StorageManager:GetTable()
+function StorageManager:GetTable(purpose)
     local table
     
     if #tablePool > 0 then
         -- Reuse existing table from pool
         table = tablePool[#tablePool]
-        tablePool[#tablePool] = nil
-        poolStats.currentPoolSize = poolStats.currentPoolSize - 1
-        poolStats.reused = poolStats.reused + 1
         
-        -- Sanity check - warn if table isn't empty (indicates improper cleanup)
-        local count = 0
-        for _ in pairs(table) do
-            count = count + 1
-        end
-        
-        if count > 0 then
+        -- Validate it's actually a table
+        if type(table) ~= "table" then
             poolStats.warnings = poolStats.warnings + 1
+            poolStats.corrupted = poolStats.corrupted + 1
             if addon.MyLogger then
-                addon.MyLogger:Warn("Table pool warning: reused table has %d entries (should be empty)", count)
+                addon.MyLogger:Warn("Table pool corruption: non-table found (%s)", type(table))
             end
-            -- Clear the table to prevent data corruption
-            for k in pairs(table) do
-                table[k] = nil
+            table = {}
+            poolStats.created = poolStats.created + 1
+        else
+            tablePool[#tablePool] = nil
+            poolStats.currentPoolSize = poolStats.currentPoolSize - 1
+            poolStats.reused = poolStats.reused + 1
+            
+            -- Sanity check - warn if table isn't empty or has metatable
+            local count = 0
+            for _ in pairs(table) do
+                count = count + 1
+            end
+            
+            local mt = getmetatable(table)
+            if count > 0 or mt then
+                poolStats.warnings = poolStats.warnings + 1
+                if addon.MyLogger then
+                    -- Log the table contents for debugging
+                    local contents = {}
+                    local i = 1
+                    for k, v in pairs(table) do
+                        if i <= 5 then  -- Only log first 5 entries
+                            contents[i] = string.format("%s=%s", tostring(k), tostring(v))
+                            i = i + 1
+                        else
+                            contents[i] = "...(more)"
+                            break
+                        end
+                    end
+                    addon.MyLogger:Warn("Table pool warning: reused table has %d entries and %s metatable. Contents: [%s]. Purpose: %s", 
+                        count, mt and "a" or "no", strjoin(", ", unpack(contents)), tostring(purpose))
+                end
+                -- Clear the table and metatable to prevent data corruption
+                setmetatable(table, nil)
+                for k in pairs(table) do
+                    table[k] = nil
+                end
             end
         end
     else
@@ -81,20 +156,95 @@ function StorageManager:GetTable()
         poolStats.created = poolStats.created + 1
     end
     
+    -- Track lineage in debug mode or for leak detection
+    if DEBUG_TABLE_LINEAGE and purpose then
+        rawset(table, "_lineage", {
+            created = GetTime(),
+            purpose = purpose,
+            stackTrace = debugstack(2, 1, 0),
+            recycleCount = 0
+        })
+    end
+    
+    -- Always track for leak detection
+    leakCounter = leakCounter + 1
+    local leakId = leakCounter
+    leakTracker[leakId] = {
+        purpose = purpose or "unknown",
+        created = GetTime(),
+        stack = debugstack(2, 1, 0),
+        table = table
+    }
+    rawset(table, "_leakId", leakId)
+    
     return table
 end
 
 -- Return a table to the pool for reuse
-function StorageManager:ReleaseTable(table)
-    if not table then
-        if addon.MyLogger then
-            addon.MyLogger:Warn("Attempted to release nil table to pool")
+function StorageManager:ReleaseTable(table, seen, depth)
+    -- Validate input
+    if type(table) ~= "table" then
+        if table ~= nil and addon.MyLogger then
+            addon.MyLogger:Warn("Non-table passed to ReleaseTable: %s", type(table))
         end
         return
     end
     
-    -- Clear all contents before returning to pool
-    for k in pairs(table) do
+    -- Track seen tables to prevent infinite recursion
+    seen = seen or {}
+    depth = depth or 0
+    
+    if seen[table] then
+        return  -- Already processed this table
+    end
+    seen[table] = true
+    
+    -- Prevent stack overflow with max recursion depth
+    if depth > 10 then
+        if addon.MyLogger then
+            addon.MyLogger:Warn("Max recursion depth reached in ReleaseTable")
+        end
+        return
+    end
+    
+    -- Check for signs of corruption
+    local success, err = pcall(function()
+        for k in pairs(table) do
+            -- This will error if table is corrupted
+        end
+    end)
+    
+    if not success then
+        poolStats.corrupted = poolStats.corrupted + 1
+        if addon.MyLogger then
+            addon.MyLogger:Warn("Corrupted table rejected from pool: %s", err)
+        end
+        return
+    end
+    
+    -- Update lineage if tracking
+    if DEBUG_TABLE_LINEAGE and rawget(table, "_lineage") then
+        local lineage = rawget(table, "_lineage")
+        lineage.recycleCount = (lineage.recycleCount or 0) + 1
+        lineage.recycled = GetTime()
+        rawset(table, "_lineage", nil)  -- Remove before clearing
+    end
+    
+    -- Remove from leak tracker when properly released
+    local leakId = rawget(table, "_leakId")
+    if leakId and leakTracker[leakId] then
+        leakTracker[leakId] = nil
+    end
+    rawset(table, "_leakId", nil)
+    
+    -- Clear metatable first
+    setmetatable(table, nil)
+    
+    -- Recursively release nested tables first
+    for k, v in pairs(table) do
+        if type(v) == "table" and v ~= table then  -- Avoid self-reference
+            self:ReleaseTable(v, seen, depth + 1)
+        end
         table[k] = nil
     end
     
@@ -104,8 +254,9 @@ function StorageManager:ReleaseTable(table)
         poolStats.currentPoolSize = poolStats.currentPoolSize + 1
         poolStats.returned = poolStats.returned + 1
     else
-        -- Pool is full, let this table be garbage collected
-        -- This prevents memory bloat while still providing pooling benefits
+        -- Pool is full, try overflow pool
+        overflowPool[#overflowPool + 1] = table
+        overflowStats.created = overflowStats.created + 1
     end
 end
 
@@ -118,7 +269,110 @@ function StorageManager:GetPoolStats()
         currentPoolSize = poolStats.currentPoolSize,
         maxPoolSize = poolStats.maxPoolSize,
         warnings = poolStats.warnings,
-        reuseRatio = (poolStats.created > 0) and (poolStats.reused / poolStats.created) or 0
+        corrupted = poolStats.corrupted,
+        healthChecks = poolStats.healthChecks,
+        reuseRatio = (poolStats.created > 0) and (poolStats.reused / poolStats.created) or 0,
+        overflow = {
+            created = overflowStats.created,
+            collected = overflowStats.collected
+        }
+    }
+end
+
+-- Validate pool health - remove corrupted tables
+function StorageManager:ValidatePool()
+    local corrupted = 0
+    local startSize = #tablePool
+    
+    poolStats.healthChecks = poolStats.healthChecks + 1
+    
+    -- Check each table in pool
+    for i = #tablePool, 1, -1 do
+        local t = tablePool[i]
+        local isCorrupted = false
+        
+        -- Check if still a valid table
+        if type(t) ~= "table" then
+            isCorrupted = true
+        else
+            -- Check if empty and has no metatable
+            local count = 0
+            local success, err = pcall(function()
+                for _ in pairs(t) do
+                    count = count + 1
+                    break
+                end
+            end)
+            
+            if not success or count > 0 or getmetatable(t) then
+                isCorrupted = true
+            end
+        end
+        
+        if isCorrupted then
+            table.remove(tablePool, i)
+            corrupted = corrupted + 1
+            poolStats.corrupted = poolStats.corrupted + 1
+        end
+    end
+    
+    poolStats.currentPoolSize = #tablePool
+    
+    if corrupted > 0 and addon.MyLogger then
+        addon.MyLogger:Info("Pool validation: removed %d corrupted tables (pool: %d -> %d)", 
+            corrupted, startSize, #tablePool)
+    end
+    
+    -- Check overflow pool collection
+    local overflowBefore = #overflowPool
+    local collected = 0
+    
+    -- Force a partial GC to clean up weak references
+    collectgarbage("step", 100)
+    
+    local overflowAfter = #overflowPool
+    if overflowAfter < overflowBefore then
+        collected = overflowBefore - overflowAfter
+        overflowStats.collected = overflowStats.collected + collected
+    end
+    
+    return {
+        corrupted = corrupted,
+        healthy = #tablePool,
+        overflowCollected = collected
+    }
+end
+
+-- Emergency pool flush - use only in critical situations
+function StorageManager:EmergencyPoolFlush()
+    if addon.MyLogger then
+        addon.MyLogger:Warn("EMERGENCY: Flushing table pool (size: %d)", #tablePool)
+    end
+    
+    -- Clear main pool
+    local flushedMain = #tablePool
+    for i = 1, #tablePool do
+        tablePool[i] = nil
+    end
+    poolStats.currentPoolSize = 0
+    
+    -- Clear overflow pool
+    local flushedOverflow = #overflowPool
+    for i = 1, #overflowPool do
+        overflowPool[i] = nil
+    end
+    
+    -- Force garbage collection
+    collectgarbage("collect")
+    
+    if addon.MyLogger then
+        addon.MyLogger:Info("Emergency flush complete: %d main + %d overflow tables cleared", 
+            flushedMain, flushedOverflow)
+    end
+    
+    return {
+        mainPoolFlushed = flushedMain,
+        overflowPoolFlushed = flushedOverflow
     }
 end
 
@@ -148,44 +402,44 @@ end
 
 -- Factory method for combat event tables
 function StorageManager:GetEventTable()
-    local t = self:GetTable()
-    -- Pre-initialize expected fields to prevent nil access errors
-    t.time = 0
-    t.subevent = nil
-    t.sourceGUID = nil
-    t.destGUID = nil
-    t.args = nil
+    local t = self:GetTable("event")
+    -- Pre-initialize expected fields using rawset to avoid metamethod issues
+    rawset(t, "time", 0)
+    rawset(t, "subevent", nil)
+    rawset(t, "sourceGUID", nil)
+    rawset(t, "destGUID", nil)
+    rawset(t, "args", nil)
     return t
 end
 
 -- Factory method for segment tables
 function StorageManager:GetSegmentTable()
-    local t = self:GetTable()
-    -- Pre-initialize all segment fields to prevent corruption
-    t.id = nil
-    t.segmentIndex = 0
-    t.startTime = 0
-    t.endTime = nil
-    t.events = nil  -- Will be set to a new table when needed
-    t.eventCount = 0
-    t.isActive = false
-    t.duration = 0
+    local t = self:GetTable("segment")
+    -- Pre-initialize all segment fields using rawset to prevent corruption
+    rawset(t, "id", nil)
+    rawset(t, "segmentIndex", 0)
+    rawset(t, "startTime", 0)
+    rawset(t, "endTime", nil)
+    rawset(t, "events", nil)  -- Will be set to a new table when needed
+    rawset(t, "eventCount", 0)
+    rawset(t, "isActive", false)
+    rawset(t, "duration", 0)
     return t
 end
 
 -- Factory method for session tables
 function StorageManager:GetSessionTable()
-    local t = self:GetTable()
-    -- Pre-initialize session fields
-    t.id = nil
-    t.hash = nil
-    t.startTime = 0
-    t.endTime = nil
-    t.duration = 0
-    t.eventCount = 0
-    t.events = nil
-    t.guidMap = nil
-    t.segments = nil
+    local t = self:GetTable("session")
+    -- Pre-initialize session fields using rawset
+    rawset(t, "id", nil)
+    rawset(t, "hash", nil)
+    rawset(t, "startTime", 0)
+    rawset(t, "endTime", nil)
+    rawset(t, "duration", 0)
+    rawset(t, "eventCount", 0)
+    rawset(t, "events", nil)
+    rawset(t, "guidMap", nil)
+    rawset(t, "segments", nil)
     return t
 end
 
@@ -267,6 +521,14 @@ function StorageManager:Initialize()
         self:PerformScheduledCleanup()
     end)
     
+    -- POOL HEALTH CHECK: Validate pool health every 5 minutes
+    self.poolHealthTimer = C_Timer.NewTicker(300, function() -- 5 minutes
+        local result = self:ValidatePool()
+        if result.corrupted > 0 then
+            addon:Debug("Pool health check: %d corrupted tables removed", result.corrupted)
+        end
+    end)
+    
     addon:Debug("StorageManager initialized - %d sessions loaded", #sessionStorage)
 end
 
@@ -280,14 +542,71 @@ function StorageManager:StoreCombatSession(sessionData)
     sessionData.storedAt = GetTime()
     sessionData.serverTime = GetServerTime()
     
-    -- Preserve GUID map by copying it (prevent table pool cleanup)
-    if sessionData.guidMap then
-        local guidMapCopy = {}
-        for guid, name in pairs(sessionData.guidMap) do
-            guidMapCopy[guid] = name
+    -- Create a safe copy of the session data to prevent holding pooled tables
+    local sessionCopy = {}
+    
+    -- Copy basic fields
+    for k, v in pairs(sessionData) do
+        if type(v) ~= "table" then
+            sessionCopy[k] = v
         end
-        sessionData.guidMap = guidMapCopy
     end
+    
+    -- Copy GUID map (prevent table pool cleanup)
+    if sessionData.guidMap then
+        sessionCopy.guidMap = {}
+        for guid, name in pairs(sessionData.guidMap) do
+            sessionCopy.guidMap[guid] = name
+        end
+    end
+    
+    -- Copy events array (prevent table pool cleanup)
+    if sessionData.events then
+        sessionCopy.events = {}
+        for i, event in ipairs(sessionData.events) do
+            if event then
+                local eventCopy = {}
+                for k, v in pairs(event) do
+                    eventCopy[k] = v
+                end
+                sessionCopy.events[i] = eventCopy
+            end
+        end
+    end
+    
+    -- Copy segments if they exist
+    if sessionData.segments then
+        sessionCopy.segments = {}
+        for i, segment in ipairs(sessionData.segments) do
+            if segment then
+                local segmentCopy = {}
+                for k, v in pairs(segment) do
+                    if k ~= "events" then
+                        segmentCopy[k] = v
+                    end
+                end
+                
+                -- Copy segment events
+                if segment.events then
+                    segmentCopy.events = {}
+                    for j, event in ipairs(segment.events) do
+                        if event then
+                            local eventCopy = {}
+                            for k, v in pairs(event) do
+                                eventCopy[k] = v
+                            end
+                            segmentCopy.events[j] = eventCopy
+                        end
+                    end
+                end
+                
+                sessionCopy.segments[i] = segmentCopy
+            end
+        end
+    end
+    
+    -- Use the copy instead of original
+    sessionData = sessionCopy
     
     -- Get context metadata if available
     if addon.MetadataCollector then
@@ -695,8 +1014,8 @@ end
 
 -- Public API methods
 function StorageManager:GetAllSessions()
-    -- Return copy to prevent modification using table pool
-    local sessions = self:GetTable() or {}
+    -- Return copy to prevent modification - use regular table since returned to caller
+    local sessions = {}
     for i, session in ipairs(sessionStorage) do
         sessions[i] = session
     end
@@ -716,7 +1035,8 @@ end
 
 function StorageManager:GetRecentSessions(count)
     count = count or 10
-    local recent = self:GetTable() or {}
+    -- Use regular table since this is returned to caller
+    local recent = {}
     local startIndex = math.max(1, #sessionStorage - count + 1)
     
     for i = startIndex, #sessionStorage do
@@ -901,10 +1221,10 @@ function StorageManager:ReleaseSessionCopy(sessionCopy)
 end
 
 -- Release session list returned by GetAllSessions or GetRecentSessions
+-- NOTE: No longer needed since GetAllSessions/GetRecentSessions use regular tables
 function StorageManager:ReleaseSessionList(sessionList)
-    if sessionList then
-        self:ReleaseTable(sessionList)
-    end
+    -- This function is deprecated since GetAllSessions/GetRecentSessions 
+    -- now return regular tables that don't need to be released
 end
 
 function StorageManager:GetStatus()
@@ -947,7 +1267,9 @@ function StorageManager:GetDebugSummary()
         "Table Pool Stats:\n" ..
         "  Pool Size: %d / %d\n" ..
         "  Created: %d, Reused: %d (%.1f%% reuse)\n" ..
-        "  Returned: %d, Warnings: %d",
+        "  Returned: %d, Warnings: %d, Corrupted: %d\n" ..
+        "  Health Checks: %d\n" ..
+        "  Overflow: %d created, %d collected",
         tostring(status.isInitialized),
         stats.sessionsStored,
         stats.maxSessions,
@@ -966,7 +1288,11 @@ function StorageManager:GetDebugSummary()
         poolStats.reused,
         (poolStats.reuseRatio * 100),
         poolStats.returned,
-        poolStats.warnings
+        poolStats.warnings,
+        poolStats.corrupted,
+        poolStats.healthChecks,
+        overflowStats.created,
+        overflowStats.collected
     )
 end
 

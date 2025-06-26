@@ -541,6 +541,19 @@ end
 -- Create a new segment for the current session
 function MySimpleCombatDetector:CreateNewSegment()
     if not currentSessionData then
+        errorPrint("CreateNewSegment called with no currentSessionData!")
+        return nil
+    end
+    
+    if not currentSessionData.id then
+        errorPrint("CreateNewSegment: currentSessionData.id is nil!")
+        -- Log the current session data for debugging
+        local sessionInfo = string.format("Session data: startTime=%s, zone=%s, player=%s", 
+            tostring(currentSessionData.startTime), 
+            tostring(currentSessionData.zone), 
+            tostring(currentSessionData.player))
+        errorPrint(sessionInfo)
+        -- Don't create segment if session ID is invalid
         return nil
     end
     
@@ -553,7 +566,7 @@ function MySimpleCombatDetector:CreateNewSegment()
     segment.segmentIndex = segmentCounter
     segment.startTime = lastSegmentTime or combatStartTime
     segment.endTime = nil  -- Will be set when segment is finalized
-    segment.events = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    segment.events = addon.StorageManager and addon.StorageManager:GetTable("segment-events") or {}
     segment.eventCount = 0  -- Already initialized to 0 by factory, but explicit for clarity
     segment.isActive = true
     
@@ -669,6 +682,12 @@ function MySimpleCombatDetector:StartCombat()
         return
     end
     
+    -- Safety: clear any leftover session data
+    if currentSessionData then
+        errorPrint("WARNING: currentSessionData exists at combat start - cleaning up!")
+        currentSessionData = nil
+    end
+    
     -- Refresh cache first to get current instance type
     self:RefreshPlayerCache()
     
@@ -690,6 +709,13 @@ function MySimpleCombatDetector:StartCombat()
     
     -- Generate simplified session ID (realm/character are implicit in WTF storage)
     sessionCounter = sessionCounter + 1
+    
+    -- Validate combatStartTime
+    if not combatStartTime or combatStartTime <= 0 then
+        errorPrint("Invalid combatStartTime: %s", tostring(combatStartTime))
+        combatStartTime = GetTime()
+    end
+    
     local timestamp = math.floor(combatStartTime * 1000) -- Convert to milliseconds for precision
     
     -- Create shorter, more readable session ID: timestamp-counter
@@ -703,6 +729,12 @@ function MySimpleCombatDetector:StartCombat()
     checksum = checksum % 1000 -- Keep it to 3 digits
     
     local sessionId = string.format("%s-%03d", baseId, checksum)
+    
+    -- Validate sessionId
+    if not sessionId or sessionId == "" then
+        errorPrint("Failed to generate sessionId!")
+        sessionId = string.format("fallback-%d-%d", GetTime(), sessionCounter)
+    end
     
     -- Generate 4-character alphanumeric hash for easy typing
     local sessionHash = self:GenerateSessionHash(sessionId)
@@ -719,15 +751,22 @@ function MySimpleCombatDetector:StartCombat()
     lastSegmentTime = combatStartTime
     currentSegment = nil
     
-    -- Create session data structure with GUID mapping using table pool
-    currentSessionData = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Create session data structure using specialized factory
+    currentSessionData = addon.StorageManager and addon.StorageManager:GetSessionTable() or {}
+    
+    -- Ensure sessionId is valid before assigning
+    if not sessionId then
+        errorPrint("CRITICAL: sessionId is nil in StartCombat!")
+        sessionId = string.format("emergency-%d", GetTime())
+    end
+    
     currentSessionData.id = sessionId
     currentSessionData.hash = sessionHash  -- Short 4-char hash for easy reference
     currentSessionData.startTime = combatStartTime
     currentSessionData.endTime = nil
     currentSessionData.eventCount = 0
-    currentSessionData.events = addon.StorageManager and addon.StorageManager:GetTable() or {}
-    currentSessionData.guidMap = addon.StorageManager and addon.StorageManager:GetTable() or {}  -- GUID -> name mapping for efficient storage
+    currentSessionData.events = addon.StorageManager and addon.StorageManager:GetTable("events") or {}
+    currentSessionData.guidMap = addon.StorageManager and addon.StorageManager:GetTable("guidmap") or {}  -- GUID -> name mapping for efficient storage
     currentSessionData.zone = GetZoneText() or "Unknown"
     currentSessionData.instance = GetInstanceInfo() or GetZoneText() or "Unknown"
     currentSessionData.player = playerName or "Unknown"
@@ -820,16 +859,20 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     end
     
     -- Add names to GUID map if not already present
-    if sourceGUID and sourceName and sourceName ~= "nil" then
-        if not currentSessionData.guidMap[sourceGUID] then
-            currentSessionData.guidMap[sourceGUID] = sourceName
+    if currentSessionData.guidMap then
+        if sourceGUID and sourceName and sourceName ~= "nil" then
+            if not currentSessionData.guidMap[sourceGUID] then
+                currentSessionData.guidMap[sourceGUID] = sourceName
+            end
         end
-    end
-    
-    if destGUID and destName and destName ~= "nil" then
-        if not currentSessionData.guidMap[destGUID] then
-            currentSessionData.guidMap[destGUID] = destName
+        
+        if destGUID and destName and destName ~= "nil" then
+            if not currentSessionData.guidMap[destGUID] then
+                currentSessionData.guidMap[destGUID] = destName
+            end
         end
+    else
+        errorPrint("currentSessionData.guidMap is nil in ProcessCombatEvent!")
     end
     
     -- Removed: Per-event debug logging caused massive spam
@@ -920,6 +963,11 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     if self:ShouldCreateNewSegment() then
         self:FinalizeCurrentSegment()
         currentSegment = self:CreateNewSegment()
+        -- Check if segment creation failed
+        if not currentSegment then
+            errorPrint("Failed to create new segment, skipping event")
+            return
+        end
         -- Segment creation already logged in CreateNewSegment() function
     end
     
@@ -947,8 +995,12 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     end
     
     -- Also add to main session events for backward compatibility during transition
-    table.insert(currentSessionData.events, eventData)
-    currentSessionData.eventCount = currentSessionData.eventCount + 1
+    if currentSessionData.events then
+        table.insert(currentSessionData.events, eventData)
+        currentSessionData.eventCount = currentSessionData.eventCount + 1
+    else
+        errorPrint("currentSessionData.events is nil when adding event!")
+    end
     
     -- Publish events to message queue for real-time components (like combat meter)
     -- Pass all parameters from the combat log event
@@ -1202,6 +1254,7 @@ function MySimpleCombatDetector:EndCombat()
        eventCount >= CONFIG.MIN_EVENTS and 
        activityRate >= CONFIG.MIN_ACTIVITY_RATE then
         
+        -- Store the session (StorageManager will create safe copies)
         self:StoreSession(currentSessionData)
         
         -- Trigger auto-scaling update with fresh session data
@@ -1224,13 +1277,15 @@ function MySimpleCombatDetector:EndCombat()
         infoPrint("Session stored: %s", currentSessionData.id)
     else
         debugPrint("Session discarded: insufficient activity (%s)", currentSessionData.id)
-        
-        -- Return pooled tables to pool for discarded sessions
-        self:CleanupSessionTables(currentSessionData)
     end
     
     -- Publish combat state change to message queue before resetting
     self:PublishCombatStateChange(false)
+    
+    -- Clean up pooled tables before resetting (for both stored and discarded sessions)
+    if currentSessionData then
+        self:CleanupSessionTables(currentSessionData)
+    end
     
     -- Reset combat state including segmentation
     inCombat = false

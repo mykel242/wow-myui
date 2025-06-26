@@ -546,6 +546,93 @@ function SlashCommands:Initialize()
             else
                 print("Combat entity map not loaded")
             end
+        elseif command == "poolstats" then
+            -- Show table pool statistics
+            if addon.StorageManager then
+                local stats = addon.StorageManager:GetPoolStats()
+                addon:Info("=== Table Pool Statistics ===")
+                addon:Info("Main Pool:")
+                addon:Info("  Size: %d / %d (%.1f%% full)", 
+                    stats.currentPoolSize, stats.maxPoolSize, 
+                    (stats.currentPoolSize / stats.maxPoolSize) * 100)
+                addon:Info("  Created: %d tables", stats.created)
+                addon:Info("  Reused: %d tables (%.1f%% reuse rate)", 
+                    stats.reused, stats.reuseRatio * 100)
+                addon:Info("  Returned: %d tables", stats.returned)
+                addon:Info("  Warnings: %d", stats.warnings)
+                addon:Info("  Corrupted: %d", stats.corrupted)
+                addon:Info("  Health Checks: %d", stats.healthChecks)
+                addon:Info("Overflow Pool:")
+                addon:Info("  Created: %d tables", stats.overflow.created)
+                addon:Info("  Collected: %d tables", stats.overflow.collected)
+            else
+                addon:Error("StorageManager not available")
+            end
+        elseif command == "poolhealth" then
+            -- Validate pool health
+            if addon.StorageManager then
+                addon:Info("Running table pool health check...")
+                local result = addon.StorageManager:ValidatePool()
+                addon:Info("Pool Health Check Results:")
+                addon:Info("  Corrupted tables removed: %d", result.corrupted)
+                addon:Info("  Healthy tables remaining: %d", result.healthy)
+                addon:Info("  Overflow collected: %d", result.overflowCollected)
+            else
+                addon:Error("StorageManager not available")
+            end
+        elseif command == "poolflush" then
+            -- Emergency pool flush
+            if addon.StorageManager then
+                addon:Warn("WARNING: This will flush all pooled tables!")
+                addon:Info("Performing emergency pool flush...")
+                local result = addon.StorageManager:EmergencyPoolFlush()
+                addon:Info("Emergency Flush Complete:")
+                addon:Info("  Main pool flushed: %d tables", result.mainPoolFlushed)
+                addon:Info("  Overflow pool flushed: %d tables", result.overflowPoolFlushed)
+                addon:Info("Garbage collection forced")
+            else
+                addon:Error("StorageManager not available")
+            end
+        elseif command == "pooldebug" then
+            -- Toggle table lineage debugging
+            if addon.StorageManager then
+                local currentState = addon.StorageManager:GetDebugTableLineage()
+                addon.StorageManager:SetDebugTableLineage(not currentState)
+                local newState = addon.StorageManager:GetDebugTableLineage()
+                addon:Info("Table lineage debugging: %s", newState and "ENABLED" or "DISABLED")
+                if newState then
+                    addon:Info("New tables will track creation stack traces and purpose")
+                else
+                    addon:Info("Table lineage tracking disabled")
+                end
+            else
+                addon:Error("StorageManager not available")
+            end
+        elseif command == "poolleaks" then
+            -- Show current table leaks
+            if addon.StorageManager then
+                local leaks, totalTracked = addon.StorageManager:GetLeakedTables()
+                addon:Info("=== Table Pool Leak Analysis ===")
+                addon:Info("Total tracked tables: %d", totalTracked)
+                addon:Info("Potential leaks (>10s old): %d", #leaks)
+                
+                if #leaks > 0 then
+                    addon:Info("Top 10 oldest leaks:")
+                    for i = 1, math.min(10, #leaks) do
+                        local leak = leaks[i]
+                        addon:Info("  %d. Age: %.1fs, Purpose: %s", i, leak.age, leak.purpose)
+                        -- Show first line of stack trace
+                        local firstLine = leak.stack:match("([^\n]*)")
+                        if firstLine then
+                            addon:Info("     Stack: %s", firstLine)
+                        end
+                    end
+                else
+                    addon:Info("No leaks detected! All tables properly released.")
+                end
+            else
+                addon:Error("StorageManager not available")
+            end
         else
             print("MyUI Essential Commands:")
             print("  /myui - Toggle main window")
@@ -576,6 +663,13 @@ function SlashCommands:Initialize()
             print("  /myui queuedebug - Show detailed queue debug info")
             print("  /myui queuesubscribers [combat|log] - List queue subscribers")
             print("  /myui queueclear - Clear all queues")
+            print("")
+            print("Table Pool Management:")
+            print("  /myui poolstats - Show table pool statistics")
+            print("  /myui poolhealth - Run pool health check")
+            print("  /myui poolflush - Emergency flush all pooled tables")
+            print("  /myui pooldebug - Toggle table lineage debugging")
+            print("  /myui poolleaks - Show current table leaks")
         end
     end
 end

@@ -306,14 +306,16 @@ function MyCombatMeterScaler:ExtractSessionPeaks(session)
                             -- Extract damage amount based on specific event type
                             if subevent == "SWING_DAMAGE" then
                                 -- For swing damage: args[1] is damage amount (parameter 12 in original)
-                                amount = args[1]
+                                amount = type(args[1]) == "number" and args[1] or nil
                             elseif subevent == "SPELL_DAMAGE" or subevent == "RANGE_DAMAGE" or subevent == "SPELL_PERIODIC_DAMAGE" then
                                 -- For spell damage: args[4] is damage amount (parameter 15 in original)
                                 -- args[1]=spellId, args[2]=spellName, args[3]=spellSchool, args[4]=amount
-                                amount = args[4]
+                                amount = type(args[4]) == "number" and args[4] or nil
                             else
                                 -- For other damage types, try args[4] first, then fallback to search
-                                amount = args[4] or args[1]
+                                local val1 = type(args[4]) == "number" and args[4] or nil
+                                local val2 = type(args[1]) == "number" and args[1] or nil
+                                amount = val1 or val2
                                 if not amount then
                                     for j = 1, 6 do
                                         if args[j] and type(args[j]) == "number" and args[j] > 0 then
@@ -327,7 +329,7 @@ function MyCombatMeterScaler:ExtractSessionPeaks(session)
                             -- For heal events, damage amount pattern usually applies
                             if subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_HEAL" then
                                 -- Similar to spell damage structure
-                                amount = args[4]
+                                amount = type(args[4]) == "number" and args[4] or nil
                             else
                                 -- Fallback search for heal events
                                 for j = 1, 6 do
@@ -339,7 +341,7 @@ function MyCombatMeterScaler:ExtractSessionPeaks(session)
                             end
                         end
                         
-                        if amount and amount > 0 then
+                        if amount and type(amount) == "number" and amount > 0 then
                             if subevent:find("_DAMAGE") then
                                 totalDamage = totalDamage + amount
                                 damageEvents = damageEvents + 1
