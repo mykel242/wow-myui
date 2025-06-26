@@ -859,16 +859,20 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     end
     
     -- Add names to GUID map if not already present
-    if sourceGUID and sourceName and sourceName ~= "nil" then
-        if not currentSessionData.guidMap[sourceGUID] then
-            currentSessionData.guidMap[sourceGUID] = sourceName
+    if currentSessionData.guidMap then
+        if sourceGUID and sourceName and sourceName ~= "nil" then
+            if not currentSessionData.guidMap[sourceGUID] then
+                currentSessionData.guidMap[sourceGUID] = sourceName
+            end
         end
-    end
-    
-    if destGUID and destName and destName ~= "nil" then
-        if not currentSessionData.guidMap[destGUID] then
-            currentSessionData.guidMap[destGUID] = destName
+        
+        if destGUID and destName and destName ~= "nil" then
+            if not currentSessionData.guidMap[destGUID] then
+                currentSessionData.guidMap[destGUID] = destName
+            end
         end
+    else
+        errorPrint("currentSessionData.guidMap is nil in ProcessCombatEvent!")
     end
     
     -- Removed: Per-event debug logging caused massive spam
@@ -991,8 +995,12 @@ function MySimpleCombatDetector:ProcessCombatEvent(...)
     end
     
     -- Also add to main session events for backward compatibility during transition
-    table.insert(currentSessionData.events, eventData)
-    currentSessionData.eventCount = currentSessionData.eventCount + 1
+    if currentSessionData.events then
+        table.insert(currentSessionData.events, eventData)
+        currentSessionData.eventCount = currentSessionData.eventCount + 1
+    else
+        errorPrint("currentSessionData.events is nil when adding event!")
+    end
     
     -- Publish events to message queue for real-time components (like combat meter)
     -- Pass all parameters from the combat log event
@@ -1249,9 +1257,6 @@ function MySimpleCombatDetector:EndCombat()
         -- Store the session (StorageManager will create safe copies)
         self:StoreSession(currentSessionData)
         
-        -- Clean up the original pooled tables after StorageManager has copied the data
-        self:CleanupSessionTables(currentSessionData)
-        
         -- Trigger auto-scaling update with fresh session data
         if addon.MyCombatMeterScaler then
             -- Create session data for scaler with calculated peak values
@@ -1272,13 +1277,15 @@ function MySimpleCombatDetector:EndCombat()
         infoPrint("Session stored: %s", currentSessionData.id)
     else
         debugPrint("Session discarded: insufficient activity (%s)", currentSessionData.id)
-        
-        -- Return pooled tables to pool for discarded sessions
-        self:CleanupSessionTables(currentSessionData)
     end
     
     -- Publish combat state change to message queue before resetting
     self:PublishCombatStateChange(false)
+    
+    -- Clean up pooled tables before resetting (for both stored and discarded sessions)
+    if currentSessionData then
+        self:CleanupSessionTables(currentSessionData)
+    end
     
     -- Reset combat state including segmentation
     inCombat = false
