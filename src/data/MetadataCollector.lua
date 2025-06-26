@@ -50,15 +50,15 @@ function MetadataCollector:RefreshMetadata()
         self:ReleaseMetadataTables(currentMetadata)
     end
     
-    -- Create new metadata using table pool
-    currentMetadata = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Create new metadata using regular tables (internal data structure)
+    currentMetadata = {}
     
     -- Timestamp
     currentMetadata.timestamp = GetTime()
     currentMetadata.serverTime = GetServerTime()
     
-    -- Player info using table pool
-    currentMetadata.player = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Player info using regular tables
+    currentMetadata.player = {}
     currentMetadata.player.name = UnitName("player")
     currentMetadata.player.realm = GetRealmName()
     currentMetadata.player.class = UnitClass("player")
@@ -66,8 +66,8 @@ function MetadataCollector:RefreshMetadata()
     currentMetadata.player.spec = self:GetPlayerSpecialization()
     currentMetadata.player.itemLevel = self:GetAverageItemLevel()
     
-    -- Zone info using table pool
-    currentMetadata.zone = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Zone info using regular tables
+    currentMetadata.zone = {}
     currentMetadata.zone.name = GetRealZoneText() or GetZoneText() or GetMinimapZoneText() or "Unknown"
     currentMetadata.zone.subzone = GetSubZoneText() or ""
     currentMetadata.zone.mapID = C_Map.GetBestMapForUnit("player")
@@ -76,8 +76,8 @@ function MetadataCollector:RefreshMetadata()
     -- Group composition
     currentMetadata.group = self:GetGroupComposition()
     
-    -- Game version info using table pool
-    currentMetadata.client = addon.StorageManager and addon.StorageManager:GetTable() or {}
+    -- Game version info using regular tables
+    currentMetadata.client = {}
     currentMetadata.client.version = GetBuildInfo()
     currentMetadata.client.addonVersion = addon.VERSION
     

@@ -1246,7 +1246,11 @@ function MySimpleCombatDetector:EndCombat()
        eventCount >= CONFIG.MIN_EVENTS and 
        activityRate >= CONFIG.MIN_ACTIVITY_RATE then
         
+        -- Store the session (StorageManager will create safe copies)
         self:StoreSession(currentSessionData)
+        
+        -- Clean up the original pooled tables after StorageManager has copied the data
+        self:CleanupSessionTables(currentSessionData)
         
         -- Trigger auto-scaling update with fresh session data
         if addon.MyCombatMeterScaler then

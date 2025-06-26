@@ -542,14 +542,71 @@ function StorageManager:StoreCombatSession(sessionData)
     sessionData.storedAt = GetTime()
     sessionData.serverTime = GetServerTime()
     
-    -- Preserve GUID map by copying it (prevent table pool cleanup)
-    if sessionData.guidMap then
-        local guidMapCopy = {}
-        for guid, name in pairs(sessionData.guidMap) do
-            guidMapCopy[guid] = name
+    -- Create a safe copy of the session data to prevent holding pooled tables
+    local sessionCopy = {}
+    
+    -- Copy basic fields
+    for k, v in pairs(sessionData) do
+        if type(v) ~= "table" then
+            sessionCopy[k] = v
         end
-        sessionData.guidMap = guidMapCopy
     end
+    
+    -- Copy GUID map (prevent table pool cleanup)
+    if sessionData.guidMap then
+        sessionCopy.guidMap = {}
+        for guid, name in pairs(sessionData.guidMap) do
+            sessionCopy.guidMap[guid] = name
+        end
+    end
+    
+    -- Copy events array (prevent table pool cleanup)
+    if sessionData.events then
+        sessionCopy.events = {}
+        for i, event in ipairs(sessionData.events) do
+            if event then
+                local eventCopy = {}
+                for k, v in pairs(event) do
+                    eventCopy[k] = v
+                end
+                sessionCopy.events[i] = eventCopy
+            end
+        end
+    end
+    
+    -- Copy segments if they exist
+    if sessionData.segments then
+        sessionCopy.segments = {}
+        for i, segment in ipairs(sessionData.segments) do
+            if segment then
+                local segmentCopy = {}
+                for k, v in pairs(segment) do
+                    if k ~= "events" then
+                        segmentCopy[k] = v
+                    end
+                end
+                
+                -- Copy segment events
+                if segment.events then
+                    segmentCopy.events = {}
+                    for j, event in ipairs(segment.events) do
+                        if event then
+                            local eventCopy = {}
+                            for k, v in pairs(event) do
+                                eventCopy[k] = v
+                            end
+                            segmentCopy.events[j] = eventCopy
+                        end
+                    end
+                end
+                
+                sessionCopy.segments[i] = segmentCopy
+            end
+        end
+    end
+    
+    -- Use the copy instead of original
+    sessionData = sessionCopy
     
     -- Get context metadata if available
     if addon.MetadataCollector then
